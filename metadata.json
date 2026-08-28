@@ -1,0 +1,6 @@
+{
+  "name": "Motoride Real-Time Ride Sharing",
+  "description": "Real-time ride-sharing dispatch system connecting Passenger and Captain applications with Supabase Realtime synchronization, atomic concurrency control, and an enterprise Admin Operations & Fleet Dashboard.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
