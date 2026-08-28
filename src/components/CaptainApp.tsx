@@ -31,6 +31,7 @@ import {
   RotateCcw,
   Sliders,
   Sparkles,
+  Camera,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Ride, RideStatus, UserProfile } from '../types/ride';
@@ -40,10 +41,12 @@ import {
   claimRideAtomic,
   updateRideStatus,
   subscribeToCaptainRealtime,
+  unsubscribeChannel,
 } from '../services/rideService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { MapMockup } from './MapMockup';
 import { InRideChatModal } from './InRideChatModal';
+import { CaptainProfileModal } from './CaptainProfileModal';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface CaptainAppProps {
@@ -88,6 +91,8 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   const [decliningRideId, setDecliningRideId] = useState<string | null>(null);
 
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
+  const [currentCaptain, setCurrentCaptain] = useState<UserProfile>(captainUser);
+  const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [completedCount, setCompletedCount] = useState<number>(6);
   const [todayEarnings, setTodayEarnings] = useState<number>(94.5);
   const [onlineMinutes, setOnlineMinutes] = useState<number>(185);
@@ -104,6 +109,22 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   const [pinVerified, setPinVerified] = useState(false);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const headerAvatarInputRef = useRef<HTMLInputElement>(null);
+
+  const handleHeaderAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (typeof event.target?.result === 'string') {
+            setCurrentCaptain((prev) => ({ ...prev, avatar_url: event.target?.result as string }));
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
 
   // Play crisp incoming chime
   const playAlertSound = () => {
@@ -153,7 +174,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   useEffect(() => {
     if (!isOnline) {
       if (channelRef.current) {
-        channelRef.current.unsubscribe();
+        unsubscribeChannel(channelRef.current);
         channelRef.current = null;
       }
       setRealtimeState('offline');
@@ -162,7 +183,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
     const channel = subscribeToCaptainRealtime({
       onInsert: (newRide: Ride) => {
-        console.log('[Captain Realtime] New incoming ride:', newRide);
         if (newRide.status === 'requested') {
           playAlertSound();
           setRequestedRides((prev) => {
@@ -174,8 +194,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         }
       },
       onUpdate: (updatedRide: Ride) => {
-        console.log('[Captain Realtime] Update:', updatedRide);
-
         if (updatedRide.captain_id === captainUser.id) {
           if (updatedRide.status === 'completed' || updatedRide.status === 'cancelled') {
             setActiveRide(null);
@@ -207,9 +225,17 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
     channelRef.current = channel;
 
+    // Polling fallback to keep state updated even during network/socket reconnects
+    const pollInterval = setInterval(() => {
+      if (isSupabaseConfigured() && isOnline) {
+        loadInitialData();
+      }
+    }, 4000);
+
     return () => {
+      clearInterval(pollInterval);
       if (channelRef.current) {
-        channelRef.current.unsubscribe();
+        unsubscribeChannel(channelRef.current);
         channelRef.current = null;
       }
     };
@@ -327,38 +353,98 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     >
       {/* Uber Driver Top Header Bar */}
       <div className="bg-[#0b0f19] px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+        {/* Hidden file input for fast avatar upload from driver header */}
+        <input
+          ref={headerAvatarInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleHeaderAvatarChange}
+          className="hidden"
+          id="captain-header-avatar-input"
+        />
+
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-black text-lg shadow-md">
-            🏍️
+          <div className="relative group">
+            <button
+              onClick={() => setIsProfileOpen(true)}
+              className="cursor-pointer block"
+              title="Open Captain Profile & Photo"
+            >
+              {currentCaptain.avatar_url ? (
+                <img
+                  src={currentCaptain.avatar_url}
+                  alt={currentCaptain.name}
+                  referrerPolicy="no-referrer"
+                  className="w-10 h-10 rounded-2xl object-cover border border-amber-400/50 shadow-md group-hover:scale-105 transition-transform"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-black text-lg shadow-md group-hover:scale-105 transition-transform">
+                  🏍️
+                </div>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                headerAvatarInputRef.current?.click();
+              }}
+              className="absolute -bottom-1 -right-1 p-0.5 bg-slate-900 hover:bg-amber-400 text-slate-300 hover:text-slate-950 rounded-full border border-slate-700 shadow transition-colors cursor-pointer"
+              title="Upload Captain photo"
+            >
+              <Camera className="w-2.5 h-2.5" />
+            </button>
           </div>
-          <div>
+
+          <button
+            onClick={() => setIsProfileOpen(true)}
+            className="text-left group cursor-pointer hover:opacity-90 transition-opacity"
+            title="Open Captain Profile & Performance"
+          >
             <div className="flex items-center gap-1.5">
-              <span className="font-black text-sm text-slate-100">{captainUser.name}</span>
+              <span className="font-black text-sm text-slate-100">{currentCaptain.name}</span>
               {titleSuffix && <span className="text-amber-400 text-xs">({titleSuffix})</span>}
+              <span className="text-[9px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.2 rounded border border-amber-500/30">
+                PROFILE
+              </span>
             </div>
             <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
               <span className="text-amber-300 font-bold flex items-center">
-                ★ {captainUser.rating || 4.96}
+                ★ {currentCaptain.rating || 4.96}
               </span>
               <span>·</span>
-              <span className="text-slate-300">{captainUser.vehicle_details?.split('·')[0] || 'Yamaha MT-07'}</span>
+              <span className="text-slate-300 group-hover:text-amber-400 transition-colors">
+                {currentCaptain.vehicle_details?.split('·')[0] || 'Yamaha MT-07'}
+              </span>
             </p>
-          </div>
+          </button>
         </div>
 
-        {/* Uber Online Toggle Button */}
-        <button
-          id="uber-driver-toggle-online-btn"
-          onClick={() => setIsOnline(!isOnline)}
-          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-black transition-all shadow-lg cursor-pointer ${
-            isOnline
-              ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/25 ring-2 ring-emerald-400/40'
-              : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700'
-          }`}
-        >
-          <Power className="w-3.5 h-3.5" />
-          {isOnline ? 'ONLINE' : 'GO ONLINE'}
-        </button>
+        {/* Action Controls: Profile + Online Toggle */}
+        <div className="flex items-center gap-2">
+          <button
+            id="captain-profile-header-btn"
+            onClick={() => setIsProfileOpen(true)}
+            className="p-2 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors cursor-pointer"
+            title="Captain Profile & Performance"
+          >
+            <User className="w-4 h-4 text-amber-400" />
+          </button>
+
+          {/* Uber Online Toggle Button */}
+          <button
+            id="uber-driver-toggle-online-btn"
+            onClick={() => setIsOnline(!isOnline)}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-black transition-all shadow-lg cursor-pointer ${
+              isOnline
+                ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/25 ring-2 ring-emerald-400/40'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700'
+            }`}
+          >
+            <Power className="w-3.5 h-3.5" />
+            {isOnline ? 'ONLINE' : 'GO ONLINE'}
+          </button>
+        </div>
       </div>
 
       {/* Today's Earnings & Shift HUD (Uber Driver Style) */}
@@ -952,11 +1038,21 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           onClose={() => setIsChatOpen(false)}
           rideId={activeRide.id}
           currentUserRole="captain"
-          currentUserName={captainUser.name}
+          currentUserName={currentCaptain.name}
           otherPartyName={activeRide.passenger_name || 'Passenger'}
           otherPartyRole="Passenger"
         />
       )}
+
+      {/* Captain Profile & Performance Modal / Page */}
+      <CaptainProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        captain={currentCaptain}
+        onUpdateCaptain={(updated) => setCurrentCaptain((prev) => ({ ...prev, ...updated }))}
+        todayEarnings={todayEarnings}
+        completedCount={completedCount}
+      />
     </div>
   );
 };

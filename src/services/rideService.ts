@@ -318,6 +318,35 @@ export const updateRideStatus = async (
   }
 };
 
+const isSocketNormalClose = (err: any): boolean => {
+  if (!err) return false;
+  const msg = typeof err === 'string' ? err : err?.message || (err?.toString ? err.toString() : '');
+  return (
+    msg.includes('1001') ||
+    msg.includes('1000') ||
+    msg.includes('socket closed') ||
+    msg.includes('WebSocket is closed') ||
+    msg.includes('closed')
+  );
+};
+
+/**
+ * Safely removes and unsubscribes a Supabase Realtime channel
+ */
+export const unsubscribeChannel = async (channel: RealtimeChannel | null) => {
+  if (!channel) return;
+  try {
+    const supabase = getSupabaseClient();
+    if (supabase && typeof supabase.removeChannel === 'function') {
+      await supabase.removeChannel(channel);
+    } else {
+      channel.unsubscribe();
+    }
+  } catch {
+    // Normal cleanup suppress
+  }
+};
+
 /**
  * Realtime Subscription for Captain Dashboard
  * Subscribes to new INSERTs and any UPDATEs on public.rides
@@ -365,9 +394,11 @@ export const subscribeToCaptainRealtime = (callbacks: {
         callbacks.onStatusChange(status as any, err);
       }
       if (status === 'CHANNEL_ERROR') {
-        console.error('[Motoride Realtime Captain] Channel Error:', err);
+        if (!isSocketNormalClose(err)) {
+          console.warn('[Motoride Realtime Captain] Channel status:', err || 'Reconnecting');
+        }
       } else if (status === 'TIMED_OUT') {
-        console.error('[Motoride Realtime Captain] Channel Timed Out:', err);
+        console.warn('[Motoride Realtime Captain] Channel Timed Out (auto-retrying)');
       }
     });
 
@@ -411,9 +442,11 @@ export const subscribeToPassengerRide = (
         callbacks.onStatusChange(status as any, err);
       }
       if (status === 'CHANNEL_ERROR') {
-        console.error(`[Motoride Realtime Passenger] Ride ${rideId} Channel Error:`, err);
+        if (!isSocketNormalClose(err)) {
+          console.warn(`[Motoride Realtime Passenger] Ride ${rideId} Channel notice:`, err || 'Reconnecting');
+        }
       } else if (status === 'TIMED_OUT') {
-        console.error(`[Motoride Realtime Passenger] Ride ${rideId} Channel Timed Out:`, err);
+        console.warn(`[Motoride Realtime Passenger] Ride ${rideId} Channel Timed Out (auto-retrying)`);
       }
     });
 
@@ -613,7 +646,11 @@ export const subscribeToAdminRealtime = (callbacks: {
         callbacks.onStatusChange(status as any, err);
       }
       if (status === 'CHANNEL_ERROR') {
-        console.error('[Admin Realtime] Channel Error:', err);
+        if (!isSocketNormalClose(err)) {
+          console.warn('[Admin Realtime] Channel status:', err || 'Reconnecting');
+        }
+      } else if (status === 'TIMED_OUT') {
+        console.warn('[Admin Realtime] Channel Timed Out (auto-retrying)');
       }
     });
 

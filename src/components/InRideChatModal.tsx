@@ -10,6 +10,7 @@ interface InRideChatModalProps {
   currentUserName: string;
   otherPartyName: string;
   otherPartyRole: string;
+  otherPartyAvatarUrl?: string;
 }
 
 const QUICK_REPLIES = {
@@ -35,6 +36,7 @@ export const InRideChatModal: React.FC<InRideChatModalProps> = ({
   currentUserName,
   otherPartyName,
   otherPartyRole,
+  otherPartyAvatarUrl,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMsg, setInputMsg] = useState('');
@@ -103,9 +105,18 @@ export const InRideChatModal: React.FC<InRideChatModalProps> = ({
         {/* Header */}
         <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center justify-center font-bold">
-              <User className="w-5 h-5" />
-            </div>
+            {otherPartyAvatarUrl ? (
+              <img
+                src={otherPartyAvatarUrl}
+                alt={otherPartyName}
+                referrerPolicy="no-referrer"
+                className="w-10 h-10 rounded-full object-cover border border-emerald-500/40 shadow"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center justify-center font-bold">
+                <User className="w-5 h-5" />
+              </div>
+            )}
             <div>
               <h3 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
                 {otherPartyName}

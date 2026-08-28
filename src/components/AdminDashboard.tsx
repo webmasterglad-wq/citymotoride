@@ -47,6 +47,7 @@ import {
   purgeOldRidesAdmin,
   createMockRideAdmin,
   subscribeToAdminRealtime,
+  unsubscribeChannel,
 } from '../services/rideService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { MapMockup } from './MapMockup';
@@ -190,13 +191,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
 
     channelRef.current = channel;
 
+    // Polling fallback to keep fleet table synced
+    const pollInterval = setInterval(() => {
+      if (isSupabaseConfigured()) {
+        fetchAllRidesAdmin(statusFilter === 'all' ? undefined : statusFilter, 100).then(({ data }) => {
+          if (data) setRides(data);
+        });
+      }
+    }, 6000);
+
     return () => {
+      clearInterval(pollInterval);
       if (channelRef.current) {
-        channelRef.current.unsubscribe();
+        unsubscribeChannel(channelRef.current);
         channelRef.current = null;
       }
     };
-  }, [selectedRide?.id]);
+  }, [selectedRide?.id, statusFilter]);
 
   // Analytics Computation
   const analytics: AdminAnalyticsSummary = useMemo(() => {

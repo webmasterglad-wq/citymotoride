@@ -28,6 +28,8 @@ import {
   Flame,
   KeyRound,
   Share2,
+  User,
+  Camera,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Ride, RideStatus, UserProfile, RideTier, PaymentMethodType } from '../types/ride';
@@ -36,11 +38,13 @@ import {
   fetchActiveRideForPassenger,
   updateRideStatus,
   subscribeToPassengerRide,
+  unsubscribeChannel,
 } from '../services/rideService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { MapMockup } from './MapMockup';
 import { InRideChatModal } from './InRideChatModal';
 import { SafetyToolkitModal } from './SafetyToolkitModal';
+import { PassengerProfileModal } from './PassengerProfileModal';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface PassengerAppProps {
@@ -123,11 +127,13 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [estimatedMins, setEstimatedMins] = useState<number>(12);
 
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(passengerUser);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<string>('idle');
 
   // Modals
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isSafetyOpen, setIsSafetyOpen] = useState(false);
   const [ratingStars, setRatingStars] = useState<number>(5);
@@ -135,6 +141,22 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const headerAvatarInputRef = useRef<HTMLInputElement>(null);
+
+  const handleHeaderAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (typeof event.target?.result === 'string') {
+            setCurrentUser((prev) => ({ ...prev, avatar_url: event.target?.result as string }));
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
 
   // Recalculate base fare when pickup/dropoff or tier changes
   useEffect(() => {
@@ -171,15 +193,16 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   useEffect(() => {
     if (!activeRide?.id || activeRide.status === 'completed' || activeRide.status === 'cancelled') {
       if (channelRef.current) {
-        channelRef.current.unsubscribe();
+        unsubscribeChannel(channelRef.current);
         channelRef.current = null;
       }
       return;
     }
 
-    const channel = subscribeToPassengerRide(activeRide.id, {
+    const currentActiveRideId = activeRide.id;
+
+    const channel = subscribeToPassengerRide(currentActiveRideId, {
       onUpdate: (updatedRide) => {
-        console.log('[Passenger Realtime] Update:', updatedRide);
         setActiveRide(updatedRide);
 
         if (updatedRide.status === 'accepted' && activeRide.status === 'requested') {
@@ -199,13 +222,23 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
     channelRef.current = channel;
 
+    // Polling fallback to keep ride state fresh during socket reconnects
+    const pollInterval = setInterval(async () => {
+      if (!isSupabaseConfigured() || !passengerUser?.id) return;
+      const { data } = await fetchActiveRideForPassenger(passengerUser.id);
+      if (data) {
+        setActiveRide(data);
+      }
+    }, 3500);
+
     return () => {
+      clearInterval(pollInterval);
       if (channelRef.current) {
-        channelRef.current.unsubscribe();
+        unsubscribeChannel(channelRef.current);
         channelRef.current = null;
       }
     };
-  }, [activeRide?.id]);
+  }, [activeRide?.id, passengerUser?.id]);
 
   // Safety PIN generated per ride ID
   const safetyPin = activeRide ? `${(Math.abs(activeRide.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % 9000) + 1000}` : '4829';
@@ -285,32 +318,87 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     <div id="uber-passenger-root" className="w-full max-w-md sm:max-w-lg mx-auto bg-[#07090e] border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col font-sans">
       {/* Top Mobile Status Header Bar */}
       <div className="bg-[#0b0f19] px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+        {/* Hidden file input for fast avatar upload from header */}
+        <input
+          ref={headerAvatarInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleHeaderAvatarChange}
+          className="hidden"
+          id="passenger-header-avatar-input"
+        />
+
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center font-black text-sm shadow-md">
-            M
+          <div className="relative group">
+            <button
+              onClick={() => setIsProfileOpen(true)}
+              className="cursor-pointer block"
+              title="Open Passenger Profile & Photo"
+            >
+              {currentUser.avatar_url ? (
+                <img
+                  src={currentUser.avatar_url}
+                  alt={currentUser.name}
+                  referrerPolicy="no-referrer"
+                  className="w-9 h-9 rounded-xl object-cover border border-emerald-500/50 shadow-md group-hover:scale-105 transition-transform"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center font-black text-sm shadow-md group-hover:scale-105 transition-transform">
+                  {currentUser.name.charAt(0)}
+                </div>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                headerAvatarInputRef.current?.click();
+              }}
+              className="absolute -bottom-1 -right-1 p-0.5 bg-slate-900 hover:bg-emerald-500 text-slate-300 hover:text-slate-950 rounded-full border border-slate-700 shadow transition-colors cursor-pointer"
+              title="Upload profile picture"
+            >
+              <Camera className="w-2.5 h-2.5" />
+            </button>
           </div>
-          <div>
+
+          <button
+            onClick={() => setIsProfileOpen(true)}
+            className="text-left group cursor-pointer hover:opacity-90 transition-opacity"
+            title="Open Passenger Profile"
+          >
             <div className="flex items-center gap-1.5">
-              <span className="font-black text-sm text-slate-100 tracking-tight">MotoRide</span>
+              <span className="font-black text-sm text-slate-100 tracking-tight">{currentUser.name}</span>
               <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-1.5 py-0.2 rounded border border-emerald-500/30">
-                PASSENGER
+                PROFILE
               </span>
             </div>
             <p className="text-[11px] text-slate-400 flex items-center gap-1">
-              <span>{passengerUser.name}</span>
+              <span className="text-slate-300 group-hover:text-emerald-400 transition-colors">View Account</span>
               <span className="text-amber-400 font-bold flex items-center gap-0.5">
-                <Star className="w-2.5 h-2.5 fill-amber-400 inline" /> {passengerUser.rating || 4.94}
+                <Star className="w-2.5 h-2.5 fill-amber-400 inline" /> {currentUser.rating || 4.94}
               </span>
             </p>
-          </div>
+          </button>
         </div>
 
-        {/* Promo / Wallet Pill */}
+        {/* Action Controls: Profile + Wallet */}
         <div className="flex items-center gap-2">
-          <div className="bg-slate-900 border border-slate-700/80 px-2.5 py-1 rounded-full flex items-center gap-1.5 text-xs text-slate-200">
+          <button
+            onClick={() => setIsProfileOpen(true)}
+            className="bg-slate-900 hover:bg-slate-800 border border-slate-700/80 px-2.5 py-1 rounded-full flex items-center gap-1.5 text-xs text-slate-200 cursor-pointer transition-colors"
+            title="Wallet & Balance"
+          >
             <Wallet className="w-3.5 h-3.5 text-emerald-400" />
             <span className="font-black text-emerald-300">$84.50</span>
-          </div>
+          </button>
+          <button
+            id="passenger-profile-btn"
+            onClick={() => setIsProfileOpen(true)}
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors cursor-pointer"
+            title="Passenger Profile & Settings"
+          >
+            <User className="w-4 h-4 text-emerald-400" />
+          </button>
         </div>
       </div>
 
@@ -790,7 +878,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
           onClose={() => setIsChatOpen(false)}
           rideId={activeRide.id}
           currentUserRole="passenger"
-          currentUserName={passengerUser.name}
+          currentUserName={currentUser.name}
           otherPartyName={activeRide.captain_name || 'Captain'}
           otherPartyRole="Captain"
         />
@@ -807,6 +895,14 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
           vehicleDetails={activeRide.captain_vehicle || undefined}
         />
       )}
+
+      {/* Passenger Profile Modal / Page */}
+      <PassengerProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        user={currentUser}
+        onUpdateUser={(updated) => setCurrentUser((prev) => ({ ...prev, ...updated }))}
+      />
     </div>
   );
 };
