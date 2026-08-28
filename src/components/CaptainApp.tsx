@@ -330,7 +330,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           setTodayEarnings((e) => Number((e + (data.fare || 14.5)).toFixed(2)));
           setConcurrencyAlert({
             type: 'success',
-            message: `Trip completed! Earnings of $${data.fare?.toFixed(2) || '14.50'} deposited to your wallet.`,
+            message: `Trip completed! Earnings of ₹${data.fare?.toFixed(2) || '14.50'} deposited to your wallet.`,
           });
         } else if (nextStatus === 'cancelled') {
           setActiveRide(null);
@@ -457,10 +457,10 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             </span>
             <div className="flex items-baseline gap-2">
               <h2 className="text-2xl font-black text-white tracking-tight">
-                ${todayEarnings.toFixed(2)}
+                ₹{todayEarnings.toFixed(2)}
               </h2>
               <span className="text-xs font-bold text-emerald-400 flex items-center">
-                <TrendingUp className="w-3 h-3 mr-0.5" /> +$28.50 vs yesterday
+                <TrendingUp className="w-3 h-3 mr-0.5" /> +₹28.50 vs yesterday
               </span>
             </div>
           </div>
@@ -497,7 +497,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           <div className="flex items-center justify-between text-[10px] font-bold text-slate-300">
             <span className="flex items-center gap-1 text-amber-300">
               <Zap className="w-3 h-3 text-amber-400" />
-              Daily Quest: Complete 8 rides for $25 bonus
+              Daily Quest: Complete 8 rides for ₹25 bonus
             </span>
             <span className="font-mono text-slate-400">{completedCount}/8</span>
           </div>
@@ -668,7 +668,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                 className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-500/25 transition-all cursor-pointer"
               >
                 {isUpdatingStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 stroke-[3]" />}
-                Complete Ride · Collect ${activeRide.fare ? Number(activeRide.fare).toFixed(2) : '14.50'}
+                Complete Ride · Collect ₹{activeRide.fare ? Number(activeRide.fare).toFixed(2) : '14.50'}
               </button>
             )}
 
@@ -826,7 +826,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
                         <div className="text-right">
                           <span className="text-sm font-black text-slate-300 block">
-                            ${item.ride.fare ? Number(item.ride.fare).toFixed(2) : '14.50'}
+                            ₹{item.ride.fare ? Number(item.ride.fare).toFixed(2) : '14.50'}
                           </span>
                         </div>
                       </div>
@@ -920,7 +920,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
                     <div className="text-right">
                       <span className="text-lg font-black text-emerald-400 block">
-                        ${ride.fare ? Number(ride.fare).toFixed(2) : '14.50'}
+                        ₹{ride.fare ? Number(ride.fare).toFixed(2) : '14.50'}
                       </span>
                       <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-1.5 py-0.2 rounded border border-emerald-500/30">
                         0% Commission
@@ -949,7 +949,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                         onClick={() => handleAcceptRide(ride, (ride.fare || 14.5) + 1.0)}
                         className="py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition-colors flex items-center justify-center gap-1"
                       >
-                        Offer +$1
+                        Offer +₹1
                       </button>
 
                       {/* inDrive Counter Offer 2 */}
@@ -958,7 +958,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                         onClick={() => handleAcceptRide(ride, (ride.fare || 14.5) + 2.0)}
                         className="py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition-colors flex items-center justify-center gap-1"
                       >
-                        Offer +$2
+                        Offer +₹2
                       </button>
 
                       {/* Instant Accept Button (Protected by Atomic Claim RPC) */}

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Upload, Trash2, Sparkles, Check, Image as ImageIcon, RefreshCw } from 'lucide-react';
+import { Camera, Upload, Trash2, Sparkles, Check, Image as ImageIcon, RefreshCw, HardDrive, ShieldCheck } from 'lucide-react';
+import { uploadAvatarImage, AVATAR_BUCKET } from '../services/storageService';
 
 interface AvatarUploaderProps {
   currentAvatarUrl?: string;
@@ -56,16 +57,19 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
   accentColor = 'emerald',
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [storageBadge, setStorageBadge] = useState<'supabase' | 'local' | null>(null);
   const [showPresets, setShowPresets] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const presets = role === 'captain' ? CAPTAIN_PRESETS : PASSENGER_PRESETS;
   const isAmber = accentColor === 'amber';
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     setUploadError(null);
+    setUploadSuccess(null);
 
     // Validate image format
     if (!file.type.startsWith('image/')) {
@@ -79,18 +83,34 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (typeof event.target?.result === 'string') {
-        onAvatarChange(event.target.result);
-        setUploadSuccess('Profile picture updated successfully!');
-        setTimeout(() => setUploadSuccess(null), 3000);
+    setIsUploading(true);
+
+    try {
+      // Upload directly to Supabase Storage bucket 'avatars'
+      const result = await uploadAvatarImage(file, {
+        role,
+        userId: userName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+      });
+
+      setIsUploading(false);
+
+      if (result.url) {
+        onAvatarChange(result.url);
+        if (result.storageType === 'supabase') {
+          setStorageBadge('supabase');
+          setUploadSuccess(`Uploaded & persisted to Supabase Storage bucket '${AVATAR_BUCKET}'!`);
+        } else {
+          setStorageBadge('local');
+          setUploadSuccess('Profile picture saved successfully (local cache).');
+        }
+        setTimeout(() => setUploadSuccess(null), 4000);
+      } else {
+        setUploadError(result.error || 'Failed to upload photo.');
       }
-    };
-    reader.onerror = () => {
-      setUploadError('Failed to read image file. Please try another image.');
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      setIsUploading(false);
+      setUploadError(err?.message || 'Error uploading profile image.');
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -135,14 +155,22 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
       />
 
       <div className="flex items-center justify-between">
-        <h4 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-          <Camera className={`w-3.5 h-3.5 ${isAmber ? 'text-amber-400' : 'text-emerald-400'}`} />
-          Profile Picture
-        </h4>
+        <div className="flex items-center gap-2">
+          <h4 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+            <Camera className={`w-3.5 h-3.5 ${isAmber ? 'text-amber-400' : 'text-emerald-400'}`} />
+            Profile Picture
+          </h4>
+          <span className="text-[10px] font-mono bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">
+            Bucket: {AVATAR_BUCKET}
+          </span>
+        </div>
         {currentAvatarUrl && (
           <button
             type="button"
-            onClick={() => onAvatarChange(undefined)}
+            onClick={() => {
+              onAvatarChange(undefined);
+              setStorageBadge(null);
+            }}
             className="text-[11px] text-rose-400 hover:text-rose-300 flex items-center gap-1 transition-colors cursor-pointer"
           >
             <Trash2 className="w-3 h-3" />
@@ -156,14 +184,14 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => !isUploading && fileInputRef.current?.click()}
         className={`relative border-2 border-dashed rounded-2xl p-4 transition-all flex flex-col sm:flex-row items-center gap-4 cursor-pointer text-center sm:text-left ${
           isDragging
             ? isAmber
               ? 'border-amber-400 bg-amber-500/10'
               : 'border-emerald-400 bg-emerald-500/10'
             : 'border-slate-700/80 hover:border-slate-600 bg-slate-950/60'
-        }`}
+        } ${isUploading ? 'opacity-75 cursor-wait' : ''}`}
       >
         {/* Avatar Display */}
         <div className="relative shrink-0 group">
@@ -186,9 +214,15 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
             </div>
           )}
 
-          <div className="absolute inset-0 bg-black/40 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
-            <Camera className="w-5 h-5" />
-          </div>
+          {isUploading ? (
+            <div className="absolute inset-0 bg-black/60 rounded-2xl flex items-center justify-center text-amber-400 animate-in fade-in">
+              <RefreshCw className="w-6 h-6 animate-spin" />
+            </div>
+          ) : (
+            <div className="absolute inset-0 bg-black/40 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+              <Camera className="w-5 h-5" />
+            </div>
+          )}
 
           <div
             className={`absolute -bottom-1 -right-1 p-1 rounded-lg text-slate-950 shadow-md ${
@@ -201,11 +235,20 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
 
         {/* Upload Instruction */}
         <div className="flex-1 space-y-1">
-          <p className="text-xs font-bold text-slate-100">
-            {isDragging ? 'Drop photo here to upload' : 'Click or Drag & Drop photo here'}
+          <p className="text-xs font-bold text-slate-100 flex items-center gap-1.5 justify-center sm:justify-start">
+            {isUploading ? (
+              <span className="text-amber-400 flex items-center gap-1.5">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                Uploading to Supabase Storage bucket...
+              </span>
+            ) : isDragging ? (
+              'Drop photo here to upload'
+            ) : (
+              'Click or Drag & Drop photo here'
+            )}
           </p>
           <p className="text-[11px] text-slate-400">
-            Supports JPG, PNG, WebP up to 5MB. Visible on live trips & ride matching.
+            Uploads to Supabase CDN bucket <code className="text-slate-300">/avatars/</code>. Max 5MB.
           </p>
           <div className="pt-1 flex flex-wrap items-center justify-center sm:justify-start gap-2">
             <span
@@ -234,15 +277,20 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
 
       {/* Success / Error Messages */}
       {uploadSuccess && (
-        <div className="p-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+        <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
           <Check className="w-3.5 h-3.5 shrink-0" />
-          <span>{uploadSuccess}</span>
+          <span className="flex-1">{uploadSuccess}</span>
+          {storageBadge === 'supabase' && (
+            <span className="text-[10px] bg-emerald-500/30 text-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+              <HardDrive className="w-3 h-3" /> Supabase Storage
+            </span>
+          )}
         </div>
       )}
 
       {uploadError && (
-        <div className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
-          <span>{uploadError}</span>
+        <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
+          <span className="flex-1">{uploadError}</span>
         </div>
       )}
 
@@ -259,6 +307,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
                 type="button"
                 onClick={() => {
                   onAvatarChange(preset.url);
+                  setStorageBadge(null);
                   setUploadSuccess(`Applied ${preset.label} avatar!`);
                   setTimeout(() => setUploadSuccess(null), 2500);
                 }}

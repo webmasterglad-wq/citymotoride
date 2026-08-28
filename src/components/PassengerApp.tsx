@@ -389,7 +389,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             title="Wallet & Balance"
           >
             <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="font-black text-emerald-300">$84.50</span>
+            <span className="font-black text-emerald-300">₹84.50</span>
           </button>
           <button
             id="passenger-profile-btn"
@@ -550,7 +550,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                           {tier.name.split(' ')[1]}
                         </span>
                         <span className="text-[10px] text-emerald-400 font-black mt-0.5 block">
-                          ${price}
+                          ₹{price}
                         </span>
                       </div>
                     </button>
@@ -573,7 +573,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                     </p>
                   </div>
                   <div className="text-right">
-                    <span className="text-lg font-black text-amber-400">${customBidFare.toFixed(2)}</span>
+                    <span className="text-lg font-black text-amber-400">₹{customBidFare.toFixed(2)}</span>
                   </div>
                 </div>
 
@@ -584,7 +584,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                     onClick={() => setCustomBidFare((prev) => Math.max(8.0, Number((prev - 1.0).toFixed(2))))}
                     className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition-colors flex items-center justify-center gap-1"
                   >
-                    <Minus className="w-3.5 h-3.5" /> - $1.00
+                    <Minus className="w-3.5 h-3.5" /> - ₹1.00
                   </button>
 
                   <button
@@ -592,7 +592,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                     onClick={() => setCustomBidFare(baseCalculatedFare)}
                     className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-xl text-[10px] font-bold border border-slate-700 transition-colors"
                   >
-                    Fair ($ {baseCalculatedFare.toFixed(2)})
+                    Fair (₹{baseCalculatedFare.toFixed(2)})
                   </button>
 
                   <button
@@ -600,7 +600,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                     onClick={() => setCustomBidFare((prev) => Number((prev + 1.0).toFixed(2)))}
                     className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition-colors flex items-center justify-center gap-1"
                   >
-                    <Plus className="w-3.5 h-3.5" /> + $1.00
+                    <Plus className="w-3.5 h-3.5" /> + ₹1.00
                   </button>
                 </div>
               </div>
@@ -610,7 +610,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             <div className="flex items-center justify-between p-3 bg-slate-900/60 border border-slate-800 rounded-2xl text-xs">
               <div className="flex items-center gap-2 text-slate-300">
                 <Wallet className="w-4 h-4 text-emerald-400" />
-                <span className="font-semibold">Moto Wallet · $84.50</span>
+                <span className="font-semibold">Moto Wallet · ₹84.50</span>
               </div>
               <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full border border-slate-700">
                 Auto-Pay
@@ -635,12 +635,12 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 </>
               ) : bookingMode === 'indrive' ? (
                 <>
-                  <span>Request Ride for ${customBidFare.toFixed(2)}</span>
+                  <span>Request Ride for ₹{customBidFare.toFixed(2)}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               ) : (
                 <>
-                  <span>Confirm MotoRide · ${baseCalculatedFare.toFixed(2)}</span>
+                  <span>Confirm MotoRide · ₹{baseCalculatedFare.toFixed(2)}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -670,7 +670,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             </div>
             <div className="text-right">
               <span className="text-base font-black text-emerald-400">
-                ${activeRide.fare ? Number(activeRide.fare).toFixed(2) : baseCalculatedFare.toFixed(2)}
+                ₹{activeRide.fare ? Number(activeRide.fare).toFixed(2) : baseCalculatedFare.toFixed(2)}
               </span>
             </div>
           </div>
@@ -755,7 +755,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               <div className="flex-1">
                 <h4 className="text-xs font-bold text-slate-200">Broadcasting Request to Drivers</h4>
                 <p className="text-[11px] text-slate-400">
-                  Nearby captains are reviewing your offer of ${activeRide.fare?.toFixed(2) || '14.50'}
+                  Nearby captains are reviewing your offer of ₹{activeRide.fare?.toFixed(2) || '14.50'}
                 </p>
               </div>
             </div>
@@ -830,7 +830,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                           : 'bg-slate-900 text-slate-300 border-slate-700'
                       }`}
                     >
-                      {amt === 0 ? 'No Tip' : `+$${amt}`}
+                      {amt === 0 ? 'No Tip' : `+₹${amt}`}
                     </button>
                   ))}
                 </div>
