@@ -1,6 +1,6 @@
 {
   "name": "Motoride Real-Time Ride Sharing",
-  "description": "Real-time ride-sharing dispatch system connecting Passenger and Captain applications with Supabase Realtime synchronization, atomic concurrency control, and an enterprise Admin Operations & Fleet Dashboard.",
+  "description": "Real-time moto ride-sharing dispatch system for the Tricity service area (Zirakpur, Chandigarh, Panchkula, Manimajra, Mohali, and Kharar) with Google Maps Platform live routing, traffic, and Supabase Realtime synchronization.",
   "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

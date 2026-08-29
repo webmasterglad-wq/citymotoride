@@ -5,18 +5,26 @@ import { CaptainApp } from './components/CaptainApp';
 import { DualViewSimulator } from './components/DualViewSimulator';
 import { AdminDashboard } from './components/AdminDashboard';
 import { SqlSetupModal } from './components/SqlSetupModal';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 
-export default function App() {
+function AppContent() {
   const [activeView, setActiveView] = useState<'dual' | 'passenger' | 'captain' | 'admin'>('dual');
   const [isSqlModalOpen, setIsSqlModalOpen] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
+  const { isLight } = useTheme();
 
   const handleRefreshAll = () => {
     setRefreshKey((prev) => prev + 1);
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
+    <div
+      className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${
+        isLight
+          ? 'bg-white text-slate-900 selection:bg-amber-400 selection:text-slate-950'
+          : 'bg-slate-950 text-slate-100 selection:bg-amber-500 selection:text-slate-950'
+      }`}
+    >
       {/* Realtime Navigation & Connection Header */}
       <ConnectionStatusBanner
         onOpenSqlModal={() => setIsSqlModalOpen(true)}
@@ -60,10 +68,19 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950/80 py-4 px-6 text-center text-xs text-slate-500">
+      <footer
+        className={`border-t py-4 px-6 text-center text-xs transition-colors duration-200 ${
+          isLight
+            ? 'border-slate-200 bg-slate-50/90 text-slate-600'
+            : 'border-slate-900 bg-slate-950/80 text-slate-500'
+        }`}
+      >
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-          <span>MotoRide Real-Time Dispatch System · Supabase Realtime Engine</span>
-          <span>Passenger: <code className="text-slate-400">motoride-passenger.vercel.app</code> · Captain: <code className="text-slate-400">motoride-captain.vercel.app</code></span>
+          <span className="font-medium">MotoRide Real-Time Dispatch System · Supabase Realtime Engine</span>
+          <span>
+            Passenger: <code className={isLight ? 'text-slate-800 font-bold' : 'text-slate-400'}>motoride-passenger.vercel.app</code> · Captain:{' '}
+            <code className={isLight ? 'text-slate-800 font-bold' : 'text-slate-400'}>motoride-captain.vercel.app</code>
+          </span>
         </div>
       </footer>
 
@@ -73,5 +90,13 @@ export default function App() {
         onClose={() => setIsSqlModalOpen(false)}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }

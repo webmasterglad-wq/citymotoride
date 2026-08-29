@@ -60,7 +60,7 @@ export interface RideTier {
   popular?: boolean;
 }
 
-export type PaymentMethodType = 'apple_pay' | 'cash' | 'card' | 'wallet';
+export type PaymentMethodType = 'upi' | 'cash' | 'wallet';
 
 export interface ChatMessage {
   id: string;
