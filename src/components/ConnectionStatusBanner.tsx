@@ -28,8 +28,8 @@ import { useTheme } from '../context/ThemeContext';
 interface ConnectionStatusBannerProps {
   onOpenSqlModal: () => void;
   onRefreshAll?: () => void;
-  activeView: 'dual' | 'passenger' | 'captain' | 'admin';
-  onChangeView: (view: 'dual' | 'passenger' | 'captain' | 'admin') => void;
+  activeView: 'passenger' | 'captain' | 'admin';
+  onChangeView: (view: 'passenger' | 'captain' | 'admin') => void;
 }
 
 export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
@@ -201,19 +201,6 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
             isLight ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-slate-950 border-slate-800 text-slate-300'
           }`}
         >
-          <button
-            id="view-dual-btn"
-            onClick={() => onChangeView('dual')}
-            className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
-              activeView === 'dual'
-                ? 'bg-amber-500 text-slate-950 font-bold shadow'
-                : isLight
-                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Dual Simulator
-          </button>
           <button
             id="view-passenger-btn"
             onClick={() => onChangeView('passenger')}

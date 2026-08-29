@@ -2,13 +2,12 @@ import React, { useState } from 'react';
 import { ConnectionStatusBanner } from './components/ConnectionStatusBanner';
 import { PassengerApp } from './components/PassengerApp';
 import { CaptainApp } from './components/CaptainApp';
-import { DualViewSimulator } from './components/DualViewSimulator';
 import { AdminDashboard } from './components/AdminDashboard';
 import { SqlSetupModal } from './components/SqlSetupModal';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 
 function AppContent() {
-  const [activeView, setActiveView] = useState<'dual' | 'passenger' | 'captain' | 'admin'>('dual');
+  const [activeView, setActiveView] = useState<'passenger' | 'captain' | 'admin'>('passenger');
   const [isSqlModalOpen, setIsSqlModalOpen] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const { isLight } = useTheme();
@@ -35,10 +34,6 @@ function AppContent() {
 
       {/* Main App Container */}
       <main className="flex-1 w-full" key={refreshKey}>
-        {activeView === 'dual' && (
-          <DualViewSimulator onOpenSqlModal={() => setIsSqlModalOpen(true)} />
-        )}
-
         {activeView === 'admin' && (
           <AdminDashboard onOpenSqlModal={() => setIsSqlModalOpen(true)} />
         )}
