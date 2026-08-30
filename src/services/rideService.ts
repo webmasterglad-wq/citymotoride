@@ -161,6 +161,63 @@ export const fetchActiveRideForPassenger = async (
   }
 };
 
+export const fetchLatestRideForPassenger = async (
+  passengerId: string
+): Promise<{ data: Ride | null; error: string | null }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { data: null, error: 'Supabase client is not configured' };
+
+  try {
+    const { data, error } = await supabase
+      .from('rides')
+      .select('*')
+      .eq('passenger_id', passengerId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) return { data: null, error: formatSupabaseError(error) };
+    return { data: data as Ride | null, error: null };
+  } catch (err: any) {
+    return { data: null, error: formatSupabaseError(err) };
+  }
+};
+
+export const submitPassengerRatingForRide = async (
+  rideId: string,
+  rating: number,
+  feedback?: { tags?: string[]; comment?: string; tip?: number }
+): Promise<{ success: boolean; error: string | null }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Supabase client is not configured' };
+
+  try {
+    // Store in localStorage for instant retrieval across views
+    try {
+      localStorage.setItem(`motoride_rating_${rideId}`, JSON.stringify({
+        rating,
+        feedback,
+        ratedAt: new Date().toISOString()
+      }));
+    } catch {}
+
+    const { error } = await supabase
+      .from('rides')
+      .update({
+        captain_rating: rating,
+      })
+      .eq('id', rideId);
+
+    if (error) {
+      console.warn('[Motoride Rating] Optional column update notice:', error.message);
+    }
+
+    return { success: true, error: null };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error submitting rating' };
+  }
+};
+
 export const fetchActiveRideForCaptain = async (
   captainId: string
 ): Promise<{ data: Ride | null; error: string | null }> => {

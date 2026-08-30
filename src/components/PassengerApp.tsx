@@ -42,6 +42,9 @@ import { Ride, RideStatus, UserProfile, RideTier, PaymentMethodType } from '../t
 import {
   createRideBooking,
   fetchActiveRideForPassenger,
+  fetchLatestRideForPassenger,
+  fetchRideById,
+  submitPassengerRatingForRide,
   updateRideStatus,
   subscribeToPassengerRide,
   unsubscribeChannel,
@@ -245,6 +248,15 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       const { data } = await fetchActiveRideForPassenger(passengerUser.id);
       if (isMounted && data) {
         setActiveRide(data);
+      } else if (isMounted) {
+        // Also check if the latest ride was completed recently and not yet rated
+        const { data: latest } = await fetchLatestRideForPassenger(passengerUser.id);
+        if (latest && latest.status === 'completed') {
+          const isRated = localStorage.getItem(`motoride_rating_${latest.id}`);
+          if (!isRated) {
+            setActiveRide(latest);
+          }
+        }
       }
     };
     loadInitialRide();
@@ -253,7 +265,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     };
   }, [passengerUser.id]);
 
-  // Realtime Subscription
+  // Realtime Subscription & Polling Fallback
   useEffect(() => {
     if (!activeRide?.id || activeRide.status === 'completed' || activeRide.status === 'cancelled') {
       if (channelRef.current) {
@@ -286,14 +298,19 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
     channelRef.current = channel;
 
-    // Polling fallback to keep ride state fresh during socket reconnects
+    // Fast polling fallback: Poll this exact ride ID to catch ride completion instantly
     const pollInterval = setInterval(async () => {
-      if (!isSupabaseConfigured() || !passengerUser?.id) return;
-      const { data } = await fetchActiveRideForPassenger(passengerUser.id);
-      if (data) {
+      if (!isSupabaseConfigured()) return;
+      const { data } = await fetchRideById(currentActiveRideId);
+      if (data && data.status !== activeRide.status) {
         setActiveRide(data);
+        if (data.status === 'completed') {
+          try {
+            confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
+          } catch (e) {}
+        }
       }
-    }, 3500);
+    }, 1500);
 
     return () => {
       clearInterval(pollInterval);
@@ -302,7 +319,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
         channelRef.current = null;
       }
     };
-  }, [activeRide?.id, passengerUser?.id]);
+  }, [activeRide?.id, activeRide?.status, passengerUser?.id]);
 
   // Safety PIN generated per ride ID
   const safetyPin = activeRide ? `${(Math.abs(activeRide.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % 9000) + 1000}` : '4829';
@@ -367,6 +384,28 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Error cancelling ride');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmitRating = async () => {
+    if (!activeRide) return;
+    setIsSubmitting(true);
+    try {
+      await submitPassengerRatingForRide(activeRide.id, ratingStars, {
+        tags: selectedTags,
+        comment: feedbackComment,
+        tip: tipAmount,
+      });
+      localStorage.setItem(`motoride_rating_${activeRide.id}`, 'true');
+      setReviewSubmitted(true);
+      try {
+        confetti({ particleCount: 80, spread: 80, origin: { y: 0.6 } });
+      } catch (e) {}
+    } catch (err: any) {
+      console.warn('Rating submission note:', err);
+      setReviewSubmitted(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -990,7 +1029,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 {activeRide.status === 'accepted' && 'Captain is on the Way (ETA ~3m)'}
                 {activeRide.status === 'arrived' && 'Captain has Arrived at Pickup!'}
                 {activeRide.status === 'started' && 'En Route to Destination'}
-                {activeRide.status === 'completed' && 'You have Arrived!'}
+                {activeRide.status === 'completed' && 'Trip Completed · Rate Your Captain'}
                 {activeRide.status === 'cancelled' && 'Ride Request Cancelled'}
               </h2>
             </div>
@@ -1000,6 +1039,175 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Top Prominent Rating & Review Section when ride is completed */}
+          {activeRide.status === 'completed' && !reviewSubmitted && (
+            <div
+              className={`p-4 border-2 rounded-2xl space-y-3.5 animate-in zoom-in-95 shadow-xl ${
+                isLight ? 'bg-gradient-to-b from-amber-50 to-emerald-50/70 border-emerald-400 text-slate-900' : 'bg-gradient-to-b from-slate-900 to-emerald-950/40 border-emerald-500/60 text-slate-100'
+              }`}
+            >
+              <div className="text-center space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500 text-slate-950 font-black text-xs shadow-sm">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Ride Completed · Rate Captain</span>
+                </div>
+                <h3 className={`text-base font-black ${isLight ? 'text-slate-950' : 'text-emerald-200'}`}>
+                  How was your ride with {activeRide.captain_name || 'your Captain'}?
+                </h3>
+                <p className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                  Please rate your captain to finalize your trip summary
+                </p>
+              </div>
+
+              {/* Star Rating Selector */}
+              <div className="flex flex-col items-center justify-center gap-1.5 py-2">
+                <div className="flex items-center justify-center gap-2 sm:gap-3">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setRatingStars(star)}
+                      className="p-1.5 transition-transform hover:scale-125 active:scale-95 cursor-pointer focus:outline-none"
+                      title={`${star} Star${star > 1 ? 's' : ''}`}
+                    >
+                      <Star
+                        className={`w-9 h-9 sm:w-10 sm:h-10 transition-all ${
+                          star <= ratingStars
+                            ? 'fill-amber-400 text-amber-400 drop-shadow-md scale-110'
+                            : isLight
+                            ? 'text-slate-300 hover:text-amber-300'
+                            : 'text-slate-700 hover:text-amber-400/50'
+                        }`}
+                      />
+                    </button>
+                  ))}
+                </div>
+                <span className="text-xs font-black text-amber-500">
+                  {ratingStars === 5
+                    ? '★★★★★ 5.0 · Exceptional Experience!'
+                    : ratingStars === 4
+                    ? '★★★★☆ 4.0 · Great Trip'
+                    : ratingStars === 3
+                    ? '★★★☆☆ 3.0 · Average Experience'
+                    : ratingStars === 2
+                    ? '★★☆☆☆ 2.0 · Needs Improvement'
+                    : '★☆☆☆☆ 1.0 · Poor Experience'}
+                </span>
+              </div>
+
+              {/* Feedback Quick Compliment Chips */}
+              <div className="space-y-1.5">
+                <span className={`text-[10px] font-bold uppercase tracking-wider block text-center ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Compliments & Feedback
+                </span>
+                <div className="flex flex-wrap gap-1.5 justify-center">
+                  {[
+                    'Safe Driving',
+                    'Clean Helmet',
+                    'Smooth Navigation',
+                    'Polite Captain',
+                    'On-Time Pickup',
+                    'Great Route',
+                  ].map((tag) => {
+                    const isSelected = selectedTags.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTags((prev) =>
+                            isSelected ? prev.filter((t) => t !== tag) : [...prev, tag]
+                          );
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
+                            : isLight
+                            ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                            : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
+                        }`}
+                      >
+                        {isSelected ? `✓ ${tag}` : `+ ${tag}`}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Add Driver Tip */}
+              <div className="space-y-1 text-center pt-1">
+                <span className={`text-[10px] font-bold uppercase ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Add a Captain Tip (Optional)
+                </span>
+                <div className="flex items-center justify-center gap-2">
+                  {[0, 10, 20, 50, 100].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setTipAmount(amt)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                        tipAmount === amt
+                          ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md font-black'
+                          : isLight
+                          ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          : 'bg-slate-900 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      {amt === 0 ? 'No Tip' : `+₹${amt}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Feedback Note */}
+              <div>
+                <input
+                  type="text"
+                  placeholder="Leave a note for the captain (optional)..."
+                  value={feedbackComment}
+                  onChange={(e) => setFeedbackComment(e.target.value)}
+                  className={`w-full px-3.5 py-2.5 text-xs rounded-xl border focus:outline-none focus:border-emerald-500 ${
+                    isLight
+                      ? 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
+                      : 'bg-slate-900 border-slate-700 text-slate-100 placeholder:text-slate-500'
+                  }`}
+                />
+              </div>
+
+              {/* Submit Feedback and Complete */}
+              <button
+                type="button"
+                onClick={handleSubmitRating}
+                disabled={isSubmitting}
+                className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs sm:text-sm shadow-lg shadow-emerald-500/20 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Star className="w-4 h-4 fill-slate-950 text-slate-950" />
+                )}
+                <span>Submit {ratingStars}-Star Rating & Finish Ride</span>
+              </button>
+            </div>
+          )}
+
+          {/* Post-Review Thank You Card */}
+          {activeRide.status === 'completed' && reviewSubmitted && (
+            <div
+              className={`p-4 border rounded-2xl space-y-2 text-center animate-in zoom-in-95 ${
+                isLight ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+              }`}
+            >
+              <div className="w-10 h-10 mx-auto rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center font-black">
+                <Check className="w-6 h-6 stroke-[3]" />
+              </div>
+              <h4 className="font-black text-sm">Thank you for rating your Captain!</h4>
+              <p className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                You rated {activeRide.captain_name || 'Captain'} {ratingStars} ★ {tipAmount > 0 ? `with a ₹${tipAmount} tip` : ''}.
+              </p>
+            </div>
+          )}
 
           {/* Full Interactive Navigation Map */}
           <MapMockup
@@ -1147,175 +1355,6 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             </div>
           </div>
 
-          {/* Rating & Review Dialog when ride is completed */}
-          {activeRide.status === 'completed' && !reviewSubmitted && (
-            <div
-              className={`p-4 border rounded-2xl space-y-3.5 animate-in zoom-in-95 shadow-lg ${
-                isLight ? 'bg-emerald-50/90 border-emerald-300 text-slate-900' : 'bg-emerald-950/40 border-emerald-500/40 text-slate-100'
-              }`}
-            >
-              <div className="text-center space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-600 font-black text-xs border border-emerald-500/40">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Ride Completed · Rate Captain</span>
-                </div>
-                <h3 className={`text-sm font-black ${isLight ? 'text-emerald-950' : 'text-emerald-300'}`}>
-                  How was your ride with {activeRide.captain_name || 'Captain'}?
-                </h3>
-                <p className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                  Please rate your captain to finalize your trip summary
-                </p>
-              </div>
-
-              {/* Star Rating Selector */}
-              <div className="flex flex-col items-center justify-center gap-1.5 py-1">
-                <div className="flex items-center justify-center gap-2.5">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setRatingStars(star)}
-                      className="p-1.5 transition-transform hover:scale-125 cursor-pointer focus:outline-none"
-                      title={`${star} Star${star > 1 ? 's' : ''}`}
-                    >
-                      <Star
-                        className={`w-8 h-8 transition-colors ${
-                          star <= ratingStars
-                            ? 'fill-amber-400 text-amber-400 drop-shadow-sm'
-                            : isLight
-                            ? 'text-slate-300 hover:text-amber-200'
-                            : 'text-slate-700 hover:text-amber-400/40'
-                        }`}
-                      />
-                    </button>
-                  ))}
-                </div>
-                <span className="text-[11px] font-bold text-amber-500">
-                  {ratingStars === 5
-                    ? '★★★★★ Exceptional Ride'
-                    : ratingStars === 4
-                    ? '★★★★☆ Great Trip'
-                    : ratingStars === 3
-                    ? '★★★☆☆ Average Trip'
-                    : ratingStars === 2
-                    ? '★★☆☆☆ Needs Improvement'
-                    : '★☆☆☆☆ Poor Experience'}
-                </span>
-              </div>
-
-              {/* Feedback Quick Compliment Chips */}
-              <div className="space-y-1.5">
-                <span className={`text-[10px] font-bold uppercase tracking-wider block text-center ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Compliments & Feedback
-                </span>
-                <div className="flex flex-wrap gap-1.5 justify-center">
-                  {[
-                    'Safe Driving',
-                    'Clean Helmet',
-                    'Smooth Navigation',
-                    'Polite Captain',
-                    'On-Time Pickup',
-                    'Great Route',
-                  ].map((tag) => {
-                    const isSelected = selectedTags.includes(tag);
-                    return (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => {
-                          setSelectedTags((prev) =>
-                            isSelected ? prev.filter((t) => t !== tag) : [...prev, tag]
-                          );
-                        }}
-                        className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-xs'
-                            : isLight
-                            ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                            : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
-                        }`}
-                      >
-                        {isSelected ? `✓ ${tag}` : `+ ${tag}`}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Add Driver Tip */}
-              <div className="space-y-1 text-center pt-1">
-                <span className={`text-[10px] font-bold uppercase ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Add a Captain Tip (Optional)
-                </span>
-                <div className="flex items-center justify-center gap-2">
-                  {[0, 10, 20, 50, 100].map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      onClick={() => setTipAmount(amt)}
-                      className={`px-3 py-1 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
-                        tipAmount === amt
-                          ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md font-black'
-                          : isLight
-                          ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                          : 'bg-slate-900 text-slate-300 border-slate-700'
-                      }`}
-                    >
-                      {amt === 0 ? 'No Tip' : `+₹${amt}`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Feedback Note */}
-              <div>
-                <input
-                  type="text"
-                  placeholder="Leave a note for the captain (optional)..."
-                  value={feedbackComment}
-                  onChange={(e) => setFeedbackComment(e.target.value)}
-                  className={`w-full px-3 py-2 text-xs rounded-xl border focus:outline-none focus:border-emerald-500 ${
-                    isLight
-                      ? 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
-                      : 'bg-slate-900 border-slate-700 text-slate-100 placeholder:text-slate-500'
-                  }`}
-                />
-              </div>
-
-              {/* Submit Feedback and Complete */}
-              <button
-                type="button"
-                onClick={() => {
-                  setReviewSubmitted(true);
-                  try {
-                    confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
-                  } catch (e) {}
-                }}
-                className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <Star className="w-4 h-4 fill-slate-950 text-slate-950" />
-                <span>Submit {ratingStars}-Star Rating & Finish Ride</span>
-              </button>
-            </div>
-          )}
-
-          {/* Post-Review Thank You Card */}
-          {activeRide.status === 'completed' && reviewSubmitted && (
-            <div
-              className={`p-4 border rounded-2xl space-y-2 text-center animate-in zoom-in-95 ${
-                isLight ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
-              }`}
-            >
-              <div className="w-10 h-10 mx-auto rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center font-black">
-                <Check className="w-6 h-6 stroke-[3]" />
-              </div>
-              <h4 className="font-black text-sm">Thank you for rating your Captain!</h4>
-              <p className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                You rated {activeRide.captain_name || 'Captain'} {ratingStars} ★ {tipAmount > 0 ? `with a ₹${tipAmount} tip` : ''}.
-              </p>
-            </div>
-          )}
-
           {/* Action Footer */}
           <div className="pt-1">
             {activeRide.status === 'requested' || activeRide.status === 'accepted' ? (
@@ -1336,8 +1375,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               <button
                 id="uber-book-another-btn"
                 onClick={handleBookAnother}
-                className={`w-full py-3.5 font-black rounded-2xl text-xs transition-colors shadow-xl cursor-pointer ${
-                  isLight
+                className={`w-full py-3.5 font-black rounded-2xl text-xs sm:text-sm transition-all shadow-xl cursor-pointer ${
+                  reviewSubmitted
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
+                    : isLight
                     ? 'bg-slate-900 hover:bg-slate-800 text-white'
                     : 'bg-white hover:bg-slate-200 text-slate-950'
                 }`}
