@@ -1,8 +1,11 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Read from Vite environment variables
-const ENV_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const ENV_SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// Read from Vite environment variables or use permanent production project defaults
+const DEFAULT_SUPABASE_URL = 'https://wueaaspwckjoawtrretr.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1ZWFhc3B3Y2tqb2F3dHJyZXRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NjgzMDcsImV4cCI6MjEwMzM0NDMwN30.NDhAw7yWQ_jbCfpFn13f9GyLCV7pQicLxHiHA4Sljfs';
+
+const ENV_SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+const ENV_SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
 
 /**
  * Sanitizes Supabase URL to prevent "Invalid path specified in request URL" errors.

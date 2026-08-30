@@ -70,12 +70,8 @@ function AppContent() {
             : 'border-slate-900 bg-slate-950/80 text-slate-500'
         }`}
       >
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-2">
           <span className="font-medium">MotoRide Real-Time Dispatch System · Supabase Realtime Engine</span>
-          <span>
-            Passenger: <code className={isLight ? 'text-slate-800 font-bold' : 'text-slate-400'}>motoride-passenger.vercel.app</code> · Captain:{' '}
-            <code className={isLight ? 'text-slate-800 font-bold' : 'text-slate-400'}>motoride-captain.vercel.app</code>
-          </span>
         </div>
       </footer>
 

@@ -148,37 +148,6 @@ export const MapMockup: React.FC<MapMockupProps> = ({
           onRouteCalculated={onRouteCalculated}
           onSelectZoneLocation={onSelectZoneLocation}
         />
-        {/* Engine switcher toggle in bottom right */}
-        <div className={`absolute bottom-2.5 right-3 z-30 flex items-center gap-1 backdrop-blur-md p-1 rounded-xl border shadow-md ${
-          isLight ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-slate-950/80 border-slate-800 text-white'
-        }`}>
-          <button
-            type="button"
-            onClick={() => handleToggleEngine('google')}
-            className={`px-2 py-0.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 cursor-pointer ${
-              engine === 'google'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                : isLight
-                ? 'text-slate-600 hover:text-slate-900'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Globe className="w-2.5 h-2.5" /> Google Maps
-          </button>
-          <button
-            type="button"
-            onClick={() => handleToggleEngine('vector')}
-            className={`px-2 py-0.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 cursor-pointer ${
-              engine === 'vector'
-                ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
-                : isLight
-                ? 'text-slate-600 hover:text-slate-900'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Zap className="w-2.5 h-2.5" /> Vector HUD
-          </button>
-        </div>
       </div>
     );
   }
@@ -547,38 +516,6 @@ export const MapMockup: React.FC<MapMockupProps> = ({
           </button>
         </div>
       )}
-
-      {/* Engine switcher toggle in bottom right */}
-      <div className={`absolute bottom-2.5 right-3 z-30 flex items-center gap-1 backdrop-blur-md p-1 rounded-xl border shadow-md ${
-        isLight ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-slate-950/80 border-slate-800 text-white'
-      }`}>
-        <button
-          type="button"
-          onClick={() => handleToggleEngine('google')}
-          className={`px-2 py-0.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 cursor-pointer ${
-            engine === 'google'
-              ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-              : isLight
-              ? 'text-slate-600 hover:text-slate-900'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Globe className="w-2.5 h-2.5" /> Google Maps
-        </button>
-        <button
-          type="button"
-          onClick={() => handleToggleEngine('vector')}
-          className={`px-2 py-0.5 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 cursor-pointer ${
-            engine === 'vector'
-              ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
-              : isLight
-              ? 'text-slate-600 hover:text-slate-900'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Zap className="w-2.5 h-2.5" /> Vector HUD
-        </button>
-      </div>
 
       {/* Bottom Service Area Indicator */}
       <div className={`absolute bottom-2 left-3 text-[10px] font-medium pointer-events-none z-10 flex items-center gap-1.5 px-2 py-0.5 rounded-md backdrop-blur-sm border ${

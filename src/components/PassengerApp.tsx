@@ -437,62 +437,36 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             </button>
           </div>
 
-          <button
-            onClick={() => setIsProfileOpen(true)}
-            className="text-left group cursor-pointer hover:opacity-90 transition-opacity"
-            title="Open Passenger Profile"
-          >
+          <div>
             <div className="flex items-center gap-1.5">
               <span className={`font-black text-sm tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
                 {currentUser.name}
               </span>
-              <span
-                className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
-                  isLight
-                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                }`}
-              >
-                PROFILE
-              </span>
             </div>
             <p className={`text-[11px] flex items-center gap-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              <span className={`transition-colors ${isLight ? 'text-slate-600 group-hover:text-emerald-600' : 'text-slate-300 group-hover:text-emerald-400'}`}>
-                View Account
+              <span className={isLight ? 'text-slate-600' : 'text-slate-300'}>
+                Verified Rider
               </span>
               <span className="text-amber-500 font-bold flex items-center gap-0.5">
                 <Star className="w-2.5 h-2.5 fill-amber-400 inline" /> {currentUser.rating || 4.94}
               </span>
             </p>
-          </button>
+          </div>
         </div>
 
-        {/* Action Controls: Profile + Wallet */}
+        {/* Action Controls: Wallet */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsProfileOpen(true)}
-            className={`border px-2.5 py-1 rounded-full flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
+          <div
+            className={`border px-2.5 py-1 rounded-full flex items-center gap-1.5 text-xs ${
               isLight
-                ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-900'
-                : 'bg-slate-900 hover:bg-slate-800 border-slate-700/80 text-slate-200'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-slate-900 border-slate-700/80 text-slate-200'
             }`}
             title="Wallet & Balance"
           >
             <Wallet className="w-3.5 h-3.5 text-emerald-500" />
             <span className={`font-black ${isLight ? 'text-emerald-700' : 'text-emerald-300'}`}>₹84.50</span>
-          </button>
-          <button
-            id="passenger-profile-btn"
-            onClick={() => setIsProfileOpen(true)}
-            className={`p-1.5 rounded-xl border transition-colors cursor-pointer ${
-              isLight
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-            }`}
-            title="Passenger Profile & Settings"
-          >
-            <User className="w-4 h-4 text-emerald-500" />
-          </button>
+          </div>
         </div>
       </div>
 

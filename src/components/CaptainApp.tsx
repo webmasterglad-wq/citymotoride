@@ -465,47 +465,27 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             </button>
           </div>
 
-          <button
-            onClick={() => setIsProfileOpen(true)}
-            className="text-left group cursor-pointer hover:opacity-90 transition-opacity"
-            title="Open Captain Profile & Performance"
-          >
+          <div>
             <div className="flex items-center gap-1.5">
               <span className={`font-black text-sm ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
                 {currentCaptain.name}
               </span>
               {titleSuffix && <span className="text-amber-500 font-bold text-xs">({titleSuffix})</span>}
-              <span className="text-[9px] bg-amber-500/20 text-amber-600 dark:text-amber-300 font-bold px-1.5 py-0.2 rounded border border-amber-500/30">
-                PROFILE
-              </span>
             </div>
             <p className={`text-[11px] flex items-center gap-1.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               <span className="text-amber-500 dark:text-amber-300 font-bold flex items-center">
                 ★ {currentCaptain.rating || 4.96}
               </span>
               <span>·</span>
-              <span className={isLight ? 'text-slate-700 group-hover:text-amber-600 transition-colors' : 'text-slate-300 group-hover:text-amber-400 transition-colors'}>
+              <span className={isLight ? 'text-slate-700' : 'text-slate-300'}>
                 {currentCaptain.vehicle_details?.split('·')[0] || 'Yamaha MT-07'}
               </span>
             </p>
-          </button>
+          </div>
         </div>
 
-        {/* Action Controls: Profile + Online Toggle */}
+        {/* Action Controls: Online Toggle */}
         <div className="flex items-center gap-2">
-          <button
-            id="captain-profile-header-btn"
-            onClick={() => setIsProfileOpen(true)}
-            className={`p-2 rounded-2xl border transition-colors cursor-pointer ${
-              isLight
-                ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-            }`}
-            title="Captain Profile & Performance"
-          >
-            <User className="w-4 h-4 text-amber-500" />
-          </button>
-
           {/* Uber Online Toggle Button */}
           <button
             id="uber-driver-toggle-online-btn"

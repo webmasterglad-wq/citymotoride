@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   AlertCircle,
   ExternalLink,
-  Code2,
   RefreshCw,
   Trash2,
   Info,
@@ -267,22 +266,6 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
                 <span className="hidden sm:inline">Light</span>
               </>
             )}
-          </button>
-
-          <button
-            id="open-sql-btn"
-            onClick={onOpenSqlModal}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-              statusMessage.toLowerCase().includes('table') || statusMessage.toLowerCase().includes('sql')
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20 animate-pulse'
-                : isLight
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 shadow-xs'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-            }`}
-          >
-            <Code2 className={`w-3.5 h-3.5 ${statusMessage.toLowerCase().includes('table') ? 'text-slate-950' : 'text-emerald-500'}`} />
-            <span className="hidden md:inline">Setup Database (SQL)</span>
-            <span className="md:hidden">SQL</span>
           </button>
 
           <button
