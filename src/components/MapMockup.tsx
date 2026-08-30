@@ -1,20 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import {
   Navigation,
-  MapPin,
   Compass,
   Layers,
   Crosshair,
   Plus,
-  Minus,
-  Zap,
-  Globe,
   ShieldCheck,
-  CheckCircle2,
 } from 'lucide-react';
 import { RideStatus } from '../types/ride';
-import { GoogleMapView } from './GoogleMapView';
-import { LatLng, SERVICE_ZONES, ServiceZone, detectZoneForLocation } from '../utils/geoUtils';
+import { LatLng, detectZoneForLocation } from '../utils/geoUtils';
 import { calculateEstimatedRoute } from '../utils/fareCalculator';
 import { useTheme } from '../context/ThemeContext';
 
@@ -37,8 +31,6 @@ interface MapMockupProps {
 export const MapMockup: React.FC<MapMockupProps> = ({
   pickupLocation,
   dropoffLocation,
-  pickupCoords,
-  dropoffCoords,
   status = 'requested',
   captainName,
   captainVehicle,
@@ -47,23 +39,14 @@ export const MapMockup: React.FC<MapMockupProps> = ({
   heightClass = 'h-64 sm:h-72',
   interactive = true,
   onRouteCalculated,
-  onSelectZoneLocation,
 }) => {
   const { theme } = useTheme();
   const isLight = theme === 'light';
-
-  // Map Engine selector: 'google' (Google Maps Platform) or 'vector' (Vector Canvas HUD)
-  const [engine, setEngine] = useState<'google' | 'vector'>(() => {
-    const saved = localStorage.getItem('motoride_map_engine');
-    if (saved === 'vector') return 'vector';
-    return 'google';
-  });
 
   const [bikeProgress, setBikeProgress] = useState(0.12);
   const [trafficActive, setTrafficActive] = useState(true);
   const [showZones, setShowZones] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [activeVectorZone, setActiveVectorZone] = useState<string | null>(null);
 
   const [nearbyMotos, setNearbyMotos] = useState([
     { id: 1, x: 28, y: 42, rot: 35, name: 'Gurpreet S.' },
@@ -71,11 +54,6 @@ export const MapMockup: React.FC<MapMockupProps> = ({
     { id: 3, x: 80, y: 70, rot: 110, name: 'Alex M.' },
     { id: 4, x: 45, y: 78, rot: 215, name: 'Rahul K.' },
   ]);
-
-  const handleToggleEngine = (newEngine: 'google' | 'vector') => {
-    setEngine(newEngine);
-    localStorage.setItem('motoride_map_engine', newEngine);
-  };
 
   const currentZone = detectZoneForLocation(pickupLocation);
 
@@ -118,41 +96,17 @@ export const MapMockup: React.FC<MapMockupProps> = ({
     }
   }, [status]);
 
-  // Synchronize route calculation when using Vector HUD
+  // Synchronize route calculation for Vector HUD
   useEffect(() => {
-    if (engine === 'vector' && onRouteCalculated && pickupLocation && dropoffLocation) {
+    if (onRouteCalculated && pickupLocation && dropoffLocation) {
       const route = calculateEstimatedRoute(pickupLocation, dropoffLocation);
       if (route.distanceKm > 0) {
         onRouteCalculated(route.distanceKm, route.estimatedMins);
       }
     }
-  }, [engine, pickupLocation, dropoffLocation]);
+  }, [pickupLocation, dropoffLocation]);
 
-  // Render Google Maps Platform when selected
-  if (engine === 'google') {
-    return (
-      <div className="relative">
-        <GoogleMapView
-          pickupLocation={pickupLocation}
-          dropoffLocation={dropoffLocation}
-          pickupCoords={pickupCoords}
-          dropoffCoords={dropoffCoords}
-          status={status}
-          captainName={captainName}
-          captainVehicle={captainVehicle}
-          distanceKm={distanceKm}
-          estimatedMins={estimatedMins}
-          heightClass={heightClass}
-          interactive={interactive}
-          onSwitchToVector={() => handleToggleEngine('vector')}
-          onRouteCalculated={onRouteCalculated}
-          onSelectZoneLocation={onSelectZoneLocation}
-        />
-      </div>
-    );
-  }
-
-  // Alternate Vector Canvas Simulation HUD for Tricity Region
+  // Permanent Vector Canvas Simulation HUD for Tricity Region
   return (
     <div
       id="uber-map-container"
