@@ -805,7 +805,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                       <span className="font-mono font-bold text-amber-600 dark:text-amber-300">{captain.plate}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Today's Earnings:</span>
+                      <span className="text-slate-400">Today's Income:</span>
                       <span className="font-bold text-emerald-600 dark:text-emerald-400">₹{captain.todayEarnings.toFixed(2)}</span>
                     </div>
                   </div>

@@ -1,6 +1,89 @@
 import { getSupabaseClient } from '../lib/supabase';
-import { Ride, RideStatus, ConcurrencyClaimResult } from '../types/ride';
+import { Ride, RideStatus, ConcurrencyClaimResult, CaptainEarningsSummary } from '../types/ride';
 import { RealtimeChannel } from '@supabase/supabase-js';
+
+/**
+ * Returns ISO timestamp bounds for the local calendar day (start of today, start of tomorrow, start of yesterday)
+ */
+export const getLocalDayBounds = (baseDate = new Date()) => {
+  const year = baseDate.getFullYear();
+  const month = baseDate.getMonth();
+  const date = baseDate.getDate();
+
+  const startOfToday = new Date(year, month, date, 0, 0, 0, 0);
+  const startOfTomorrow = new Date(year, month, date + 1, 0, 0, 0, 0);
+  const startOfYesterday = new Date(year, month, date - 1, 0, 0, 0, 0);
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const todayDateKey = `${year}-${pad(month + 1)}-${pad(date)}`;
+
+  return {
+    startOfToday,
+    startOfTomorrow,
+    startOfYesterday,
+    startOfTodayIso: startOfToday.toISOString(),
+    startOfTomorrowIso: startOfTomorrow.toISOString(),
+    startOfYesterdayIso: startOfYesterday.toISOString(),
+    todayDateKey,
+  };
+};
+
+/**
+ * Computes earnings breakdown strictly from completed rides using timestamps
+ */
+export const calculateCaptainEarnings = (
+  rides: Ride[],
+  baseDate = new Date()
+): CaptainEarningsSummary => {
+  const bounds = getLocalDayBounds(baseDate);
+  const startOfTodayMs = bounds.startOfToday.getTime();
+  const startOfTomorrowMs = bounds.startOfTomorrow.getTime();
+  const startOfYesterdayMs = bounds.startOfYesterday.getTime();
+
+  let todayIncome = 0;
+  let todayCompletedCount = 0;
+  let yesterdayIncome = 0;
+  let yesterdayCompletedCount = 0;
+  let totalEarnings = 0;
+
+  const todayRides: Ride[] = [];
+  const completedRides: Ride[] = [];
+
+  for (const ride of rides) {
+    if (ride.status !== 'completed') continue;
+
+    completedRides.push(ride);
+    const fare = Number(ride.fare) || 0;
+    totalEarnings += fare;
+
+    // Use completed_at timestamp, falling back to accepted_at or created_at if legacy row
+    const timeStr = ride.completed_at || ride.created_at;
+    if (!timeStr) continue;
+
+    const rideTimeMs = new Date(timeStr).getTime();
+
+    if (rideTimeMs >= startOfTodayMs && rideTimeMs < startOfTomorrowMs) {
+      todayIncome += fare;
+      todayCompletedCount += 1;
+      todayRides.push(ride);
+    } else if (rideTimeMs >= startOfYesterdayMs && rideTimeMs < startOfTodayMs) {
+      yesterdayIncome += fare;
+      yesterdayCompletedCount += 1;
+    }
+  }
+
+  return {
+    todayIncome: Number(todayIncome.toFixed(2)),
+    todayCompletedCount,
+    yesterdayIncome: Number(yesterdayIncome.toFixed(2)),
+    yesterdayCompletedCount,
+    totalEarnings: Number(totalEarnings.toFixed(2)),
+    totalCompletedTrips: completedRides.length,
+    completedRides,
+    todayRides,
+    lastCalculatedAt: new Date().toISOString(),
+  };
+};
 
 /**
  * Normalizes Supabase / PostgREST error messages into helpful, user-actionable text.
@@ -238,6 +321,42 @@ export const fetchActiveRideForCaptain = async (
     return { data: data as Ride | null, error: null };
   } catch (err: any) {
     return { data: null, error: formatSupabaseError(err) };
+  }
+};
+
+/**
+ * Fetches and calculates real-time earnings strictly from completed rides in the database
+ * Calculates Today's Income from the current calendar day (resets automatically to ₹0 on a new day)
+ */
+export const fetchCaptainEarningsSummary = async (
+  captainId: string,
+  baseDate = new Date()
+): Promise<{ data: CaptainEarningsSummary; error: string | null }> => {
+  const supabase = getSupabaseClient();
+  const defaultEmpty = calculateCaptainEarnings([], baseDate);
+
+  if (!supabase) {
+    return { data: defaultEmpty, error: 'Supabase client is not configured' };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('rides')
+      .select('*')
+      .eq('captain_id', captainId)
+      .eq('status', 'completed')
+      .order('completed_at', { ascending: false });
+
+    if (error) {
+      console.error('[Motoride Earnings] Fetch earnings error:', error);
+      return { data: defaultEmpty, error: formatSupabaseError(error) };
+    }
+
+    const summary = calculateCaptainEarnings((data as Ride[]) || [], baseDate);
+    return { data: summary, error: null };
+  } catch (err: any) {
+    console.error('[Motoride Earnings] Unexpected error:', err);
+    return { data: defaultEmpty, error: formatSupabaseError(err) };
   }
 };
 

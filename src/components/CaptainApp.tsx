@@ -38,7 +38,7 @@ import {
   Settings,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Ride, RideStatus, UserProfile } from '../types/ride';
+import { Ride, RideStatus, UserProfile, CaptainEarningsSummary } from '../types/ride';
 import {
   fetchActiveRequestedRides,
   fetchActiveRideForCaptain,
@@ -46,6 +46,8 @@ import {
   updateRideStatus,
   subscribeToCaptainRealtime,
   unsubscribeChannel,
+  fetchCaptainEarningsSummary,
+  getLocalDayBounds,
 } from '../services/rideService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { MapMockup } from './MapMockup';
@@ -98,9 +100,20 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   const [currentCaptain, setCurrentCaptain] = useState<UserProfile>(captainUser);
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
-  const [completedCount, setCompletedCount] = useState<number>(6);
-  const [todayEarnings, setTodayEarnings] = useState<number>(94.5);
   const [onlineMinutes, setOnlineMinutes] = useState<number>(185);
+
+  // Database-driven Earnings Summary strictly from completed rides
+  const [earningsSummary, setEarningsSummary] = useState<CaptainEarningsSummary>({
+    todayIncome: 0,
+    todayCompletedCount: 0,
+    yesterdayIncome: 0,
+    yesterdayCompletedCount: 0,
+    totalEarnings: 0,
+    totalCompletedTrips: 0,
+    completedRides: [],
+    todayRides: [],
+    lastCalculatedAt: new Date().toISOString(),
+  });
 
   const [isClaimingId, setIsClaimingId] = useState<string | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
@@ -156,18 +169,30 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     } catch (e) {}
   };
 
+  // Database-driven earnings fetch for this captain
+  const loadEarningsData = async () => {
+    if (!isSupabaseConfigured() || !captainUser.id) return;
+    const { data } = await fetchCaptainEarningsSummary(captainUser.id);
+    if (data) {
+      setEarningsSummary(data);
+    }
+  };
+
   // Initial fetch
   const loadInitialData = async () => {
     if (!isSupabaseConfigured()) return;
     setTableMissingNotice(false);
 
-    // 1. Check if captain already has an ongoing accepted ride
+    // 1. Fetch real-time Today's Income & lifetime summary
+    loadEarningsData();
+
+    // 2. Check if captain already has an ongoing accepted ride
     const { data: activeData } = await fetchActiveRideForCaptain(captainUser.id);
     if (activeData) {
       setActiveRide(activeData);
     }
 
-    // 2. Fetch pending requested rides
+    // 3. Fetch pending requested rides
     const { data: pendingData, error } = await fetchActiveRequestedRides();
     if (error) {
       if (error.includes('missing') || error.includes('SQL') || error.includes('schema cache')) {
@@ -180,6 +205,22 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
   useEffect(() => {
     loadInitialData();
+  }, [captainUser.id]);
+
+  // Automatic Daily Reset: Watches calendar date transitions (e.g. 12:00 AM midnight rollover)
+  // Automatically switches Today's Income to ₹0 on a new day without manual captain intervention
+  useEffect(() => {
+    let lastDateKey = getLocalDayBounds().todayDateKey;
+
+    const dateCheckInterval = setInterval(() => {
+      const currentDateKey = getLocalDayBounds().todayDateKey;
+      if (currentDateKey !== lastDateKey) {
+        lastDateKey = currentDateKey;
+        loadEarningsData();
+      }
+    }, 10000);
+
+    return () => clearInterval(dateCheckInterval);
   }, [captainUser.id]);
 
   // Establish Supabase Realtime Subscription
@@ -209,9 +250,9 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         if (updatedRide.captain_id === captainUser.id) {
           if (updatedRide.status === 'completed' || updatedRide.status === 'cancelled') {
             setActiveRide(null);
+            // Refresh database-calculated earnings immediately
+            loadEarningsData();
             if (updatedRide.status === 'completed') {
-              setCompletedCount((c) => c + 1);
-              setTodayEarnings((e) => Number((e + (updatedRide.fare || 14.5)).toFixed(2)));
               try {
                 confetti({ particleCount: 70, spread: 80, origin: { y: 0.6 } });
               } catch (e) {}
@@ -345,8 +386,8 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       } else if (data) {
         setIsRatingPassengerModalOpen(false);
         setActiveRide(null);
-        setCompletedCount((c) => c + 1);
-        setTodayEarnings((e) => Number((e + (data.fare || 14.5)).toFixed(2)));
+        // Immediately refresh database-calculated earnings
+        loadEarningsData();
 
         try {
           confetti({ particleCount: 80, spread: 90, origin: { y: 0.5 } });
@@ -505,7 +546,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         </div>
       </div>
 
-      {/* Today's Earnings & Shift HUD (Uber Driver Style) */}
+      {/* Today's Income & Shift HUD (Uber Driver Style) */}
       <div
         className={`p-4 border-b space-y-3 transition-colors duration-200 ${
           isLight
@@ -513,19 +554,41 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             : 'bg-gradient-to-b from-[#0e1424] to-[#07090e] border-slate-800/80'
         }`}
       >
-        {/* Earnings Hero */}
+        {/* Today's Income Hero Card */}
         <div className="flex items-center justify-between">
           <div>
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              Today's Net Earnings
-            </span>
-            <div className="flex items-baseline gap-2">
-              <h2 className={`text-2xl font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                ₹{todayEarnings.toFixed(2)}
-              </h2>
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center">
-                <TrendingUp className="w-3 h-3 mr-0.5" /> +₹28.50 vs yesterday
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className={`text-[11px] font-black uppercase tracking-wider ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                Today's Income
               </span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                isLight ? 'bg-slate-200 text-slate-700' : 'bg-slate-800 text-slate-300'
+              }`}>
+                {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <h2 id="captain-today-income-hero" className={`text-2xl sm:text-3xl font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                ₹{earningsSummary.todayIncome.toFixed(2)}
+              </h2>
+              {earningsSummary.yesterdayIncome > 0 ? (
+                <span className={`text-xs font-bold flex items-center ${
+                  earningsSummary.todayIncome >= earningsSummary.yesterdayIncome
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-slate-500 dark:text-slate-400'
+                }`}>
+                  <TrendingUp className="w-3 h-3 mr-0.5" />
+                  {earningsSummary.todayIncome >= earningsSummary.yesterdayIncome
+                    ? `+₹${(earningsSummary.todayIncome - earningsSummary.yesterdayIncome).toFixed(2)} vs yesterday`
+                    : `₹${earningsSummary.yesterdayIncome.toFixed(2)} yesterday`}
+                </span>
+              ) : (
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {earningsSummary.todayCompletedCount === 0
+                    ? '₹0 · No completed rides today'
+                    : `${earningsSummary.todayCompletedCount} completed today`}
+                </span>
+              )}
             </div>
           </div>
 
@@ -563,10 +626,10 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             }`}
           >
             <span className={`text-[10px] block font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              Completed
+              Today's Rides
             </span>
             <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-              {completedCount} rides
+              {earningsSummary.todayCompletedCount} {earningsSummary.todayCompletedCount === 1 ? 'ride' : 'rides'}
             </span>
           </div>
 
@@ -576,9 +639,11 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             }`}
           >
             <span className={`text-[10px] block font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              Acceptance
+              Total Earnings
             </span>
-            <span className="font-bold text-emerald-600 dark:text-emerald-400">98%</span>
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+              ₹{earningsSummary.totalEarnings.toFixed(2)}
+            </span>
           </div>
         </div>
 
@@ -594,13 +659,13 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               Daily Quest: Complete 8 rides for ₹25 bonus
             </span>
             <span className={`font-mono ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-              {completedCount}/8
+              {earningsSummary.todayCompletedCount}/8
             </span>
           </div>
           <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`}>
             <div
               className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-500"
-              style={{ width: `${Math.min(100, (completedCount / 8) * 100)}%` }}
+              style={{ width: `${Math.min(100, (earningsSummary.todayCompletedCount / 8) * 100)}%` }}
             />
           </div>
         </div>
@@ -1499,8 +1564,11 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         onClose={() => setIsProfileOpen(false)}
         captain={currentCaptain}
         onUpdateCaptain={(updated) => setCurrentCaptain((prev) => ({ ...prev, ...updated }))}
-        todayEarnings={todayEarnings}
-        completedCount={completedCount}
+        todayIncome={earningsSummary.todayIncome}
+        todayEarnings={earningsSummary.todayIncome}
+        totalEarnings={earningsSummary.totalEarnings}
+        todayRides={earningsSummary.todayRides}
+        completedCount={earningsSummary.todayCompletedCount}
       />
     </div>
   );

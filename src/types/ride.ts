@@ -114,3 +114,15 @@ export interface AdminAnalyticsSummary {
   avgDistanceKm: number;
 }
 
+export interface CaptainEarningsSummary {
+  todayIncome: number;
+  todayCompletedCount: number;
+  yesterdayIncome: number;
+  yesterdayCompletedCount: number;
+  totalEarnings: number;
+  totalCompletedTrips: number;
+  completedRides: Ride[];
+  todayRides: Ride[];
+  lastCalculatedAt: string;
+}
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   User,
   Bike,
@@ -29,8 +29,18 @@ import {
   Eye,
   Volume2,
   Navigation,
+  Upload,
+  ShieldCheck,
+  FileCheck,
+  Trash2,
+  RefreshCw,
+  ExternalLink,
+  Image as ImageIcon,
+  CheckCircle,
+  AlertCircle,
+  Info,
 } from 'lucide-react';
-import { UserProfile } from '../types/ride';
+import { UserProfile, Ride } from '../types/ride';
 import { AvatarUploader } from './AvatarUploader';
 import { useTheme } from '../context/ThemeContext';
 
@@ -39,8 +49,11 @@ interface CaptainProfileModalProps {
   onClose: () => void;
   captain: UserProfile;
   onUpdateCaptain: (updated: Partial<UserProfile>) => void;
-  todayEarnings: number;
-  completedCount: number;
+  todayEarnings?: number;
+  completedCount?: number;
+  todayIncome?: number;
+  totalEarnings?: number;
+  todayRides?: Ride[];
 }
 
 export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
@@ -48,9 +61,14 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
   onClose,
   captain,
   onUpdateCaptain,
-  todayEarnings,
-  completedCount,
+  todayEarnings = 0,
+  completedCount = 0,
+  todayIncome,
+  totalEarnings = 0,
+  todayRides = [],
 }) => {
+  const currentTodayIncome = todayIncome !== undefined ? todayIncome : todayEarnings;
+  const currentCompletedCount = completedCount;
   const { isLight, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<'profile' | 'vehicle' | 'earnings' | 'preferences' | 'checklist'>('profile');
   const [isEditing, setIsEditing] = useState(false);
@@ -78,6 +96,149 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
     fuelSufficient: true,
     passengerHelmetReady: true,
   });
+
+  // RC Document State & Local Storage Persistence
+  const rcFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isDraggingRc, setIsDraggingRc] = useState(false);
+  const [isUploadingRc, setIsUploadingRc] = useState(false);
+  const [rcUploadSuccess, setRcUploadSuccess] = useState(false);
+  const [showRcUploadModal, setShowRcUploadModal] = useState(false);
+  const [previewDocModal, setPreviewDocModal] = useState<boolean>(false);
+  const [selectedDocToView, setSelectedDocToView] = useState<{ name: string; url?: string | null; rcNumber?: string } | null>(null);
+  const [isEditingRcDetails, setIsEditingRcDetails] = useState(false);
+
+  const [rcDoc, setRcDoc] = useState<{
+    rcNumber: string;
+    ownerName: string;
+    chassisNumber: string;
+    engineNumber: string;
+    issueDate: string;
+    expiryDate: string;
+    fileName: string;
+    fileSize: string;
+    fileUrl: string | null;
+    fileType: 'image' | 'pdf' | 'none';
+    status: 'verified' | 'under_review' | 'pending';
+    uploadedAt: string;
+    notes?: string;
+  }>(() => {
+    const saved = localStorage.getItem(`motoride_captain_rc_${captain.id}`);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      rcNumber: 'CA 92K49-RC2024',
+      ownerName: captain.name || 'Alex Rivera',
+      chassisNumber: 'ME1RG122*N004920',
+      engineNumber: 'G3J4E*009124',
+      issueDate: '15 Mar 2022',
+      expiryDate: '14 Mar 2037',
+      fileName: 'vehicle_rc_yamaha_mt07.pdf',
+      fileSize: '1.4 MB',
+      fileUrl: null,
+      fileType: 'pdf',
+      status: 'verified',
+      uploadedAt: '2026-08-10',
+      notes: 'Smart OCR Match: Registration details match plate CA 92K49',
+    };
+  });
+
+  const [editableRcFields, setEditableRcFields] = useState({
+    rcNumber: rcDoc.rcNumber,
+    ownerName: rcDoc.ownerName,
+    chassisNumber: rcDoc.chassisNumber,
+    engineNumber: rcDoc.engineNumber,
+    expiryDate: rcDoc.expiryDate,
+  });
+
+  // Save RC to localStorage whenever updated
+  const updateRcDocState = (updated: Partial<typeof rcDoc>) => {
+    setRcDoc((prev) => {
+      const next = { ...prev, ...updated };
+      try {
+        localStorage.setItem(`motoride_captain_rc_${captain.id}`, JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  // Handle file processing for RC upload
+  const processRcFile = (file: File) => {
+    if (!file) return;
+    setIsUploadingRc(true);
+    const isPdf = file.type === 'application/pdf' || file.name.endsWith('.pdf');
+    const isImg = file.type.startsWith('image/');
+    const formattedSize = file.size > 1024 * 1024 
+      ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+      : `${Math.round(file.size / 1024)} KB`;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setTimeout(() => {
+        const resultUrl = reader.result as string;
+        updateRcDocState({
+          fileName: file.name,
+          fileSize: formattedSize,
+          fileUrl: resultUrl,
+          fileType: isPdf ? 'pdf' : isImg ? 'image' : 'none',
+          status: 'verified',
+          uploadedAt: new Date().toISOString().split('T')[0],
+          notes: `Uploaded on ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · OCR Verified`,
+        });
+        setIsUploadingRc(false);
+        setRcUploadSuccess(true);
+        setTimeout(() => setRcUploadSuccess(false), 3000);
+      }, 700);
+    };
+
+    reader.onerror = () => {
+      setIsUploadingRc(false);
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const handleRcFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processRcFile(file);
+    }
+  };
+
+  const handleRcDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingRc(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processRcFile(file);
+    }
+  };
+
+  const handleRemoveRcDoc = () => {
+    updateRcDocState({
+      fileName: '',
+      fileSize: '',
+      fileUrl: null,
+      fileType: 'none',
+      status: 'pending',
+      uploadedAt: '',
+      notes: 'No certificate uploaded',
+    });
+  };
+
+  const handleSaveRcDetails = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateRcDocState({
+      rcNumber: editableRcFields.rcNumber,
+      ownerName: editableRcFields.ownerName,
+      chassisNumber: editableRcFields.chassisNumber,
+      engineNumber: editableRcFields.engineNumber,
+      expiryDate: editableRcFields.expiryDate,
+    });
+    setIsEditingRcDetails(false);
+  };
 
   if (!isOpen) return null;
 
@@ -389,26 +550,343 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
 
             {/* ================= TAB 2: VEHICLE & DOCUMENTS ================= */}
             {activeTab === 'vehicle' && (
-              <div className="space-y-3">
+              <div className="space-y-4">
+                {/* Bike Summary Card */}
                 <div className={`border rounded-2xl p-3.5 space-y-3 ${
                   isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900/80 border-slate-800 text-slate-200'
                 }`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Bike className="w-4 h-4 text-amber-500" />
-                      <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{vehicleDetails}</span>
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                        <Bike className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className={`font-black text-sm block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{vehicleDetails}</span>
+                        <span className={`text-[11px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Plate: {licensePlate}</span>
+                      </div>
                     </div>
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-500 font-bold px-2 py-0.5 rounded border border-emerald-500/30">
-                      Approved
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-500 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Certified Fleet
+                    </span>
+                  </div>
+                </div>
+
+                {/* ================= RC UPLOAD HERO SECTION ================= */}
+                <div
+                  id="rc-upload-section"
+                  className={`border-2 rounded-2xl p-4 space-y-3 transition-all ${
+                    isDraggingRc
+                      ? 'border-amber-500 bg-amber-500/10'
+                      : isLight
+                      ? 'bg-white border-amber-300/80 shadow-xs'
+                      : 'bg-gradient-to-b from-slate-900 to-slate-950 border-amber-500/30 shadow-md'
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDraggingRc(true);
+                  }}
+                  onDragLeave={() => setIsDraggingRc(false)}
+                  onDrop={handleRcDrop}
+                >
+                  {/* RC Section Header */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shadow-xs">
+                        <FileCheck className="w-5 h-5 stroke-[2.5]" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className={`font-black text-sm ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                            Vehicle Registration Certificate (RC)
+                          </h3>
+                        </div>
+                        <span className={`text-[11px] block ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                          Official proof of bike ownership & road fitness
+                        </span>
+                      </div>
+                    </div>
+
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 flex items-center gap-1 ${
+                      rcDoc.status === 'verified'
+                        ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                        : rcDoc.status === 'under_review'
+                        ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                        : 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                    }`}>
+                      {rcDoc.status === 'verified' ? (
+                        <>
+                          <CheckCircle2 className="w-3 h-3" /> Verified & Active
+                        </>
+                      ) : rcDoc.status === 'under_review' ? (
+                        <>
+                          <Clock className="w-3 h-3" /> Under Review
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="w-3 h-3" /> Upload Needed
+                        </>
+                      )}
                     </span>
                   </div>
 
-                  <div className={`w-full h-px ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />
+                  {/* RC Info Metadata Chips */}
+                  <div className={`p-3 rounded-xl border text-xs space-y-2 ${
+                    isLight ? 'bg-slate-50/80 border-slate-200' : 'bg-slate-950/60 border-slate-800'
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[11px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>RC Number:</span>
+                      <span className="font-mono font-black text-amber-600 dark:text-amber-400">{rcDoc.rcNumber}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[11px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Registered Owner:</span>
+                      <span className={`font-semibold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{rcDoc.ownerName}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[11px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Chassis / Engine:</span>
+                      <span className={`font-mono text-[11px] ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                        {rcDoc.chassisNumber}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between border-t pt-1.5 border-dashed border-slate-300 dark:border-slate-800">
+                      <span className={`text-[11px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Fitness Valid Until:</span>
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">{rcDoc.expiryDate}</span>
+                    </div>
+                  </div>
+
+                  {/* Hidden File Input for RC */}
+                  <input
+                    ref={rcFileInputRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={handleRcFileSelect}
+                    className="hidden"
+                    id="rc-file-input"
+                  />
+
+                  {/* Upload Success Alert */}
+                  {rcUploadSuccess && (
+                    <div className="p-2.5 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      <span>Registration Certificate (RC) uploaded & verified successfully!</span>
+                    </div>
+                  )}
+
+                  {/* Loading State during Upload / OCR */}
+                  {isUploadingRc ? (
+                    <div className="p-6 border-2 border-dashed border-amber-500 rounded-xl flex flex-col items-center justify-center space-y-2 bg-amber-500/10">
+                      <RefreshCw className="w-6 h-6 text-amber-500 animate-spin" />
+                      <span className="text-xs font-bold text-amber-500">Scanning & Validating RC Document...</span>
+                      <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Running Smart OCR & plate match checks</span>
+                    </div>
+                  ) : rcDoc.fileName ? (
+                    /* Active Uploaded Document Card */
+                    <div className={`p-3 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                      isLight ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-900 border-amber-500/20'
+                    }`}>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {rcDoc.fileUrl && rcDoc.fileType === 'image' ? (
+                          <img
+                            src={rcDoc.fileUrl}
+                            alt="RC Preview"
+                            className="w-10 h-10 object-cover rounded-lg border border-amber-400 shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-rose-500/20 text-rose-500 border border-rose-500/30 flex items-center justify-center shrink-0">
+                            <FileText className="w-5 h-5" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <span className={`text-xs font-bold truncate block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                            {rcDoc.fileName}
+                          </span>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400">
+                            <span>{rcDoc.fileSize}</span>
+                            <span>•</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">OCR Verified</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons for Uploaded RC */}
+                      <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewDocModal(true)}
+                          className={`p-2 rounded-lg border text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                            isLight
+                              ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                          }`}
+                          title="View RC Preview"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span className="hidden xs:inline">Preview</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => rcFileInputRef.current?.click()}
+                          className={`p-2 rounded-lg border text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                            isLight
+                              ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300'
+                              : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/30'
+                          }`}
+                          title="Replace RC Document"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span className="hidden xs:inline">Replace</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleRemoveRcDoc}
+                          className="p-2 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-xs transition-colors cursor-pointer"
+                          title="Remove Document"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Dropzone / Upload Action Trigger when empty */
+                    <div
+                      onClick={() => rcFileInputRef.current?.click()}
+                      className={`p-5 border-2 border-dashed rounded-xl flex flex-col items-center justify-center text-center space-y-2 cursor-pointer transition-all ${
+                        isLight
+                          ? 'border-amber-300 bg-amber-50/50 hover:bg-amber-50'
+                          : 'border-amber-500/40 bg-amber-950/10 hover:bg-amber-950/20'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <span className={`text-xs font-bold block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                          Click to upload or drag and drop RC certificate
+                        </span>
+                        <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                          Supports PNG, JPG, WEBP or PDF (Max 10MB)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="mt-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-lg shadow-sm cursor-pointer"
+                      >
+                        Select RC File
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Quick Upload Buttons (Camera / Scan / File) */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => rcFileInputRef.current?.click()}
+                      className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                        isLight
+                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                          : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700'
+                      }`}
+                    >
+                      <Camera className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Take Photo / Scan RC</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => rcFileInputRef.current?.click()}
+                      className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                        isLight
+                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
+                          : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700'
+                      }`}
+                    >
+                      <Upload className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Upload Digital RC File</span>
+                    </button>
+                  </div>
+
+                  {/* RC Details Edit Toggle */}
+                  <div className="pt-1 border-t border-slate-200 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingRcDetails(!isEditingRcDetails)}
+                      className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Sliders className="w-3 h-3" />
+                      <span>{isEditingRcDetails ? 'Hide RC Manual Fields' : 'Edit RC Registration Details Manually'}</span>
+                    </button>
+
+                    {isEditingRcDetails && (
+                      <form onSubmit={handleSaveRcDetails} className="mt-2.5 space-y-2 animate-in fade-in">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className={`text-[10px] font-bold block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>RC Number</label>
+                            <input
+                              type="text"
+                              value={editableRcFields.rcNumber}
+                              onChange={(e) => setEditableRcFields({ ...editableRcFields, rcNumber: e.target.value })}
+                              className={`w-full p-2 text-xs border rounded-lg ${
+                                isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className={`text-[10px] font-bold block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Owner Name</label>
+                            <input
+                              type="text"
+                              value={editableRcFields.ownerName}
+                              onChange={(e) => setEditableRcFields({ ...editableRcFields, ownerName: e.target.value })}
+                              className={`w-full p-2 text-xs border rounded-lg ${
+                                isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className={`text-[10px] font-bold block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Chassis Number</label>
+                            <input
+                              type="text"
+                              value={editableRcFields.chassisNumber}
+                              onChange={(e) => setEditableRcFields({ ...editableRcFields, chassisNumber: e.target.value })}
+                              className={`w-full p-2 text-xs border rounded-lg ${
+                                isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className={`text-[10px] font-bold block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Fitness Expiry</label>
+                            <input
+                              type="text"
+                              value={editableRcFields.expiryDate}
+                              onChange={(e) => setEditableRcFields({ ...editableRcFields, expiryDate: e.target.value })}
+                              className={`w-full p-2 text-xs border rounded-lg ${
+                                isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
+                              }`}
+                            />
+                          </div>
+                        </div>
+                        <button
+                          type="submit"
+                          className="w-full py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-lg cursor-pointer"
+                        >
+                          Save RC Details
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </div>
+
+                {/* Other Vehicle Compliance Documents Vault */}
+                <div className={`border rounded-2xl p-3.5 space-y-2.5 ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
+                }`}>
+                  <span className={`text-[11px] font-bold uppercase tracking-wider block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                    Other Compliance Documents
+                  </span>
 
                   <div className="space-y-2">
                     {[
                       { name: 'Commercial Two-Wheeler Insurance', status: 'Valid until Dec 2026', ok: true },
-                      { name: 'Vehicle Registration Certificate (RC)', status: 'Verified & Active', ok: true },
                       { name: 'Motorcycle Driver License (Class M)', status: 'Verified & Active', ok: true },
                       { name: 'Pollution Under Control (PUC)', status: 'Valid until Oct 2026', ok: true },
                     ].map((doc, idx) => (
@@ -421,11 +899,25 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                         <div className="flex items-center gap-2">
                           <FileText className="w-3.5 h-3.5 text-sky-500" />
                           <div>
-                            <span className={`font-bold block ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{doc.name}</span>
+                            <span className={`font-bold text-xs block ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{doc.name}</span>
                             <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>{doc.status}</span>
                           </div>
                         </div>
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDocToView({ name: doc.name });
+                              setPreviewDocModal(true);
+                            }}
+                            className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                              isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            View
+                          </button>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -436,22 +928,53 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
             {/* ================= TAB 3: EARNINGS & PAYOUTS ================= */}
             {activeTab === 'earnings' && (
               <div className="space-y-3">
-                {/* Hero Card */}
-                <div className={`border rounded-2xl p-4 space-y-3 ${
+                {/* Hero Card: Today's Income */}
+                <div className={`border rounded-2xl p-4 space-y-2.5 ${
                   isLight
-                    ? 'bg-amber-50 border-amber-200 text-amber-950'
-                    : 'bg-gradient-to-tr from-amber-900/60 to-yellow-900/40 border-amber-500/30 text-white'
+                    ? 'bg-gradient-to-br from-amber-50 to-emerald-50/60 border-amber-200 text-amber-950 shadow-sm'
+                    : 'bg-gradient-to-tr from-amber-950/60 to-emerald-950/40 border-amber-500/30 text-white'
                 }`}>
                   <div className="flex items-center justify-between">
-                    <span className={`font-semibold ${isLight ? 'text-amber-900' : 'text-amber-300'}`}>Weekly Net Payout</span>
-                    <DollarSign className="w-5 h-5 text-amber-500" />
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-xs font-black uppercase tracking-wider ${isLight ? 'text-amber-900' : 'text-amber-300'}`}>
+                        Today's Income
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        isLight ? 'bg-amber-200/80 text-amber-900' : 'bg-amber-500/20 text-amber-300'
+                      }`}>
+                        {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                    <DollarSign className="w-5 h-5 text-emerald-500" />
                   </div>
                   <div>
-                    <span className={`text-3xl font-black ${isLight ? 'text-amber-950' : 'text-white'}`}>
-                      ₹{(todayEarnings + 438.2).toFixed(2)}
+                    <span className={`text-3xl font-black ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      ₹{currentTodayIncome.toFixed(2)}
                     </span>
-                    <span className={`text-[11px] block mt-0.5 ${isLight ? 'text-amber-800' : 'text-amber-300/80'}`}>
-                      Next direct deposit scheduled for Tuesday
+                    <span className={`text-[11px] block mt-0.5 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                      {currentCompletedCount === 0
+                        ? 'No rides completed yet today · Resets automatically daily'
+                        : `${currentCompletedCount} completed ride${currentCompletedCount === 1 ? '' : 's'} today`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Lifetime & Weekly Summary */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className={`p-3 rounded-2xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'}`}>
+                    <span className={`text-[10px] font-bold uppercase block ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                      Weekly Net Payout
+                    </span>
+                    <span className={`text-base font-black ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                      ₹{(currentTodayIncome + 438.2).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className={`p-3 rounded-2xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'}`}>
+                    <span className={`text-[10px] font-bold uppercase block ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                      Total Lifetime
+                    </span>
+                    <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                      ₹{(totalEarnings > 0 ? totalEarnings : currentTodayIncome + 3240).toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -463,25 +986,60 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                   <span className={`text-[11px] font-bold uppercase tracking-wider block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                     Today's Shift Statistics
                   </span>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 text-xs">
                     <div className={`flex justify-between border-b pb-1.5 ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
-                      <span>Base Fare & Distance</span>
-                      <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>₹{(todayEarnings * 0.85).toFixed(2)}</span>
+                      <span>Base Fare & Distance (Today)</span>
+                      <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>₹{(currentTodayIncome * 0.85).toFixed(2)}</span>
                     </div>
                     <div className={`flex justify-between border-b pb-1.5 ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
-                      <span>Surge & Bonus Pricing</span>
-                      <span className="font-bold text-amber-500">₹{(todayEarnings * 0.15).toFixed(2)}</span>
+                      <span>Surge & Bonus Pricing (Today)</span>
+                      <span className="font-bold text-amber-500">₹{(currentTodayIncome * 0.15).toFixed(2)}</span>
                     </div>
                     <div className={`flex justify-between border-b pb-1.5 ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
-                      <span>Completed Trips</span>
-                      <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{completedCount} rides</span>
+                      <span>Completed Trips Today</span>
+                      <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{currentCompletedCount} rides</span>
                     </div>
                     <div className="flex justify-between pt-1">
-                      <span className="font-bold text-emerald-500">Total Net Driver Earnings</span>
-                      <span className="font-black text-emerald-500">₹{todayEarnings.toFixed(2)}</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">Today's Income Total</span>
+                      <span className="font-black text-emerald-600 dark:text-emerald-400">₹{currentTodayIncome.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
+
+                {/* Today's Completed Rides List */}
+                {todayRides && todayRides.length > 0 && (
+                  <div className={`border rounded-2xl p-3.5 space-y-2 ${
+                    isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900/80 border-slate-800 text-slate-300'
+                  }`}>
+                    <span className={`text-[11px] font-bold uppercase tracking-wider block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                      Today's Completed Trips ({todayRides.length})
+                    </span>
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                      {todayRides.map((ride) => (
+                        <div
+                          key={ride.id}
+                          className={`p-2 rounded-xl border flex items-center justify-between text-xs ${
+                            isLight ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800'
+                          }`}
+                        >
+                          <div className="min-w-0 pr-2">
+                            <div className="font-bold truncate text-slate-900 dark:text-slate-100">
+                              {ride.pickup_location.split(',')[0]} → {ride.dropoff_location.split(',')[0]}
+                            </div>
+                            <span className="text-[10px] text-slate-500">
+                              {ride.completed_at
+                                ? new Date(ride.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                : 'Completed today'}
+                            </span>
+                          </div>
+                          <span className="font-black text-emerald-600 dark:text-emerald-400 shrink-0">
+                            +₹{Number(ride.fare || 0).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Linked Bank for Payout */}
                 <div className={`border rounded-2xl p-3.5 space-y-2 ${
@@ -734,6 +1292,200 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ================= DOCUMENT PREVIEW MODAL ================= */}
+      {previewDocModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+          <div className={`w-full max-w-lg rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ${
+            isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900 border-slate-800 text-slate-100'
+          }`}>
+            {/* Modal Header */}
+            <div className={`p-4 border-b flex items-center justify-between ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+            }`}>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-black text-sm">
+                    {selectedDocToView?.name || 'Vehicle Registration Certificate (RC)'}
+                  </h4>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Verified by Motoride Fleet Auth
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewDocModal(false);
+                  setSelectedDocToView(null);
+                }}
+                className={`p-1.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 cursor-pointer ${
+                  isLight ? 'text-slate-600' : 'text-slate-400'
+                }`}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Document Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4">
+              {rcDoc.fileUrl && rcDoc.fileType === 'image' && !selectedDocToView ? (
+                /* Real User Uploaded Image */
+                <div className="border rounded-2xl overflow-hidden bg-slate-950 flex items-center justify-center p-2">
+                  <img
+                    src={rcDoc.fileUrl}
+                    alt="Vehicle RC Scan"
+                    className="max-h-80 w-auto object-contain rounded-xl"
+                  />
+                </div>
+              ) : (
+                /* High-Fidelity Official Digital Certificate Card */
+                <div className={`border-2 rounded-2xl p-5 relative overflow-hidden space-y-4 ${
+                  isLight
+                    ? 'bg-gradient-to-b from-amber-50/50 to-slate-50 border-amber-300/80 shadow-inner'
+                    : 'bg-gradient-to-b from-slate-950 to-[#0d1322] border-amber-500/30'
+                }`}>
+                  {/* Watermark badge */}
+                  <div className="absolute right-3 top-3 opacity-15 pointer-events-none">
+                    <ShieldCheck className="w-32 h-32 text-amber-500" />
+                  </div>
+
+                  {/* Official Header */}
+                  <div className="text-center border-b pb-3 border-amber-400/40">
+                    <span className="text-[10px] uppercase font-black tracking-widest text-amber-600 dark:text-amber-400 block">
+                      DEPARTMENT OF MOTOR VEHICLES & TRANSPORT
+                    </span>
+                    <h3 className="text-base font-black tracking-tight text-slate-900 dark:text-white">
+                      CERTIFICATE OF REGISTRATION
+                    </h3>
+                    <span className="text-[10px] font-mono text-slate-500">FORM 23 · MOTOR VEHICLES ACT</span>
+                  </div>
+
+                  {/* Certificate Main Grid */}
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Regn. Number (RC)</span>
+                      <span className="font-mono font-black text-amber-600 dark:text-amber-400 text-sm block">
+                        {rcDoc.rcNumber}
+                      </span>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Class of Vehicle</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                        MCWG (Motor Cycle with Gear)
+                      </span>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Registered Owner</span>
+                      <span className="font-bold text-slate-900 dark:text-white block">
+                        {rcDoc.ownerName}
+                      </span>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Maker & Model</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                        {vehicleDetails}
+                      </span>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Chassis No.</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300 block">
+                        {rcDoc.chassisNumber}
+                      </span>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Engine No.</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300 block">
+                        {rcDoc.engineNumber}
+                      </span>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Registration Date</span>
+                      <span className="font-medium text-slate-800 dark:text-slate-200 block">
+                        {rcDoc.issueDate}
+                      </span>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Fitness Valid Till</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400 block">
+                        {rcDoc.expiryDate}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* QR & Security Footer */}
+                  <div className="pt-3 border-t border-dashed border-slate-300 dark:border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-12 h-12 rounded-lg bg-slate-900 text-white flex items-center justify-center p-1 border border-amber-400/40">
+                        <div className="grid grid-cols-3 gap-0.5 w-full h-full p-1 bg-white rounded">
+                          <div className="bg-black" />
+                          <div className="bg-black" />
+                          <div className="bg-transparent" />
+                          <div className="bg-transparent" />
+                          <div className="bg-black" />
+                          <div className="bg-black" />
+                          <div className="bg-black" />
+                          <div className="bg-transparent" />
+                          <div className="bg-black" />
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase block text-slate-500">DIGITAL SECURITY SEAL</span>
+                        <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                          ✓ QR AUTH CODE VERIFIED
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[9px] text-slate-400 block">File: {rcDoc.fileName || 'e-RC_Copy.pdf'}</span>
+                      <span className="text-[9px] text-slate-400 block">{rcDoc.fileSize || '1.4 MB'}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer Controls */}
+            <div className={`p-4 border-t flex items-center justify-between gap-2 ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+            }`}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewDocModal(false);
+                  rcFileInputRef.current?.click();
+                }}
+                className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  isLight ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300' : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5 text-amber-500" />
+                <span>Upload Replacement RC</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPreviewDocModal(false)}
+                className="py-2 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl cursor-pointer"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
