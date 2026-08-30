@@ -35,6 +35,7 @@ import {
   TrendingUp,
   QrCode,
   Banknote,
+  Settings,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Ride, RideStatus, UserProfile, RideTier, PaymentMethodType } from '../types/ride';
@@ -454,19 +455,8 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
           </div>
         </div>
 
-        {/* Action Controls: Wallet */}
+        {/* Action Controls */}
         <div className="flex items-center gap-2">
-          <div
-            className={`border px-2.5 py-1 rounded-full flex items-center gap-1.5 text-xs ${
-              isLight
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                : 'bg-slate-900 border-slate-700/80 text-slate-200'
-            }`}
-            title="Wallet & Balance"
-          >
-            <Wallet className="w-3.5 h-3.5 text-emerald-500" />
-            <span className={`font-black ${isLight ? 'text-emerald-700' : 'text-emerald-300'}`}>₹84.50</span>
-          </div>
         </div>
       </div>
 

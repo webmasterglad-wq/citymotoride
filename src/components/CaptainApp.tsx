@@ -35,6 +35,7 @@ import {
   ExternalLink,
   Star,
   ThumbsUp,
+  Settings,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Ride, RideStatus, UserProfile } from '../types/ride';

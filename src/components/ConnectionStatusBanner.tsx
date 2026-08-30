@@ -151,7 +151,7 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
-        {/* Left: Brand + Status Pill */}
+        {/* Left: Brand */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-950 text-sm shadow-md shadow-amber-500/20">
@@ -160,37 +160,6 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
             <span className={`font-bold tracking-tight text-sm ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
               Moto<span className="text-amber-500">Ride</span>
             </span>
-          </div>
-
-          <div className={`h-4 w-px hidden sm:block ${isLight ? 'bg-slate-300' : 'bg-slate-700'}`} />
-
-          {/* Connection Pill */}
-          <div
-            id="connection-indicator"
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-              connectionStatus === 'connected'
-                ? isLight
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 font-semibold'
-                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                : connectionStatus === 'checking'
-                ? isLight
-                  ? 'bg-sky-50 text-sky-800 border-sky-200 animate-pulse font-semibold'
-                  : 'bg-sky-500/10 text-sky-300 border-sky-500/30 animate-pulse'
-                : connectionStatus === 'not_configured'
-                ? isLight
-                  ? 'bg-amber-50 text-amber-800 border-amber-200 font-semibold'
-                  : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                : isLight
-                ? 'bg-rose-50 text-rose-800 border-rose-200 font-semibold'
-                : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
-            }`}
-          >
-            {connectionStatus === 'connected' && <Wifi className="w-3.5 h-3.5 text-emerald-500" />}
-            {connectionStatus === 'checking' && <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-500" />}
-            {connectionStatus === 'not_configured' && <Key className="w-3.5 h-3.5 text-amber-500" />}
-            {connectionStatus === 'error' && <WifiOff className="w-3.5 h-3.5 text-rose-500" />}
-            
-            <span>{statusMessage}</span>
           </div>
         </div>
 
@@ -244,58 +213,6 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
 
         {/* Action buttons */}
         <div className="flex items-center gap-2">
-          {/* Light / Dark Mode Toggle Button */}
-          <button
-            id="theme-toggle-btn"
-            onClick={toggleTheme}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
-              isLight
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 shadow-xs'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-            }`}
-            title={isLight ? 'Switch to Dark Mode' : 'Switch to White Background (Light Mode)'}
-          >
-            {isLight ? (
-              <>
-                <Moon className="w-3.5 h-3.5 text-indigo-600" />
-                <span className="hidden sm:inline">Dark</span>
-              </>
-            ) : (
-              <>
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">Light</span>
-              </>
-            )}
-          </button>
-
-          <button
-            id="toggle-config-btn"
-            onClick={() => setIsOpenConfig(!isOpenConfig)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
-              isLight
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 shadow-xs'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-            }`}
-          >
-            <Key className="w-3.5 h-3.5 text-amber-500" />
-            <span>API Keys</span>
-          </button>
-
-          <button
-            id="refresh-connection-btn"
-            onClick={() => {
-              checkConnection();
-              if (onRefreshAll) onRefreshAll();
-            }}
-            title="Refresh Connection and Rides"
-            className={`p-1.5 rounded-xl transition-colors cursor-pointer ${
-              isLight
-                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
-                : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800 border border-transparent'
-            }`}
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
