@@ -36,7 +36,87 @@ export interface Ride {
   captain_rating?: number | null;
   distance_km?: number | null;
   estimated_mins?: number | null;
+  service_type?: 'moto_standard' | 'moto_comfort' | 'moto_delivery' | 'moto_xl' | string | null;
+  ride_tier?: 'moto_standard' | 'moto_comfort' | 'moto_delivery' | 'moto_xl' | string | null;
+  tier_name?: string | null;
+  delivery_notes?: string | null;
 }
+
+export interface RideServiceInfo {
+  type: 'moto_delivery' | 'moto_comfort' | 'moto_standard';
+  title: string;
+  badgeLabel: string;
+  badgeText: string;
+  icon: string;
+  bgBadgeClass: string;
+  textBadgeClass: string;
+  borderBadgeClass: string;
+  tagline: string;
+  actionInstruction: string;
+  isCourier: boolean;
+}
+
+export const getRideServiceInfo = (ride?: Partial<Ride> | null): RideServiceInfo => {
+  if (!ride) {
+    return {
+      type: 'moto_comfort',
+      title: 'Comfort Moto',
+      badgeLabel: 'COMFORT MOTO',
+      badgeText: '🛵 COMFORT MOTO',
+      icon: '🛵',
+      bgBadgeClass: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+      textBadgeClass: 'text-emerald-600 dark:text-emerald-400',
+      borderBadgeClass: 'border-emerald-500',
+      tagline: 'Comfort Passenger Ride • Sanitized Helmet',
+      actionInstruction: 'Pick up passenger & provide helmet',
+      isCourier: false,
+    };
+  }
+
+  const rawType = (ride.service_type || ride.ride_tier || '').toLowerCase();
+  const rawTierName = (ride.tier_name || '').toLowerCase();
+  const combined = `${ride.pickup_location || ''} ${ride.dropoff_location || ''} ${ride.passenger_name || ''}`.toLowerCase();
+
+  if (
+    rawType.includes('delivery') ||
+    rawType.includes('courier') ||
+    rawTierName.includes('courier') ||
+    rawTierName.includes('delivery') ||
+    combined.includes('[courier]') ||
+    combined.includes('[delivery]') ||
+    combined.includes('moto courier') ||
+    combined.includes('courier') ||
+    combined.includes('package')
+  ) {
+    return {
+      type: 'moto_delivery',
+      title: 'Moto Courier',
+      badgeLabel: 'MOTO COURIER',
+      badgeText: '📦 MOTO COURIER',
+      icon: '📦',
+      bgBadgeClass: 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30',
+      textBadgeClass: 'text-amber-600 dark:text-amber-400',
+      borderBadgeClass: 'border-amber-500',
+      tagline: 'Package & Item Delivery • Safe Cargo Box',
+      actionInstruction: 'Pick up package from sender & deliver to dropoff',
+      isCourier: true,
+    };
+  }
+
+  return {
+    type: 'moto_comfort',
+    title: 'Comfort Moto',
+    badgeLabel: 'COMFORT MOTO',
+    badgeText: '🛵 COMFORT MOTO',
+    icon: '🛵',
+    bgBadgeClass: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+    textBadgeClass: 'text-emerald-600 dark:text-emerald-400',
+    borderBadgeClass: 'border-emerald-500',
+    tagline: 'Comfort Passenger Ride • Sanitized Helmet',
+    actionInstruction: 'Pick up passenger & provide helmet',
+    isCourier: false,
+  };
+};
 
 export interface UserProfile {
   id: string;

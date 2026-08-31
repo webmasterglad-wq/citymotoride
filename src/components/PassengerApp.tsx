@@ -38,7 +38,7 @@ import {
   Settings,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Ride, RideStatus, UserProfile, RideTier, PaymentMethodType } from '../types/ride';
+import { Ride, RideStatus, UserProfile, RideTier, PaymentMethodType, getRideServiceInfo } from '../types/ride';
 import {
   createRideBooking,
   fetchActiveRideForPassenger,
@@ -95,8 +95,8 @@ const DEFAULT_DROPOFFS = [
 const RIDE_TIERS: RideTier[] = [
   {
     id: 'moto_comfort',
-    name: 'Comfort Ride',
-    tagline: 'Premium bike & clean helmet',
+    name: 'Comfort Moto',
+    tagline: 'Comfort bike • Clean helmet included',
     multiplier: 1.0,
     icon: '🛵',
     etaMinsBonus: 0,
@@ -105,7 +105,7 @@ const RIDE_TIERS: RideTier[] = [
   {
     id: 'moto_delivery',
     name: 'Moto Courier',
-    tagline: 'Package & item delivery',
+    tagline: 'Package & parcel courier delivery',
     multiplier: 0.85,
     icon: '📦',
     etaMinsBonus: 1,
@@ -346,6 +346,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
     setIsSubmitting(true);
     const finalFare = bookingMode === 'indrive' ? customBidFare : baseCalculatedFare;
+    const selectedTierObj = RIDE_TIERS.find((t) => t.id === selectedTier) || RIDE_TIERS[0];
 
     try {
       const { data, error } = await createRideBooking({
@@ -357,6 +358,8 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
         fare: finalFare,
         distance_km: distanceKm,
         estimated_mins: estimatedMins,
+        service_type: selectedTier,
+        tier_name: selectedTierObj.name,
       });
 
       if (error) {
@@ -1039,6 +1042,39 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Service Category Badge */}
+          {(() => {
+            const serviceInfo = getRideServiceInfo(activeRide);
+            return (
+              <div className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                serviceInfo.isCourier
+                  ? isLight
+                    ? 'bg-amber-50 border-amber-200 text-amber-900'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                  : isLight
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{serviceInfo.icon}</span>
+                  <div>
+                    <span className="text-xs font-black uppercase tracking-wider block">
+                      {serviceInfo.badgeLabel}
+                    </span>
+                    <span className="text-[10px] opacity-80 block">
+                      {serviceInfo.isCourier ? 'Parcel & Package Courier Service' : 'Comfort Passenger Ride • Sanitized Helmet'}
+                    </span>
+                  </div>
+                </div>
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                  serviceInfo.isCourier ? 'bg-amber-500/20 text-amber-800 dark:text-amber-300' : 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300'
+                }`}>
+                  {serviceInfo.isCourier ? 'Package' : 'Passenger'}
+                </span>
+              </div>
+            );
+          })()}
 
           {/* Top Prominent Rating & Review Section when ride is completed */}
           {activeRide.status === 'completed' && !reviewSubmitted && (

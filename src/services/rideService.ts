@@ -123,6 +123,8 @@ export interface CreateRideParams {
   fare: number;
   distance_km?: number;
   estimated_mins?: number;
+  service_type?: 'moto_comfort' | 'moto_delivery' | 'moto_standard' | string;
+  tier_name?: string;
 }
 
 export const createRideBooking = async (
@@ -133,8 +135,11 @@ export const createRideBooking = async (
     return { data: null, error: 'Supabase client is not configured' };
   }
 
+  const chosenServiceType = params.service_type || 'moto_comfort';
+  const isCourier = chosenServiceType === 'moto_delivery';
+
   try {
-    const payload = {
+    const payload: any = {
       passenger_id: params.passenger_id,
       passenger_name: params.passenger_name || 'Passenger User',
       passenger_phone: params.passenger_phone || '+1 (555) 019-2834',
@@ -148,6 +153,7 @@ export const createRideBooking = async (
       fare: params.fare,
       distance_km: params.distance_km ?? 4.2,
       estimated_mins: params.estimated_mins ?? 12,
+      service_type: chosenServiceType,
       status: 'requested' as RideStatus,
       created_at: new Date().toISOString(),
       accepted_at: null,
@@ -155,18 +161,53 @@ export const createRideBooking = async (
       cancelled_at: null,
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('rides')
       .insert([payload])
       .select()
       .single();
+
+    // If column service_type doesn't exist yet on user's database schema, fallback without the column
+    if (error && (error.message?.includes('service_type') || error.code === 'PGRST204' || error.message?.includes('column'))) {
+      console.warn('[Motoride] Retrying ride insert without optional service_type column:', error.message);
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.service_type;
+
+      const retryRes = await supabase
+        .from('rides')
+        .insert([fallbackPayload])
+        .select()
+        .single();
+
+      if (retryRes.error) {
+        return { data: null, error: formatSupabaseError(retryRes.error) };
+      }
+
+      const resData = retryRes.data as Ride;
+      return {
+        data: {
+          ...resData,
+          service_type: chosenServiceType,
+          tier_name: isCourier ? 'Moto Courier' : 'Comfort Moto',
+        },
+        error: null,
+      };
+    }
 
     if (error) {
       console.error('[Motoride] Insert ride error:', error.message || error);
       return { data: null, error: formatSupabaseError(error) };
     }
 
-    return { data: data as Ride, error: null };
+    const resData = data as Ride;
+    return {
+      data: {
+        ...resData,
+        service_type: resData.service_type || chosenServiceType,
+        tier_name: isCourier ? 'Moto Courier' : 'Comfort Moto',
+      },
+      error: null,
+    };
   } catch (err: any) {
     console.error('[Motoride] Unexpected insert error:', err);
     return { data: null, error: formatSupabaseError(err) };

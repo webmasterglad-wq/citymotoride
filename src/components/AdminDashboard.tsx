@@ -37,6 +37,18 @@ import {
   ChevronDown,
   Layers,
   FileText,
+  User,
+  UserCheck,
+  UserX,
+  CreditCard,
+  Wallet,
+  Star,
+  Award,
+  Mail,
+  Heart,
+  Settings,
+  AlertCircle,
+  ExternalLink,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Ride, RideStatus, FleetCaptain, PlatformSettings, AdminAnalyticsSummary } from '../types/ride';
@@ -117,9 +129,181 @@ const INITIAL_CAPTAINS: FleetCaptain[] = [
   },
 ];
 
+export interface AdminPassenger {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  avatar_url?: string;
+  rating: number;
+  totalTrips: number;
+  completedTrips: number;
+  totalSpend: number;
+  walletBalance: number;
+  status: 'active' | 'vip' | 'new' | 'suspended';
+  joinedDate: string;
+  lastActive: string;
+  emergencyContact: string;
+  savedPlaces: { name: string; address: string; icon: string }[];
+  preferences: {
+    helmetSize: 'M' | 'L' | 'XL';
+    quietRide: boolean;
+    requirePin: boolean;
+    shareLiveStatus: boolean;
+    weatherGear: boolean;
+  };
+  notes?: string;
+}
+
+const INITIAL_PASSENGERS: AdminPassenger[] = [
+  {
+    id: 'pass-sarah-jenkins-01',
+    name: 'Sarah Jenkins',
+    phone: '+1 (555) 392-1049',
+    email: 'sarah.jenkins@example.com',
+    avatar_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    rating: 4.94,
+    totalTrips: 42,
+    completedTrips: 40,
+    totalSpend: 5840.0,
+    walletBalance: 184.5,
+    status: 'vip',
+    joinedDate: 'Jan 2024',
+    lastActive: '10 mins ago',
+    emergencyContact: '+1 (555) 902-8812 (Mom)',
+    savedPlaces: [
+      { name: 'Home', address: '240 Elm St, Sector 17, City Core', icon: '🏠' },
+      { name: 'Work', address: 'Cyber Tech Park Tower 4, Suite 800', icon: '💼' },
+      { name: 'Fitness Gym', address: 'Gold Horizon Fitness & Spa, Sector 22', icon: '🏋️' },
+    ],
+    preferences: {
+      helmetSize: 'M',
+      quietRide: false,
+      requirePin: true,
+      shareLiveStatus: true,
+      weatherGear: true,
+    },
+    notes: 'Premium daily commuter. Prefers Yamaha MT-07 or KTM Duke for express morning routes.',
+  },
+  {
+    id: 'pass-david-kumar-02',
+    name: 'David Kumar',
+    phone: '+1 (555) 782-9014',
+    email: 'david.kumar@gmail.com',
+    avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    rating: 4.88,
+    totalTrips: 19,
+    completedTrips: 18,
+    totalSpend: 2430.0,
+    walletBalance: 45.0,
+    status: 'active',
+    joinedDate: 'Mar 2024',
+    lastActive: '1 hour ago',
+    emergencyContact: '+1 (555) 481-9920 (Brother)',
+    savedPlaces: [
+      { name: 'Home', address: '482 Maple Ave, Greenfield', icon: '🏠' },
+      { name: 'University Campus', address: 'Metro Institute of Tech, Block B', icon: '🎓' },
+    ],
+    preferences: {
+      helmetSize: 'L',
+      quietRide: true,
+      requirePin: true,
+      shareLiveStatus: false,
+      weatherGear: true,
+    },
+    notes: 'Regular student commuter. Prefers quiet rides with UPI auto-pay.',
+  },
+  {
+    id: 'pass-elena-rostova-03',
+    name: 'Elena Rostova',
+    phone: '+1 (555) 721-4490',
+    email: 'elena.r@corporate.org',
+    avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    rating: 4.99,
+    totalTrips: 76,
+    completedTrips: 75,
+    totalSpend: 11450.0,
+    walletBalance: 520.0,
+    status: 'vip',
+    joinedDate: 'Oct 2023',
+    lastActive: 'Yesterday',
+    emergencyContact: '+1 (555) 303-9182 (Spouse)',
+    savedPlaces: [
+      { name: 'Penthouse Residence', address: '77 Skyview Terrace, Central Heights', icon: '🏢' },
+      { name: 'Corporate HQ', address: 'Financial District Plaza, Tower A', icon: '💼' },
+      { name: 'Intl Airport', address: 'Terminal 2 Drop-off Gate 4', icon: '✈️' },
+    ],
+    preferences: {
+      helmetSize: 'M',
+      quietRide: true,
+      requirePin: true,
+      shareLiveStatus: true,
+      weatherGear: true,
+    },
+    notes: 'Executive Corporate Rider. Platinum member with high surge tolerance and direct wallet settlement.',
+  },
+  {
+    id: 'pass-arjun-patel-04',
+    name: 'Arjun Patel',
+    phone: '+1 (555) 604-1928',
+    email: 'arjun.patel@techhub.io',
+    avatar_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    rating: 4.91,
+    totalTrips: 28,
+    completedTrips: 27,
+    totalSpend: 3820.0,
+    walletBalance: 90.0,
+    status: 'active',
+    joinedDate: 'Feb 2024',
+    lastActive: '3 hours ago',
+    emergencyContact: '+1 (555) 712-4091 (Sister)',
+    savedPlaces: [
+      { name: 'Apartment', address: 'Flat 304, Palm Grove Residency', icon: '🏠' },
+      { name: 'Co-Working Studio', address: 'Innov8 Hub, 5th Floor, Sector 34', icon: '💼' },
+    ],
+    preferences: {
+      helmetSize: 'XL',
+      quietRide: false,
+      requirePin: false,
+      shareLiveStatus: true,
+      weatherGear: false,
+    },
+    notes: 'Software engineer at Innov8. Regularly books morning slots between 8:30 AM and 9:15 AM.',
+  },
+  {
+    id: 'pass-priya-nair-05',
+    name: 'Priya Nair',
+    phone: '+1 (555) 839-2041',
+    email: 'priya.nair@designworks.com',
+    avatar_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+    rating: 4.97,
+    totalTrips: 53,
+    completedTrips: 51,
+    totalSpend: 7190.0,
+    walletBalance: 310.0,
+    status: 'vip',
+    joinedDate: 'Nov 2023',
+    lastActive: '2 days ago',
+    emergencyContact: '+1 (555) 919-4820 (Father)',
+    savedPlaces: [
+      { name: 'Design Studio', address: 'The Loft, 12 Art District Ave', icon: '🎨' },
+      { name: 'Home Villa', address: '22 Blossom Gardens, North Enclave', icon: '🏡' },
+      { name: 'Organic Bistro', address: 'Green Leaf Cafe, High Street', icon: '☕' },
+    ],
+    preferences: {
+      helmetSize: 'M',
+      quietRide: false,
+      requirePin: true,
+      shareLiveStatus: true,
+      weatherGear: true,
+    },
+    notes: 'Creative Director. Always rates captains 5-stars for prompt helmet provision and safe speed.',
+  },
+];
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }) => {
   const { isLight } = useTheme();
-  const [activeTab, setActiveTab] = useState<'live_rides' | 'captains' | 'pricing' | 'audit_log'>('live_rides');
+  const [activeTab, setActiveTab] = useState<'live_rides' | 'captains' | 'passengers' | 'pricing' | 'audit_log'>('live_rides');
   const [rides, setRides] = useState<Ride[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -141,6 +325,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
 
   // Captains State
   const [captains, setCaptains] = useState<FleetCaptain[]>(INITIAL_CAPTAINS);
+
+  // Passengers State
+  const [passengersList, setPassengersList] = useState<AdminPassenger[]>(INITIAL_PASSENGERS);
+  const [selectedPassenger, setSelectedPassenger] = useState<AdminPassenger | null>(null);
+  const [passengerSearchQuery, setPassengerSearchQuery] = useState<string>('');
+  const [passengerStatusFilter, setPassengerStatusFilter] = useState<string>('all');
+  const [passengerSortBy, setPassengerSortBy] = useState<'spend' | 'trips' | 'rating' | 'name'>('spend');
+  const [passengerActiveSubTab, setPassengerActiveSubTab] = useState<'overview' | 'rides' | 'wallet' | 'safety' | 'notes'>('overview');
+  const [creditAdjustmentAmount, setCreditAdjustmentAmount] = useState<number>(50);
+  const [passengerNoteDraft, setPassengerNoteDraft] = useState<string>('');
 
   const channelRef = useRef<RealtimeChannel | null>(null);
 
@@ -333,6 +527,177 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
     );
   };
 
+  // Dynamically aggregate and update passengers with real live rides
+  const allPassengers = useMemo(() => {
+    const passengerMap = new Map<string, AdminPassenger>();
+    passengersList.forEach((p) => {
+      passengerMap.set(p.id, { ...p });
+    });
+
+    // Also process rides to dynamically attach or count rides from Supabase
+    rides.forEach((r) => {
+      const pid = r.passenger_id || 'pass-anon';
+      const pname = r.passenger_name || 'Passenger Rider';
+      const pphone = r.passenger_phone || '+1 (555) 000-0000';
+
+      let existing = passengerMap.get(pid);
+      if (!existing) {
+        for (const p of passengerMap.values()) {
+          if (p.name.toLowerCase() === pname.toLowerCase() || p.phone === pphone) {
+            existing = p;
+            break;
+          }
+        }
+      }
+
+      if (!existing) {
+        const newPass: AdminPassenger = {
+          id: pid,
+          name: pname,
+          phone: pphone,
+          email: `${pname.toLowerCase().replace(/\s+/g, '.')}@example.com`,
+          rating: 4.9,
+          totalTrips: 1,
+          completedTrips: r.status === 'completed' ? 1 : 0,
+          totalSpend: r.fare ? Number(r.fare) : 120.0,
+          walletBalance: 100.0,
+          status: 'new',
+          joinedDate: 'Recent',
+          lastActive: 'Just now',
+          emergencyContact: '+1 (555) 911-0000',
+          savedPlaces: [
+            { name: 'Pickup Point', address: r.pickup_location, icon: '📍' },
+            { name: 'Destination', address: r.dropoff_location, icon: '🏁' },
+          ],
+          preferences: {
+            helmetSize: 'M',
+            quietRide: false,
+            requirePin: true,
+            shareLiveStatus: true,
+            weatherGear: true,
+          },
+          notes: 'Auto-registered passenger from Live Fleet Booking.',
+        };
+        passengerMap.set(pid, newPass);
+      }
+    });
+
+    return Array.from(passengerMap.values());
+  }, [passengersList, rides]);
+
+  // Filtered and Sorted Passengers List
+  const filteredPassengers = useMemo(() => {
+    return allPassengers
+      .filter((p) => {
+        const matchesStatus =
+          passengerStatusFilter === 'all' || p.status === passengerStatusFilter;
+        const q = passengerSearchQuery.toLowerCase().trim();
+        const matchesQuery =
+          !q ||
+          p.name.toLowerCase().includes(q) ||
+          p.phone.toLowerCase().includes(q) ||
+          p.email.toLowerCase().includes(q) ||
+          p.id.toLowerCase().includes(q);
+        return matchesStatus && matchesQuery;
+      })
+      .sort((a, b) => {
+        if (passengerSortBy === 'spend') return b.totalSpend - a.totalSpend;
+        if (passengerSortBy === 'trips') return b.totalTrips - a.totalTrips;
+        if (passengerSortBy === 'rating') return b.rating - a.rating;
+        return a.name.localeCompare(b.name);
+      });
+  }, [allPassengers, passengerSearchQuery, passengerStatusFilter, passengerSortBy]);
+
+  const openPassengerProfile = (passengerId: string, name?: string | null, phone?: string | null) => {
+    let found = allPassengers.find((p) => p.id === passengerId);
+    if (!found && name) {
+      found = allPassengers.find((p) => p.name.toLowerCase() === name.toLowerCase());
+    }
+    if (!found && phone) {
+      found = allPassengers.find((p) => p.phone === phone);
+    }
+    if (!found) {
+      found = allPassengers[0];
+    }
+    setSelectedPassenger(found || null);
+    setPassengerNoteDraft(found?.notes || '');
+    setPassengerActiveSubTab('overview');
+  };
+
+  const handleTogglePassengerStatus = (passengerId: string) => {
+    setPassengersList((prev) =>
+      prev.map((p) => {
+        if (p.id !== passengerId) return p;
+        const nextStatus: AdminPassenger['status'] =
+          p.status === 'active' ? 'vip' : p.status === 'vip' ? 'suspended' : 'active';
+        return { ...p, status: nextStatus };
+      })
+    );
+    if (selectedPassenger && selectedPassenger.id === passengerId) {
+      setSelectedPassenger((prev) =>
+        prev
+          ? {
+              ...prev,
+              status:
+                prev.status === 'active'
+                  ? 'vip'
+                  : prev.status === 'vip'
+                  ? 'suspended'
+                  : 'active',
+            }
+          : null
+      );
+    }
+    setActionNotice({
+      type: 'success',
+      message: `Updated passenger account status successfully.`,
+    });
+  };
+
+  const handleAddPassengerCredit = (passengerId: string, amount: number) => {
+    setPassengersList((prev) =>
+      prev.map((p) => {
+        if (p.id !== passengerId) return p;
+        return { ...p, walletBalance: Number((p.walletBalance + amount).toFixed(2)) };
+      })
+    );
+    if (selectedPassenger && selectedPassenger.id === passengerId) {
+      setSelectedPassenger((prev) =>
+        prev
+          ? { ...prev, walletBalance: Number((prev.walletBalance + amount).toFixed(2)) }
+          : null
+      );
+    }
+    setActionNotice({
+      type: 'success',
+      message: `Credited ₹${amount.toFixed(2)} to passenger wallet.`,
+    });
+    confetti({ particleCount: 35, spread: 60, origin: { y: 0.6 } });
+  };
+
+  const handleSavePassengerNotes = (passengerId: string, notes: string) => {
+    setPassengersList((prev) =>
+      prev.map((p) => (p.id === passengerId ? { ...p, notes } : p))
+    );
+    if (selectedPassenger && selectedPassenger.id === passengerId) {
+      setSelectedPassenger((prev) => (prev ? { ...prev, notes } : null));
+    }
+    setActionNotice({
+      type: 'success',
+      message: `Saved internal notes for passenger profile.`,
+    });
+  };
+
+  const passengerRides = useMemo(() => {
+    if (!selectedPassenger) return [];
+    return rides.filter(
+      (r) =>
+        r.passenger_id === selectedPassenger.id ||
+        (r.passenger_name && r.passenger_name.toLowerCase() === selectedPassenger.name.toLowerCase()) ||
+        (r.passenger_phone && r.passenger_phone === selectedPassenger.phone)
+    );
+  }, [selectedPassenger, rides]);
+
   return (
     <div id="motoride-admin-dashboard" className="w-full max-w-7xl mx-auto px-4 py-6 space-y-6">
       {/* Top Header & Breadcrumb */}
@@ -509,7 +874,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
           }`}
         >
           <LayoutDashboard className="w-4 h-4" />
-          Live Fleet & Rides Stream ({rides.length})
+          Live Fleet & Rides ({rides.length})
         </button>
 
         <button
@@ -520,8 +885,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
               : isLight ? 'border-transparent text-slate-600 hover:text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
+          <Bike className="w-4 h-4" />
+          Captains Roster ({captains.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('passengers')}
+          className={`flex items-center gap-2 px-4 py-3 font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'passengers'
+              ? 'border-sky-500 text-sky-600 bg-sky-500/10'
+              : isLight ? 'border-transparent text-slate-600 hover:text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
           <Users className="w-4 h-4" />
-          Captains & Driver Roster ({captains.length})
+          Passenger Profiles ({allPassengers.length})
         </button>
 
         <button
@@ -645,9 +1022,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                           </td>
 
                           {/* Passenger */}
-                          <td className="py-3.5 px-4 whitespace-nowrap">
-                            <div className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{ride.passenger_name || 'Sarah Jenkins'}</div>
-                            <div className="text-[10px] text-slate-400">{ride.passenger_phone || '+1 (555) 392-1049'}</div>
+                          <td
+                            className="py-3.5 px-4 whitespace-nowrap"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPassengerProfile(ride.passenger_id, ride.passenger_name, ride.passenger_phone);
+                            }}
+                            title="Click to view Passenger Profile in Admin Panel"
+                          >
+                            <div className="flex items-center gap-1.5 group/p">
+                              <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-[10px] font-black shrink-0 group-hover/p:scale-110 transition-transform">
+                                {(ride.passenger_name || 'Sarah').charAt(0)}
+                              </div>
+                              <div>
+                                <div className={`font-bold hover:text-emerald-500 flex items-center gap-1 cursor-pointer ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                                  <span>{ride.passenger_name || 'Sarah Jenkins'}</span>
+                                  <User className="w-3 h-3 text-slate-400 group-hover/p:text-emerald-500 transition-colors" />
+                                </div>
+                                <div className="text-[10px] text-slate-400">{ride.passenger_phone || '+1 (555) 392-1049'}</div>
+                              </div>
+                            </div>
                           </td>
 
                           {/* Captain */}
@@ -827,6 +1221,236 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ================= TAB: PASSENGERS & CUSTOMER ROSTER ================= */}
+      {activeTab === 'passengers' && (
+        <div className="space-y-4">
+          {/* Top Bar with Search, Status Filter & Sorting */}
+          <div className={`flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#0b0f19] border-slate-800'}`}>
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={passengerSearchQuery}
+                onChange={(e) => setPassengerSearchQuery(e.target.value)}
+                placeholder="Search passengers by name, phone, email, or ID..."
+                className={`w-full border rounded-xl pl-9 pr-4 py-2 text-xs focus:outline-none focus:border-sky-500 ${
+                  isLight
+                    ? 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                    : 'bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-500'
+                }`}
+              />
+              {passengerSearchQuery && (
+                <button
+                  onClick={() => setPassengerSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Status Filter Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              {[
+                { id: 'all', label: 'All Passengers' },
+                { id: 'vip', label: '⭐ VIP Riders' },
+                { id: 'active', label: 'Active' },
+                { id: 'new', label: 'New Signups' },
+                { id: 'suspended', label: 'Suspended' },
+              ].map((chip) => (
+                <button
+                  key={chip.id}
+                  onClick={() => setPassengerStatusFilter(chip.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap cursor-pointer ${
+                    passengerStatusFilter === chip.id
+                      ? 'bg-sky-500 text-white shadow-md shadow-sky-500/20'
+                      : isLight
+                      ? 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
+                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Sort Dropdown */}
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className={`font-semibold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Sort by:</span>
+              <select
+                value={passengerSortBy}
+                onChange={(e) => setPassengerSortBy(e.target.value as any)}
+                className={`border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none cursor-pointer ${
+                  isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-800 text-slate-200'
+                }`}
+              >
+                <option value="spend">Highest Lifetime Spend (₹)</option>
+                <option value="trips">Most Total Trips</option>
+                <option value="rating">Top Passenger Rating ★</option>
+                <option value="name">Alphabetical (Name)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Passenger Cards Grid */}
+          {filteredPassengers.length === 0 ? (
+            <div className={`p-12 text-center rounded-3xl border ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'}`}>
+              <Users className="w-10 h-10 mx-auto text-slate-400 mb-2" />
+              <p className="text-sm font-bold text-slate-400">No passengers found matching your search or filters.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredPassengers.map((passenger) => {
+                const tripsFromDb = rides.filter(
+                  (r) =>
+                    r.passenger_id === passenger.id ||
+                    (r.passenger_name && r.passenger_name.toLowerCase() === passenger.name.toLowerCase())
+                );
+                const totalRidesCount = Math.max(passenger.totalTrips, tripsFromDb.length);
+
+                return (
+                  <div
+                    key={passenger.id}
+                    className={`border rounded-2xl p-4.5 space-y-3.5 shadow-md flex flex-col justify-between transition-all hover:shadow-lg ${
+                      isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'
+                    }`}
+                  >
+                    <div>
+                      {/* Card Header: Avatar & Info */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          {passenger.avatar_url ? (
+                            <img
+                              src={passenger.avatar_url}
+                              alt={passenger.name}
+                              referrerPolicy="no-referrer"
+                              className="w-12 h-12 rounded-2xl object-cover border-2 border-sky-400/40 shadow-sm"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-500 text-white flex items-center justify-center font-black text-lg shadow-sm">
+                              {passenger.name.charAt(0)}
+                            </div>
+                          )}
+
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className={`text-sm font-black ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                                {passenger.name}
+                              </h4>
+                              {passenger.status === 'vip' && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/30">
+                                  VIP
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-400 flex items-center gap-1">
+                              <Phone className="w-2.5 h-2.5 inline" /> {passenger.phone}
+                            </p>
+                            <span className="text-[10px] font-bold text-amber-500 flex items-center gap-1 mt-0.5">
+                              <Star className="w-3 h-3 fill-amber-400 inline" /> {passenger.rating} · {totalRidesCount} trips
+                            </span>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            passenger.status === 'vip'
+                              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                              : passenger.status === 'active'
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                              : passenger.status === 'new'
+                              ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30'
+                              : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                          }`}
+                        >
+                          {passenger.status}
+                        </span>
+                      </div>
+
+                      {/* Metrics Snapshot */}
+                      <div className={`p-3 rounded-xl border mt-3.5 space-y-1.5 text-xs ${
+                        isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-950/80 border-slate-800 text-slate-300'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center gap-1">
+                            <Mail className="w-3 h-3" /> Email:
+                          </span>
+                          <span className="font-mono text-[11px] truncate max-w-[160px]">{passenger.email}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center gap-1">
+                            <Wallet className="w-3 h-3 text-emerald-500" /> Wallet Balance:
+                          </span>
+                          <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                            ₹{passenger.walletBalance.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center gap-1">
+                            <DollarSign className="w-3 h-3 text-amber-500" /> Total Spend:
+                          </span>
+                          <span className="font-black text-slate-900 dark:text-white">
+                            ₹{passenger.totalSpend.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400 flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-sky-500" /> Safety PIN:
+                          </span>
+                          <span className={passenger.preferences.requirePin ? 'text-emerald-500 font-bold' : 'text-slate-400'}>
+                            {passenger.preferences.requirePin ? 'Mandatory (4-Digit)' : 'Optional'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Actions Footer */}
+                    <div className={`pt-3 border-t flex items-center justify-between gap-2 ${
+                      isLight ? 'border-slate-100' : 'border-slate-800/80'
+                    }`}>
+                      <button
+                        onClick={() => openPassengerProfile(passenger.id, passenger.name, passenger.phone)}
+                        className="flex-1 py-1.5 px-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-sky-500/20"
+                      >
+                        <User className="w-3.5 h-3.5" />
+                        <span>Inspect Profile</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleAddPassengerCredit(passenger.id, 50)}
+                        className={`py-1.5 px-2.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
+                          isLight
+                            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                            : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                        }`}
+                        title="Add ₹50 Courtesy Credit"
+                      >
+                        +₹50
+                      </button>
+
+                      <button
+                        onClick={() => handleTogglePassengerStatus(passenger.id)}
+                        className={`py-1.5 px-2.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
+                          passenger.status === 'suspended'
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                            : isLight
+                            ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                        }`}
+                        title="Toggle Passenger Status"
+                      >
+                        {passenger.status === 'vip' ? '⭐' : passenger.status === 'suspended' ? 'Activate' : 'VIP'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1021,8 +1645,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
               {/* Trip Parties Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 {/* Passenger */}
-                <div className={`p-3.5 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
-                  <span className="text-[10px] font-bold uppercase text-slate-400">Passenger Details</span>
+                <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase text-slate-400">Passenger Details</span>
+                    <button
+                      onClick={() => {
+                        setSelectedRide(null);
+                        openPassengerProfile(selectedRide.passenger_id, selectedRide.passenger_name, selectedRide.passenger_phone);
+                      }}
+                      className="text-[10px] font-black text-sky-500 hover:text-sky-400 flex items-center gap-1 cursor-pointer"
+                    >
+                      <User className="w-3 h-3" /> View Profile
+                    </button>
+                  </div>
                   <p className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{selectedRide.passenger_name || 'Sarah Jenkins'}</p>
                   <p className="text-slate-400">{selectedRide.passenger_phone || '+1 (555) 392-1049'}</p>
                   <p className="text-[10px] text-slate-400 font-mono">ID: {selectedRide.passenger_id.slice(0, 12)}...</p>
@@ -1083,6 +1718,416 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= PASSENGER PROFILE INSPECTOR MODAL ================= */}
+      {selectedPassenger && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div
+            className={`border rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl flex flex-col max-h-[90vh] ${
+              isLight ? 'bg-white border-slate-200' : 'bg-[#0f172a] border-slate-800'
+            }`}
+          >
+            {/* Modal Header */}
+            <div className={`p-5 border-b flex items-start justify-between gap-4 ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
+            }`}>
+              <div className="flex items-center gap-3.5">
+                {selectedPassenger.avatar_url ? (
+                  <img
+                    src={selectedPassenger.avatar_url}
+                    alt={selectedPassenger.name}
+                    referrerPolicy="no-referrer"
+                    className="w-14 h-14 rounded-2xl object-cover border-2 border-sky-400/50 shadow-md"
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white flex items-center justify-center font-black text-2xl shadow-md">
+                    {selectedPassenger.name.charAt(0)}
+                  </div>
+                )}
+
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className={`text-lg font-black ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {selectedPassenger.name}
+                    </h3>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        selectedPassenger.status === 'vip'
+                          ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30'
+                          : selectedPassenger.status === 'active'
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                          : selectedPassenger.status === 'new'
+                          ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30'
+                          : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                      }`}
+                    >
+                      {selectedPassenger.status === 'vip' ? '⭐ VIP Passenger' : selectedPassenger.status}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Member since <span className="font-semibold text-slate-600 dark:text-slate-300">{selectedPassenger.joinedDate}</span> · Last active <span className="font-semibold text-slate-600 dark:text-slate-300">{selectedPassenger.lastActive}</span>
+                  </p>
+
+                  <div className="flex items-center gap-3 text-xs mt-1">
+                    <span className="text-amber-500 font-bold flex items-center gap-1">
+                      <Star className="w-3.5 h-3.5 fill-amber-400 inline" /> {selectedPassenger.rating}
+                    </span>
+                    <span className="text-slate-400">·</span>
+                    <span className={`font-bold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                      {Math.max(selectedPassenger.totalTrips, passengerRides.length)} Total Rides
+                    </span>
+                    <span className="text-slate-400">·</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                      ₹{selectedPassenger.walletBalance.toFixed(2)} Balance
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Close Button */}
+              <button
+                onClick={() => setSelectedPassenger(null)}
+                className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                  isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                }`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Sub-Navigation Tabs */}
+            <div className={`flex items-center border-b px-4 text-xs font-bold ${
+              isLight ? 'bg-white border-slate-200' : 'bg-slate-900/40 border-slate-800'
+            }`}>
+              <button
+                onClick={() => setPassengerActiveSubTab('overview')}
+                className={`py-3 px-3 border-b-2 transition-all cursor-pointer ${
+                  passengerActiveSubTab === 'overview'
+                    ? 'border-sky-500 text-sky-600 dark:text-sky-400'
+                    : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+              >
+                Overview & Safety
+              </button>
+              <button
+                onClick={() => setPassengerActiveSubTab('rides')}
+                className={`py-3 px-3 border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+                  passengerActiveSubTab === 'rides'
+                    ? 'border-sky-500 text-sky-600 dark:text-sky-400'
+                    : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+              >
+                <span>Fleet Rides</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800">
+                  {passengerRides.length}
+                </span>
+              </button>
+              <button
+                onClick={() => setPassengerActiveSubTab('wallet')}
+                className={`py-3 px-3 border-b-2 transition-all cursor-pointer ${
+                  passengerActiveSubTab === 'wallet'
+                    ? 'border-sky-500 text-sky-600 dark:text-sky-400'
+                    : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+              >
+                Wallet & Credits (₹)
+              </button>
+              <button
+                onClick={() => setPassengerActiveSubTab('notes')}
+                className={`py-3 px-3 border-b-2 transition-all cursor-pointer ${
+                  passengerActiveSubTab === 'notes'
+                    ? 'border-sky-500 text-sky-600 dark:text-sky-400'
+                    : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+              >
+                Admin CRM Notes
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="p-5 space-y-4 overflow-y-auto max-h-[60vh]">
+              {/* SUB-TAB 1: OVERVIEW & SAFETY */}
+              {passengerActiveSubTab === 'overview' && (
+                <div className="space-y-4">
+                  {/* Contact & Identifiers Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className={`p-3.5 rounded-2xl border space-y-2 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                      <span className="text-[10px] font-bold uppercase text-slate-400 block">Contact Information</span>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-sky-500" /> Phone:</span>
+                          <span className={`font-semibold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{selectedPassenger.phone}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-sky-500" /> Email:</span>
+                          <span className="font-mono text-[11px] text-slate-300 truncate max-w-[140px]">{selectedPassenger.email}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5 text-rose-500" /> Emergency SOS:</span>
+                          <span className="font-bold text-rose-600 dark:text-rose-400">{selectedPassenger.emergencyContact}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={`p-3.5 rounded-2xl border space-y-2 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                      <span className="text-[10px] font-bold uppercase text-slate-400 block">Ride & Comfort Preferences</span>
+                      <div className="space-y-1.5 text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Helmet Preference:</span>
+                          <span className="font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-300">
+                            Size {selectedPassenger.preferences.helmetSize}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Start-Trip PIN:</span>
+                          <span className={selectedPassenger.preferences.requirePin ? 'text-emerald-500 font-bold' : 'text-slate-400'}>
+                            {selectedPassenger.preferences.requirePin ? '✓ Enforced' : 'Off'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Quiet Ride Mode:</span>
+                          <span className={selectedPassenger.preferences.quietRide ? 'text-sky-400 font-bold' : 'text-slate-400'}>
+                            {selectedPassenger.preferences.quietRide ? '✓ Preferred' : 'No Preference'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Saved Places */}
+                  <div className={`p-4 rounded-2xl border space-y-2.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 block">
+                      Saved Frequent Destinations ({selectedPassenger.savedPlaces.length})
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {selectedPassenger.savedPlaces.map((place, idx) => (
+                        <div
+                          key={idx}
+                          className={`p-2.5 rounded-xl border flex items-start gap-2 text-xs ${
+                            isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'
+                          }`}
+                        >
+                          <span className="text-base shrink-0">{place.icon}</span>
+                          <div className="min-w-0">
+                            <span className={`font-bold block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{place.name}</span>
+                            <span className="text-[10px] text-slate-400 truncate block">{place.address}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Quick Status Control Bar */}
+                  <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs ${
+                    isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-900 border-slate-800'
+                  }`}>
+                    <span className="text-slate-400">Passenger Account State:</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleTogglePassengerStatus(selectedPassenger.id)}
+                        className={`px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+                          selectedPassenger.status === 'vip'
+                            ? 'bg-amber-500 text-slate-950 shadow-sm shadow-amber-500/20'
+                            : selectedPassenger.status === 'suspended'
+                            ? 'bg-rose-500 text-white'
+                            : 'bg-emerald-500 text-slate-950'
+                        }`}
+                      >
+                        Status: {selectedPassenger.status.toUpperCase()} (Click to Cycle)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SUB-TAB 2: FLEET RIDES */}
+              {passengerActiveSubTab === 'rides' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-400">Live & Historical Rides Stream for this Passenger:</span>
+                    <span className="font-bold text-sky-500">{passengerRides.length} record(s) found</span>
+                  </div>
+
+                  {passengerRides.length === 0 ? (
+                    <div className={`p-8 text-center rounded-2xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                      <Navigation className="w-8 h-8 mx-auto text-slate-400 mb-2" />
+                      <p className="text-xs font-semibold text-slate-400">No live or recorded trips found in the active session for this passenger ID.</p>
+                      <button
+                        onClick={handleGenerateTestRide}
+                        className="mt-3 px-3 py-1.5 bg-amber-500 text-slate-950 rounded-xl text-xs font-bold cursor-pointer"
+                      >
+                        Simulate Test Booking
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {passengerRides.map((ride) => (
+                        <div
+                          key={ride.id}
+                          className={`p-3 rounded-2xl border space-y-2 text-xs transition-all ${
+                            isLight ? 'bg-slate-50 border-slate-200 hover:border-sky-300' : 'bg-slate-950 border-slate-800 hover:border-sky-500/40'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-emerald-500 font-bold">#{ride.id.slice(0, 6)}</span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                  ride.status === 'completed'
+                                    ? 'bg-emerald-500/20 text-emerald-400'
+                                    : ride.status === 'cancelled'
+                                    ? 'bg-rose-500/20 text-rose-400'
+                                    : 'bg-sky-500/20 text-sky-400'
+                                }`}
+                              >
+                                {ride.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-amber-500">₹{ride.fare || 120}</span>
+                              <button
+                                onClick={() => {
+                                  setSelectedRide(ride);
+                                }}
+                                className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-sky-500 hover:text-white transition-colors text-[10px] font-bold cursor-pointer"
+                              >
+                                Inspect Trip
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 text-[11px]">
+                            <div className="flex items-center gap-1.5 text-slate-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                              <span className="truncate">{ride.pickup_location}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-slate-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                              <span className="truncate">{ride.dropoff_location}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 border-t pt-1.5 border-slate-200 dark:border-slate-800">
+                            <span>Captain: {ride.captain_name || 'Unassigned / Searching'}</span>
+                            <span>{new Date(ride.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SUB-TAB 3: WALLET & CREDITS */}
+              {passengerActiveSubTab === 'wallet' && (
+                <div className="space-y-4">
+                  {/* Balance Display */}
+                  <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                    isLight ? 'bg-emerald-50 border-emerald-200' : 'bg-emerald-950/30 border-emerald-800/60'
+                  }`}>
+                    <div>
+                      <span className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400 block">
+                        Current Passenger Wallet Balance
+                      </span>
+                      <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                        ₹{selectedPassenger.walletBalance.toFixed(2)}
+                      </p>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Lifetime Rides Spend: ₹{selectedPassenger.totalSpend.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-500 flex items-center justify-center">
+                      <Wallet className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  {/* Admin Courtesy Credit Issuer */}
+                  <div className={`p-4 rounded-2xl border space-y-3 ${
+                    isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+                  }`}>
+                    <span className="text-xs font-bold block text-slate-700 dark:text-slate-200">
+                      Grant Instant Courtesy / Support Credit
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {[50, 100, 200, 500].map((amt) => (
+                        <button
+                          key={amt}
+                          onClick={() => handleAddPassengerCredit(selectedPassenger.id, amt)}
+                          className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black transition-all shadow-sm shadow-emerald-500/20 cursor-pointer active:scale-95"
+                        >
+                          +₹{amt}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                      <input
+                        type="number"
+                        min="1"
+                        step="10"
+                        value={creditAdjustmentAmount}
+                        onChange={(e) => setCreditAdjustmentAmount(parseFloat(e.target.value) || 0)}
+                        placeholder="Custom Amount"
+                        className={`border rounded-xl px-3 py-1.5 text-xs font-bold w-32 focus:outline-none focus:border-emerald-500 ${
+                          isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                        }`}
+                      />
+                      <button
+                        onClick={() => handleAddPassengerCredit(selectedPassenger.id, creditAdjustmentAmount)}
+                        className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-xs font-bold transition-all cursor-pointer"
+                      >
+                        Grant Custom Credit
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SUB-TAB 4: ADMIN CRM NOTES */}
+              {passengerActiveSubTab === 'notes' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-400">Internal Admin & Support Team Notes:</span>
+                    <span className="text-[10px] text-slate-500">Visible only to Admin Staff</span>
+                  </div>
+
+                  <textarea
+                    rows={4}
+                    value={passengerNoteDraft}
+                    onChange={(e) => setPassengerNoteDraft(e.target.value)}
+                    placeholder="Add operational notes, customer incident logs, or VIP handling instructions..."
+                    className={`w-full border rounded-2xl p-3.5 text-xs focus:outline-none focus:border-sky-500 resize-none ${
+                      isLight ? 'bg-slate-50 border-slate-200 text-slate-900' : 'bg-slate-950 border-slate-800 text-slate-100'
+                    }`}
+                  />
+
+                  <button
+                    onClick={() => handleSavePassengerNotes(selectedPassenger.id, passengerNoteDraft)}
+                    className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    Save Notes to Passenger Record
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className={`p-4 border-t flex items-center justify-between text-xs ${
+              isLight ? 'bg-slate-50 border-slate-200 text-slate-600' : 'bg-slate-900/80 border-slate-800 text-slate-400'
+            }`}>
+              <span className="font-mono text-[10px]">Passenger ID: {selectedPassenger.id}</span>
+              <button
+                onClick={() => setSelectedPassenger(null)}
+                className="px-4 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Close Profile
+              </button>
             </div>
           </div>
         </div>
