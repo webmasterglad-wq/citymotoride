@@ -24,6 +24,7 @@ import {
   Target,
   Zap,
   Volume2,
+  VolumeX,
   KeyRound,
   ShieldCheck,
   X,
@@ -36,9 +37,11 @@ import {
   Star,
   ThumbsUp,
   Settings,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Ride, RideStatus, UserProfile, CaptainEarningsSummary } from '../types/ride';
+import { Ride, RideStatus, UserProfile, CaptainEarningsSummary, getRideServiceInfo } from '../types/ride';
 import {
   fetchActiveRequestedRides,
   fetchActiveRideForCaptain,
@@ -50,7 +53,6 @@ import {
   getLocalDayBounds,
 } from '../services/rideService';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { MapMockup } from './MapMockup';
 import { InRideChatModal } from './InRideChatModal';
 import { CaptainProfileModal } from './CaptainProfileModal';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -126,6 +128,24 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   const [enteredPin, setEnteredPin] = useState('');
   const [pinVerified, setPinVerified] = useState(false);
 
+  // Incoming Request Sweet Alert Tune On/Off State with localStorage persistence
+  const [isAlertSoundEnabled, setIsAlertSoundEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('motoride_captain_alert_sound');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const toggleAlertSound = () => {
+    setIsAlertSoundEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem('motoride_captain_alert_sound', String(next));
+      if (next) {
+        // Play sweet alert tune preview when toggled ON
+        playAlertSound(true);
+      }
+      return next;
+    });
+  };
+
   // Passenger Rating & Ride Completion Flow
   const [isRatingPassengerModalOpen, setIsRatingPassengerModalOpen] = useState<boolean>(false);
   const [passengerRatingStars, setPassengerRatingStars] = useState<number>(5);
@@ -151,21 +171,40 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     }
   };
 
-  // Play crisp incoming chime
-  const playAlertSound = () => {
+  // Play melodic 3-tone Sweet Alert Tune for incoming requests
+  const playAlertSound = (force = false) => {
+    if (!isAlertSoundEnabled && !force) return;
     try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15); // A5
-      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.35);
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtxClass) return;
+      const audioCtx = new AudioCtxClass();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      const notes = [
+        { freq: 523.25, time: 0, dur: 0.12 },     // C5 (Bright chime start)
+        { freq: 659.25, time: 0.12, dur: 0.14 },  // E5 (Melodic harmony)
+        { freq: 783.99, time: 0.26, dur: 0.14 },  // G5 (Sweet ascending peak)
+        { freq: 1046.50, time: 0.40, dur: 0.35 }, // C6 (Crystal clear bell tail)
+      ];
+
+      notes.forEach((n) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(n.freq, audioCtx.currentTime + n.time);
+
+        // Gentle envelope for sweet bell-like chime
+        gain.gain.setValueAtTime(0.001, audioCtx.currentTime + n.time);
+        gain.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime + n.time + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + n.time + n.dur);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(audioCtx.currentTime + n.time);
+        osc.stop(audioCtx.currentTime + n.time + n.dur);
+      });
     } catch (e) {}
   };
 
@@ -710,6 +749,25 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       {activeRide ? (
         /* ================= UBER DRIVER ACTIVE TRIP HUD ================= */
         <div id="uber-captain-active-trip" className="p-4 space-y-3.5 flex flex-col animate-in fade-in duration-300">
+          {/* Top Service Tier Banner: Moto Courier vs Comfort Moto */}
+          {(() => {
+            const activeService = getRideServiceInfo(activeRide);
+            return (
+              <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold ${activeService.bgBadgeClass}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{activeService.icon}</span>
+                  <div>
+                    <span className="text-[11px] font-black uppercase tracking-wide block">{activeService.badgeLabel} IN PROGRESS</span>
+                    <span className="text-[10px] font-medium opacity-90">{activeService.actionInstruction}</span>
+                  </div>
+                </div>
+                <span className="text-[10px] uppercase px-2 py-0.5 rounded font-black bg-slate-950 text-white">
+                  {activeRide.status.toUpperCase()}
+                </span>
+              </div>
+            );
+          })()}
+
           {/* Turn-by-Turn Navigation Header Banner */}
           <div className="bg-emerald-500 text-slate-950 p-3.5 rounded-2xl flex items-center justify-between shadow-lg">
             <div className="flex items-center gap-3">
@@ -733,17 +791,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               <span className="text-[9px] font-bold text-slate-800">Speed Limit</span>
             </div>
           </div>
-
-          {/* Full Navigation Vector Map */}
-          <MapMockup
-            pickupLocation={activeRide.pickup_location}
-            dropoffLocation={activeRide.dropoff_location}
-            status={activeRide.status}
-            captainName={captainUser.name}
-            distanceKm={activeRide.distance_km || 4.2}
-            estimatedMins={activeRide.estimated_mins || 12}
-            heightClass="h-52 sm:h-60"
-          />
 
           {/* Passenger Contact Card */}
           <div
@@ -966,17 +1013,78 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               </button>
             </div>
 
-            {requestTab === 'declined' && declinedRides.length > 0 && (
-              <button
-                type="button"
-                onClick={handleClearDeclined}
-                className={`text-[11px] font-bold transition-colors cursor-pointer ${
-                  isLight ? 'text-slate-500 hover:text-rose-600' : 'text-slate-400 hover:text-rose-400'
-                }`}
-              >
-                Clear History
-              </button>
-            )}
+            {/* Right Controls: Sound Tune ON/OFF Toggle Switch & Skipped History */}
+            <div className="flex items-center gap-2">
+              {/* Sweet Alert Tune On/Off Switch */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  id="captain-toggle-alert-tune-btn"
+                  onClick={toggleAlertSound}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-all cursor-pointer shadow-xs ${
+                    isAlertSoundEnabled
+                      ? isLight
+                        ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
+                        : 'bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25'
+                      : isLight
+                      ? 'bg-slate-100 border-slate-300 text-slate-400 hover:bg-slate-200 hover:text-slate-600'
+                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:bg-slate-800 hover:text-slate-300'
+                  }`}
+                  title={isAlertSoundEnabled ? 'Incoming alert sound is ON (Click to Mute)' : 'Incoming alert sound is MUTED (Click to Turn ON)'}
+                >
+                  {isAlertSoundEnabled ? (
+                    <>
+                      <Volume2 className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                      <span className="font-extrabold hidden sm:inline">Sound: ON</span>
+                      <span className="font-extrabold sm:hidden">ON</span>
+                    </>
+                  ) : (
+                    <>
+                      <VolumeX className="w-3.5 h-3.5" />
+                      <span className="font-semibold hidden sm:inline">Sound: OFF</span>
+                      <span className="font-semibold sm:hidden">OFF</span>
+                    </>
+                  )}
+
+                  {/* Toggle Pill Slider */}
+                  <div
+                    className={`w-7 h-4 rounded-full p-0.5 transition-colors duration-200 flex items-center ${
+                      isAlertSoundEnabled ? 'bg-amber-500 justify-end' : 'bg-slate-400 dark:bg-slate-700 justify-start'
+                    }`}
+                  >
+                    <div className="w-3 h-3 rounded-full bg-white shadow-xs" />
+                  </div>
+                </button>
+
+                {/* Quick Test Alert Tune Button */}
+                {isAlertSoundEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => playAlertSound(true)}
+                    className={`p-1.5 rounded-xl border text-[10px] font-bold transition-all cursor-pointer ${
+                      isLight
+                        ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-600'
+                        : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300'
+                    }`}
+                    title="Test incoming alert chime"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                  </button>
+                )}
+              </div>
+
+              {requestTab === 'declined' && declinedRides.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearDeclined}
+                  className={`text-[11px] font-bold transition-colors cursor-pointer ${
+                    isLight ? 'text-slate-500 hover:text-rose-600' : 'text-slate-400 hover:text-rose-400'
+                  }`}
+                >
+                  Clear History
+                </button>
+              )}
+            </div>
           </div>
 
           {!isOnline ? (
@@ -1180,7 +1288,9 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           ) : (
             /* ================= INCOMING RIDES ACTIVE STREAM ================= */
             <div className="space-y-3">
-              {requestedRides.map((ride) => (
+              {requestedRides.map((ride) => {
+                const serviceInfo = getRideServiceInfo(ride);
+                return (
                 <div
                   key={ride.id}
                   id={`ride-request-${ride.id}`}
@@ -1190,19 +1300,55 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                       : 'bg-slate-900 border-slate-800 hover:border-emerald-500/50'
                   }`}
                 >
+                  {/* TOP SERVICE BADGE: MOTO COURIER or COMFORT MOTO */}
+                  <div
+                    className={`flex items-center justify-between pb-2.5 border-b ${
+                      serviceInfo.isCourier
+                        ? 'border-amber-500/20'
+                        : isLight
+                        ? 'border-slate-100'
+                        : 'border-slate-800/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border flex items-center gap-1.5 shadow-xs ${serviceInfo.bgBadgeClass}`}>
+                        <span className="text-xs">{serviceInfo.icon}</span>
+                        <span>{serviceInfo.badgeLabel}</span>
+                      </span>
+                      <span className={`text-[11px] font-bold ${serviceInfo.isCourier ? 'text-amber-600 dark:text-amber-400' : isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+                        {serviceInfo.isCourier ? '📦 Parcel & Package Delivery' : '🛵 Passenger Ride'}
+                      </span>
+                    </div>
+                    {serviceInfo.isCourier ? (
+                      <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">
+                        📦 CARGO BOX
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        🛵 Helmet Included
+                      </span>
+                    )}
+                  </div>
+
                   {/* Fare & Passenger Header */}
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-600 dark:text-sky-300 flex items-center justify-center font-bold text-sm border border-sky-500/30">
-                        👤
+                      <div
+                        className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-base border shadow-xs ${
+                          serviceInfo.isCourier
+                            ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300 border-amber-500/40'
+                            : 'bg-sky-500/20 text-sky-600 dark:text-sky-300 border-sky-500/30'
+                        }`}
+                      >
+                        {serviceInfo.isCourier ? '📦' : '👤'}
                       </div>
                       <div>
-                        <h4 className={`text-xs font-black flex items-center gap-1 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                          {ride.passenger_name || 'Passenger Request'}
+                        <h4 className={`text-xs font-black flex items-center gap-1.5 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                          <span>{serviceInfo.isCourier ? `Sender: ${ride.passenger_name || 'Customer'}` : (ride.passenger_name || 'Passenger Request')}</span>
                           <span className="text-amber-500 text-[10px]">★ 4.94</span>
                         </h4>
                         <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                          {ride.distance_km || 4.8} km · ~{ride.estimated_mins || 12} min trip
+                          {ride.distance_km || 4.8} km · ~{ride.estimated_mins || 12} min {serviceInfo.isCourier ? 'delivery' : 'trip'}
                         </span>
                       </div>
                     </div>
@@ -1225,13 +1371,23 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                   >
                     <div className="flex items-start gap-2">
                       <MapPin className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
-                      <span className={`truncate font-medium ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
-                        {ride.pickup_location}
-                      </span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[9px] uppercase font-bold text-emerald-600 block">
+                          {serviceInfo.isCourier ? 'Package Pickup' : 'Pickup'}
+                        </span>
+                        <span className={`truncate font-medium block ${isLight ? 'text-slate-800' : 'text-slate-300'}`}>
+                          {ride.pickup_location}
+                        </span>
+                      </div>
                     </div>
                     <div className={`flex items-start gap-2 border-t pt-1.5 ${isLight ? 'border-slate-200 text-slate-700' : 'border-slate-900 text-slate-300'}`}>
                       <Navigation className="w-3.5 h-3.5 text-rose-500 mt-0.5 shrink-0" />
-                      <span className="truncate font-medium">{ride.dropoff_location}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[9px] uppercase font-bold text-rose-500 block">
+                          {serviceInfo.isCourier ? 'Delivery Destination' : 'Dropoff'}
+                        </span>
+                        <span className="truncate font-medium block">{ride.dropoff_location}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -1269,13 +1425,17 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                         id={`accept-ride-btn-${ride.id}`}
                         onClick={() => handleAcceptRide(ride)}
                         disabled={isClaimingId === ride.id}
-                        className="py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-1 shadow-md shadow-emerald-500/20 transition-all cursor-pointer"
+                        className={`py-2.5 font-black rounded-xl text-xs flex items-center justify-center gap-1 shadow-md transition-all cursor-pointer ${
+                          serviceInfo.isCourier
+                            ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
+                            : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
+                        }`}
                       >
                         {isClaimingId === ride.id ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         ) : (
                           <>
-                            Accept
+                            {serviceInfo.isCourier ? 'Accept Courier' : 'Accept Ride'}
                             <ChevronRight className="w-3.5 h-3.5" />
                           </>
                         )}
@@ -1340,7 +1500,8 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

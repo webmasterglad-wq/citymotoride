@@ -1,6 +1,6 @@
 {
   "name": "Motoride Real-Time Ride Sharing",
-  "description": "Real-time moto ride-sharing dispatch system for the Tricity service area (Zirakpur, Chandigarh, Panchkula, Manimajra, Mohali, and Kharar) with Google Maps Platform live routing, traffic, and Supabase Realtime synchronization.",
+  "description": "Real-time moto ride-sharing dispatch system for the Tricity service area (Zirakpur, Chandigarh, Panchkula, Manimajra, Mohali, and Kharar) with instant booking, inDrive custom bidding, and Supabase Realtime synchronization.",
   "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

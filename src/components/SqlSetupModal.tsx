@@ -33,12 +33,18 @@ CREATE TABLE IF NOT EXISTS public.rides (
     fare NUMERIC NULL,
     distance_km NUMERIC DEFAULT 4.2,
     estimated_mins NUMERIC DEFAULT 12,
+    service_type TEXT DEFAULT 'moto_comfort',
+    tier_name TEXT DEFAULT 'Comfort Moto',
     status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'accepted', 'arrived', 'started', 'completed', 'cancelled')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     accepted_at TIMESTAMPTZ NULL,
     completed_at TIMESTAMPTZ NULL,
     cancelled_at TIMESTAMPTZ NULL
 );
+
+-- Idempotent column additions for existing tables
+ALTER TABLE public.rides ADD COLUMN IF NOT EXISTS service_type TEXT DEFAULT 'moto_comfort';
+ALTER TABLE public.rides ADD COLUMN IF NOT EXISTS tier_name TEXT DEFAULT 'Comfort Moto';
 
 -- 2. Create helpful indexes for performance
 CREATE INDEX IF NOT EXISTS idx_rides_status ON public.rides (status);

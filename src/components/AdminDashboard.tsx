@@ -62,9 +62,9 @@ import {
   unsubscribeChannel,
 } from '../services/rideService';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { MapMockup } from './MapMockup';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useTheme } from '../context/ThemeContext';
+import { usePricing, DEFAULT_PLATFORM_PRICING, ExtendedPlatformPricing } from '../context/PricingContext';
 
 interface AdminDashboardProps {
   onOpenSqlModal?: () => void;
@@ -303,6 +303,7 @@ const INITIAL_PASSENGERS: AdminPassenger[] = [
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }) => {
   const { isLight } = useTheme();
+  const { pricing, updatePricing, resetPricingToDefault, calculateFare, isCustomized } = usePricing();
   const [activeTab, setActiveTab] = useState<'live_rides' | 'captains' | 'passengers' | 'pricing' | 'audit_log'>('live_rides');
   const [rides, setRides] = useState<Ride[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -313,15 +314,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
   const [isGeneratingMock, setIsGeneratingMock] = useState<boolean>(false);
   const [actionNotice, setActionNotice] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Platform Settings State
-  const [settings, setSettings] = useState<PlatformSettings>({
-    baseFare: 35.0,
-    perKmRate: 12.0,
-    surgeMultiplier: 1.4,
-    commissionRate: 15,
-    autoDispatch: true,
-    maxBroadcastDistanceKm: 6.5,
-  });
+  // Platform Settings State (Synced from PricingContext)
+  const [settings, setSettings] = useState<ExtendedPlatformPricing>(pricing);
+  const [pricingActiveCategory, setPricingActiveCategory] = useState<'both' | 'moto_comfort' | 'moto_delivery'>('both');
+  const [simDistAdmin, setSimDistAdmin] = useState<number>(4.8);
+  const [simTierAdmin, setSimTierAdmin] = useState<'moto_comfort' | 'moto_delivery'>('moto_comfort');
+
+  useEffect(() => {
+    setSettings(pricing);
+  }, [pricing]);
+
+  const handleSavePricing = () => {
+    updatePricing(settings);
+    setActionNotice({
+      type: 'success',
+      message: 'Fare calculation rules successfully deployed to all live passenger booking apps in real-time.',
+    });
+    try {
+      confetti({
+        particleCount: 40,
+        spread: 60,
+        origin: { y: 0.7 },
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleResetPricing = () => {
+    resetPricingToDefault();
+    setSettings(DEFAULT_PLATFORM_PRICING);
+    setActionNotice({
+      type: 'success',
+      message: 'Pricing rules reset to standard platform factory defaults.',
+    });
+  };
 
   // Captains State
   const [captains, setCaptains] = useState<FleetCaptain[]>(INITIAL_CAPTAINS);
@@ -1456,136 +1483,605 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
 
       {/* ================= TAB 3: PRICING & DISPATCH ENGINE ================= */}
       {activeTab === 'pricing' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Surge & Dynamic Fare Rules */}
-          <div className={`border rounded-3xl p-5 space-y-4 shadow-md ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'}`}>
-            <div className="flex items-center justify-between">
-              <h3 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                <Flame className="w-4 h-4 text-amber-500" />
-                Surge Multiplier & Base Pricing
-              </h3>
-              <span className="text-[10px] bg-amber-500/20 text-amber-600 dark:text-amber-300 px-2 py-0.5 rounded-full font-bold border border-amber-500/30">
-                ACTIVE
-              </span>
-            </div>
-
-            {/* Surge Slider */}
-            <div className={`space-y-2 p-4 rounded-2xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
-              <div className="flex items-center justify-between text-xs">
-                <span className={`font-medium ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Surge Price Multiplier</span>
-                <span className="text-base font-black text-amber-500">{settings.surgeMultiplier}x</span>
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Header Sync Status Banner */}
+          <div
+            className={`p-4 rounded-3xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-3 ${
+              isLight
+                ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border-emerald-200 text-slate-800'
+                : 'bg-gradient-to-r from-emerald-950/40 via-slate-900 to-sky-950/30 border-emerald-500/30 text-slate-100'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-600 flex items-center justify-center border border-emerald-500/30">
+                <Radio className="w-5 h-5 animate-pulse" />
               </div>
-              <input
-                type="range"
-                min="1.0"
-                max="3.0"
-                step="0.1"
-                value={settings.surgeMultiplier}
-                onChange={(e) =>
-                  setSettings({ ...settings, surgeMultiplier: parseFloat(e.target.value) })
-                }
-                className="w-full accent-amber-500 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-                <span>1.0x (Standard)</span>
-                <span>2.0x (Peak Hours)</span>
-                <span>3.0x (High Demand Storm)</span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black">Live Passenger Fare Engine Synchronization</h3>
+                  <span className="text-[10px] bg-emerald-500 text-slate-950 font-black px-2 py-0.5 rounded-full">
+                    LIVE ACTIVE
+                  </span>
+                </div>
+                <p className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                  Changes made here update the passenger fare calculation, suggested inDrive bidding rates, and driver payouts instantly.
+                </p>
               </div>
             </div>
 
-            {/* Base Fare & Per-Km Controls */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className={`p-3.5 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
-                <label className="text-[10px] font-bold uppercase text-slate-400">Base Fare (₹)</label>
-                <input
-                  type="number"
-                  step="5"
-                  value={settings.baseFare}
-                  onChange={(e) => setSettings({ ...settings, baseFare: parseFloat(e.target.value) || 35.0 })}
-                  className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-amber-400 ${isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'}`}
-                />
-              </div>
-
-              <div className={`p-3.5 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
-                <label className="text-[10px] font-bold uppercase text-slate-400">Per-Km Rate (₹)</label>
-                <input
-                  type="number"
-                  step="1"
-                  value={settings.perKmRate}
-                  onChange={(e) => setSettings({ ...settings, perKmRate: parseFloat(e.target.value) || 12.0 })}
-                  className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-amber-400 ${isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'}`}
-                />
-              </div>
-            </div>
-
-            {/* Commission Rate */}
-            <div className={`p-3.5 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
-              <div className="flex items-center justify-between text-xs">
-                <label className="text-[10px] font-bold uppercase text-slate-400">Platform Take Rate (%)</label>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">{settings.commissionRate}%</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="25"
-                step="1"
-                value={settings.commissionRate}
-                onChange={(e) =>
-                  setSettings({ ...settings, commissionRate: parseInt(e.target.value, 10) })
-                }
-                className="w-full accent-emerald-500 cursor-pointer"
-              />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleResetPricing}
+                className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  isLight
+                    ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
+                    : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
+                }`}
+                title="Reset pricing parameters to default"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset Defaults</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePricing}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Deploy to Passenger App</span>
+              </button>
             </div>
           </div>
 
-          {/* Live Pricing Estimation Preview */}
-          <div className={`border rounded-3xl p-5 space-y-4 shadow-md flex flex-col justify-between ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'}`}>
-            <div>
-              <h3 className={`text-sm font-bold flex items-center gap-2 mb-3 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                <Zap className="w-4 h-4 text-emerald-500" />
-                Live Dynamic Fare Calculator (Preview)
-              </h3>
-
-              <div className="space-y-2.5 text-xs">
-                <div className={`p-3 rounded-xl border flex justify-between items-center ${isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-950 border-slate-800 text-slate-300'}`}>
-                  <span>Sample Trip (4.8 km · 12 min):</span>
-                  <span className={`font-black ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                    ₹{((settings.baseFare + 4.8 * settings.perKmRate) * settings.surgeMultiplier).toFixed(2)}
-                  </span>
-                </div>
-
-                <div className={`p-3 rounded-xl border flex justify-between items-center ${isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-950 border-slate-800 text-slate-300'}`}>
-                  <span>Captain Net Payout (85%):</span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                    ₹{(
-                      (settings.baseFare + 4.8 * settings.perKmRate) *
-                      settings.surgeMultiplier *
-                      ((100 - settings.commissionRate) / 100)
-                    ).toFixed(2)}
-                  </span>
-                </div>
-
-                <div className={`p-3 rounded-xl border flex justify-between items-center ${isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-950 border-slate-800 text-slate-300'}`}>
-                  <span>Platform Revenue:</span>
-                  <span className="font-bold text-amber-600 dark:text-amber-400">
-                    ₹{(
-                      (settings.baseFare + 4.8 * settings.perKmRate) *
-                      settings.surgeMultiplier *
-                      (settings.commissionRate / 100)
-                    ).toFixed(2)}
-                  </span>
-                </div>
+          {/* Category Tabs Selector (Comfort Ride vs Moto Courier) */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl border bg-emerald-500/5 border-emerald-500/20">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                Category Pricing Engines:
+              </span>
+              <div className="flex items-center gap-1 bg-slate-200/60 dark:bg-slate-900 p-1 rounded-xl">
+                {[
+                  { id: 'both', label: 'All Ride Categories (Split View)', icon: '⚡' },
+                  { id: 'moto_comfort', label: 'Comfort Moto Ride', icon: '🛵' },
+                  { id: 'moto_delivery', label: 'Moto Courier / Delivery', icon: '📦' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setPricingActiveCategory(tab.id as any)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      pricingActiveCategory === tab.id
+                        ? 'bg-emerald-500 text-slate-950 font-black shadow-xs'
+                        : isLight
+                        ? 'text-slate-700 hover:text-slate-950'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                setActionNotice({ type: 'success', message: 'Dispatch & Surge pricing rules successfully saved.' });
-              }}
-              className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition-colors shadow-lg shadow-emerald-500/20 cursor-pointer"
-            >
-              Apply Fare Rules
-            </button>
+            <div className="text-[11px] text-slate-500 flex items-center gap-2">
+              <span>Comfort: ₹{settings.tierPricing.moto_comfort.baseFare} base / ₹{settings.tierPricing.moto_comfort.perKmRate}/km</span>
+              <span>•</span>
+              <span>Courier: ₹{settings.tierPricing.moto_delivery.baseFare} base / ₹{settings.tierPricing.moto_delivery.perKmRate}/km</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Column 1: Category 1 - Comfort Moto Ride Pricing */}
+            {(pricingActiveCategory === 'both' || pricingActiveCategory === 'moto_comfort') && (
+              <div className={`border rounded-3xl p-5 space-y-4 shadow-md ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'}`}>
+                <div className="flex items-center justify-between pb-1 border-b border-slate-200/60 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🛵</span>
+                    <div>
+                      <h3 className={`text-sm font-black flex items-center gap-1.5 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                        Comfort Moto Ride
+                      </h3>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block">
+                        Passenger pillion ride with helmet
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold">
+                    PRIMARY
+                  </span>
+                </div>
+
+                {/* Base Fare */}
+                <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase text-slate-400">Comfort Base Pickup (₹)</label>
+                    <span className="font-mono text-xs font-bold text-emerald-600">₹{settings.tierPricing.moto_comfort.baseFare.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={settings.tierPricing.moto_comfort.baseFare}
+                    onChange={(e) => {
+                      const val = Math.max(0, parseFloat(e.target.value) || 0);
+                      setSettings({
+                        ...settings,
+                        baseFare: val,
+                        tierPricing: {
+                          ...settings.tierPricing,
+                          moto_comfort: {
+                            ...settings.tierPricing.moto_comfort,
+                            baseFare: val,
+                          },
+                        },
+                      });
+                    }}
+                    className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-emerald-500 ${
+                      isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                    }`}
+                  />
+                  <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Flag-drop fare for passenger moto trips.
+                  </p>
+                </div>
+
+                {/* Included Base Distance */}
+                <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase text-slate-400">Comfort Included Distance (km)</label>
+                    <span className="font-mono text-xs font-bold text-sky-600">{settings.tierPricing.moto_comfort.baseIncludedKm} km</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={settings.tierPricing.moto_comfort.baseIncludedKm}
+                    onChange={(e) => {
+                      const val = Math.max(0, parseFloat(e.target.value) || 0);
+                      setSettings({
+                        ...settings,
+                        baseIncludedKm: val,
+                        tierPricing: {
+                          ...settings.tierPricing,
+                          moto_comfort: {
+                            ...settings.tierPricing.moto_comfort,
+                            baseIncludedKm: val,
+                          },
+                        },
+                      });
+                    }}
+                    className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-sky-500 ${
+                      isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                    }`}
+                  />
+                </div>
+
+                {/* Per-Km Rate */}
+                <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase text-slate-400">Comfort Per-Km Rate (₹/km)</label>
+                    <span className="font-mono text-xs font-bold text-emerald-600">₹{settings.tierPricing.moto_comfort.perKmRate.toFixed(2)}/km</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.5"
+                    value={settings.tierPricing.moto_comfort.perKmRate}
+                    onChange={(e) => {
+                      const val = Math.max(1, parseFloat(e.target.value) || 1);
+                      setSettings({
+                        ...settings,
+                        perKmRate: val,
+                        tierPricing: {
+                          ...settings.tierPricing,
+                          moto_comfort: {
+                            ...settings.tierPricing.moto_comfort,
+                            perKmRate: val,
+                          },
+                        },
+                      });
+                    }}
+                    className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-emerald-500 ${
+                      isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                    }`}
+                  />
+                </div>
+
+                {/* Per-Minute Time Rate & Minimum Fare */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block">Time (₹/min)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={settings.tierPricing.moto_comfort.perMinuteRate}
+                      onChange={(e) => {
+                        const val = Math.max(0, parseFloat(e.target.value) || 0);
+                        setSettings({
+                          ...settings,
+                          perMinuteRate: val,
+                          tierPricing: {
+                            ...settings.tierPricing,
+                            moto_comfort: {
+                              ...settings.tierPricing.moto_comfort,
+                              perMinuteRate: val,
+                            },
+                          },
+                        });
+                      }}
+                      className={`w-full border rounded-xl px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-teal-500 ${
+                        isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                      }`}
+                    />
+                  </div>
+
+                  <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block">Min Fare (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="5"
+                      value={settings.tierPricing.moto_comfort.minimumFare}
+                      onChange={(e) => {
+                        const val = Math.max(0, parseFloat(e.target.value) || 0);
+                        setSettings({
+                          ...settings,
+                          minimumFare: val,
+                          tierPricing: {
+                            ...settings.tierPricing,
+                            moto_comfort: {
+                              ...settings.tierPricing.moto_comfort,
+                              minimumFare: val,
+                            },
+                          },
+                        });
+                      }}
+                      className={`w-full border rounded-xl px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-amber-500 ${
+                        isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Column 2: Category 2 - Moto Courier / Delivery Pricing */}
+            {(pricingActiveCategory === 'both' || pricingActiveCategory === 'moto_delivery') && (
+              <div className={`border rounded-3xl p-5 space-y-4 shadow-md ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'}`}>
+                <div className="flex items-center justify-between pb-1 border-b border-slate-200/60 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">📦</span>
+                    <div>
+                      <h3 className={`text-sm font-black flex items-center gap-1.5 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                        Moto Courier / Delivery
+                      </h3>
+                      <span className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold block">
+                        Package & parcel courier dispatch
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] bg-sky-500/20 text-sky-600 dark:text-sky-400 px-2 py-0.5 rounded-full font-bold">
+                    COURIER TIER
+                  </span>
+                </div>
+
+                {/* Base Fare */}
+                <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase text-slate-400">Courier Base Pickup (₹)</label>
+                    <span className="font-mono text-xs font-bold text-sky-600">₹{settings.tierPricing.moto_delivery.baseFare.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={settings.tierPricing.moto_delivery.baseFare}
+                    onChange={(e) => {
+                      const val = Math.max(0, parseFloat(e.target.value) || 0);
+                      setSettings({
+                        ...settings,
+                        tierPricing: {
+                          ...settings.tierPricing,
+                          moto_delivery: {
+                            ...settings.tierPricing.moto_delivery,
+                            baseFare: val,
+                          },
+                        },
+                      });
+                    }}
+                    className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-sky-500 ${
+                      isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                    }`}
+                  />
+                  <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Flag-drop rate specifically for document/package courier trips.
+                  </p>
+                </div>
+
+                {/* Included Base Distance */}
+                <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase text-slate-400">Courier Included Distance (km)</label>
+                    <span className="font-mono text-xs font-bold text-sky-600">{settings.tierPricing.moto_delivery.baseIncludedKm} km</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={settings.tierPricing.moto_delivery.baseIncludedKm}
+                    onChange={(e) => {
+                      const val = Math.max(0, parseFloat(e.target.value) || 0);
+                      setSettings({
+                        ...settings,
+                        tierPricing: {
+                          ...settings.tierPricing,
+                          moto_delivery: {
+                            ...settings.tierPricing.moto_delivery,
+                            baseIncludedKm: val,
+                          },
+                        },
+                      });
+                    }}
+                    className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-sky-500 ${
+                      isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                    }`}
+                  />
+                </div>
+
+                {/* Per-Km Rate */}
+                <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase text-slate-400">Courier Per-Km Rate (₹/km)</label>
+                    <span className="font-mono text-xs font-bold text-sky-600">₹{settings.tierPricing.moto_delivery.perKmRate.toFixed(2)}/km</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.5"
+                    value={settings.tierPricing.moto_delivery.perKmRate}
+                    onChange={(e) => {
+                      const val = Math.max(1, parseFloat(e.target.value) || 1);
+                      setSettings({
+                        ...settings,
+                        tierPricing: {
+                          ...settings.tierPricing,
+                          moto_delivery: {
+                            ...settings.tierPricing.moto_delivery,
+                            perKmRate: val,
+                          },
+                        },
+                      });
+                    }}
+                    className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-sky-500 ${
+                      isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                    }`}
+                  />
+                </div>
+
+                {/* Per-Minute Time Rate & Minimum Fare */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block">Time (₹/min)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={settings.tierPricing.moto_delivery.perMinuteRate}
+                      onChange={(e) => {
+                        const val = Math.max(0, parseFloat(e.target.value) || 0);
+                        setSettings({
+                          ...settings,
+                          tierPricing: {
+                            ...settings.tierPricing,
+                            moto_delivery: {
+                              ...settings.tierPricing.moto_delivery,
+                              perMinuteRate: val,
+                            },
+                          },
+                        });
+                      }}
+                      className={`w-full border rounded-xl px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-teal-500 ${
+                        isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                      }`}
+                    />
+                  </div>
+
+                  <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block">Min Fare (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="5"
+                      value={settings.tierPricing.moto_delivery.minimumFare}
+                      onChange={(e) => {
+                        const val = Math.max(0, parseFloat(e.target.value) || 0);
+                        setSettings({
+                          ...settings,
+                          tierPricing: {
+                            ...settings.tierPricing,
+                            moto_delivery: {
+                              ...settings.tierPricing.moto_delivery,
+                              minimumFare: val,
+                            },
+                          },
+                        });
+                      }}
+                      className={`w-full border rounded-xl px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-amber-500 ${
+                        isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                      }`}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Column 3: Surge Multiplier, Commission & Live Category Simulator */}
+            <div className={`border rounded-3xl p-5 space-y-4 shadow-md flex flex-col justify-between ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'}`}>
+              <div className="space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <h3 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                    <Flame className="w-4 h-4 text-amber-500" />
+                    Market Surge & Simulator
+                  </h3>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-600 dark:text-amber-300 px-2 py-0.5 rounded-full font-bold">
+                    LIVE
+                  </span>
+                </div>
+
+                {/* Surge Slider */}
+                <div className={`p-3 rounded-2xl border space-y-2 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700 dark:text-slate-300">Surge Multiplier</span>
+                    <span className="text-base font-black text-amber-500">{settings.surgeMultiplier.toFixed(1)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1.0"
+                    max="3.0"
+                    step="0.1"
+                    value={settings.surgeMultiplier}
+                    onChange={(e) => setSettings({ ...settings, surgeMultiplier: parseFloat(e.target.value) })}
+                    className="w-full accent-amber-500 cursor-pointer"
+                  />
+                  <div className="grid grid-cols-4 gap-1 pt-0.5">
+                    {[
+                      { label: '1.0x Base', val: 1.0 },
+                      { label: '1.3x Rain', val: 1.3 },
+                      { label: '1.6x Peak', val: 1.6 },
+                      { label: '2.2x High', val: 2.2 },
+                    ].map((p) => (
+                      <button
+                        key={p.val}
+                        type="button"
+                        onClick={() => setSettings({ ...settings, surgeMultiplier: p.val })}
+                        className={`px-1.5 py-1 rounded-lg text-[9px] font-bold border transition-colors cursor-pointer text-center ${
+                          settings.surgeMultiplier === p.val
+                            ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs'
+                            : isLight
+                            ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
+                            : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Commission Take Rate */}
+                <div className={`p-3 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[10px] font-bold uppercase text-slate-400">Platform Take Rate</span>
+                    <span className="font-black text-emerald-600 dark:text-emerald-400">{settings.commissionRate}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="30"
+                    step="1"
+                    value={settings.commissionRate}
+                    onChange={(e) => setSettings({ ...settings, commissionRate: parseInt(e.target.value, 10) })}
+                    className="w-full accent-emerald-500 cursor-pointer"
+                  />
+                </div>
+
+                {/* Simulator Category Selector & Distance */}
+                <div className={`p-3 rounded-2xl border space-y-2 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[10px] font-bold uppercase text-slate-400">Simulate Category</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setSimTierAdmin('moto_comfort')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                          simTierAdmin === 'moto_comfort'
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-500 font-black'
+                            : 'bg-transparent text-slate-500 border-slate-300 dark:border-slate-700'
+                        }`}
+                      >
+                        🛵 Comfort
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSimTierAdmin('moto_delivery')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                          simTierAdmin === 'moto_delivery'
+                            ? 'bg-sky-500 text-slate-950 border-sky-500 font-black'
+                            : 'bg-transparent text-slate-500 border-slate-300 dark:border-slate-700'
+                        }`}
+                      >
+                        📦 Courier
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>Distance:</span>
+                    <span className="font-mono font-bold text-emerald-600">{simDistAdmin.toFixed(1)} km (~{Math.round(simDistAdmin * 2.2 + 3)} min)</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="25"
+                    step="0.5"
+                    value={simDistAdmin}
+                    onChange={(e) => setSimDistAdmin(parseFloat(e.target.value))}
+                    className="w-full accent-emerald-500 cursor-pointer"
+                  />
+                </div>
+
+                {/* Real-time Calculation Result */}
+                {(() => {
+                  const activeConfig = simTierAdmin === 'moto_delivery' ? settings.tierPricing.moto_delivery : settings.tierPricing.moto_comfort;
+                  const simulatedMins = Math.round(simDistAdmin * 2.2 + 3);
+                  const chargeableKm = Math.max(0, simDistAdmin - activeConfig.baseIncludedKm);
+                  const subtotal = activeConfig.baseFare + (chargeableKm * activeConfig.perKmRate) + (simulatedMins * activeConfig.perMinuteRate);
+                  const surgedTotal = Math.max(activeConfig.minimumFare, Math.round(subtotal * settings.surgeMultiplier * 100) / 100);
+                  const captainPayout = Math.round(surgedTotal * ((100 - settings.commissionRate) / 100) * 100) / 100;
+                  const platformRevenue = Math.round((surgedTotal - captainPayout) * 100) / 100;
+
+                  return (
+                    <div className="space-y-1.5 text-xs">
+                      <div className={`p-2.5 rounded-xl border flex justify-between items-center ${
+                        simTierAdmin === 'moto_delivery'
+                          ? isLight ? 'bg-sky-50 border-sky-200 text-slate-800' : 'bg-sky-950/30 border-sky-500/30 text-sky-100'
+                          : isLight ? 'bg-emerald-50 border-emerald-200 text-slate-800' : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-100'
+                      }`}>
+                        <div>
+                          <span className="font-bold block">{activeConfig.name} Fair Fare</span>
+                          <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                            Base ₹{activeConfig.baseFare} + {chargeableKm.toFixed(1)}km @ ₹{activeConfig.perKmRate}/km
+                          </span>
+                        </div>
+                        <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                          ₹{surgedTotal.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] px-1 text-slate-500">
+                        <span>Captain Take-Home: <strong className="text-emerald-600">₹{captainPayout.toFixed(2)}</strong></span>
+                        <span>Platform Fee: <strong className="text-amber-600">₹{platformRevenue.toFixed(2)}</strong></span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Deploy Button */}
+              <div className="space-y-2 pt-3 border-t border-slate-200/60 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={handleSavePricing}
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Deploy & Broadcast Fare Rules</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1631,17 +2127,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
 
             {/* Modal Body */}
             <div className="p-5 space-y-4 overflow-y-auto">
-              {/* Map Preview */}
-              <MapMockup
-                pickupLocation={selectedRide.pickup_location}
-                dropoffLocation={selectedRide.dropoff_location}
-                status={selectedRide.status}
-                captainName={selectedRide.captain_name || undefined}
-                distanceKm={selectedRide.distance_km || 4.8}
-                estimatedMins={selectedRide.estimated_mins || 12}
-                heightClass="h-48 sm:h-56"
-              />
-
               {/* Trip Parties Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 {/* Passenger */}

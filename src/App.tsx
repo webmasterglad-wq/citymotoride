@@ -5,6 +5,7 @@ import { CaptainApp } from './components/CaptainApp';
 import { AdminDashboard } from './components/AdminDashboard';
 import { SqlSetupModal } from './components/SqlSetupModal';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { PricingProvider } from './context/PricingContext';
 
 function AppContent() {
   const [activeView, setActiveView] = useState<'passenger' | 'captain' | 'admin'>('passenger');
@@ -87,7 +88,9 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <PricingProvider>
+        <AppContent />
+      </PricingProvider>
     </ThemeProvider>
   );
 }

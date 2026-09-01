@@ -15,7 +15,6 @@ import {
   Bike,
   Shield,
   ArrowRight,
-  Sparkles,
   Search,
   Plus,
   Minus,
@@ -50,15 +49,16 @@ import {
   unsubscribeChannel,
 } from '../services/rideService';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { MapMockup } from './MapMockup';
 import { InRideChatModal } from './InRideChatModal';
 import { SafetyToolkitModal } from './SafetyToolkitModal';
 import { PassengerProfileModal } from './PassengerProfileModal';
 import { FareCalculatorModal } from './FareCalculatorModal';
 import { FareBreakdown, calculateEstimatedRoute, calculateMotoFare } from '../utils/fareCalculator';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { SERVICE_ZONES, ServiceZone, detectZoneForLocation } from '../utils/geoUtils';
+import { SERVICE_ZONES, ServiceZone, detectZoneForLocation, resolveLocationCoords, LatLng } from '../utils/geoUtils';
 import { useTheme } from '../context/ThemeContext';
+import { usePricing } from '../context/PricingContext';
+import { GoogleLocationSearchInput } from './GoogleLocationSearchInput';
 
 interface PassengerAppProps {
   passengerUser?: UserProfile;
@@ -124,8 +124,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 }) => {
   const [pickup, setPickup] = useState(DEFAULT_PICKUPS[0]);
   const [dropoff, setDropoff] = useState(DEFAULT_DROPOFFS[0]);
+  const [pickupCoords, setPickupCoords] = useState<LatLng | null>(() => resolveLocationCoords(DEFAULT_PICKUPS[0]));
+  const [dropoffCoords, setDropoffCoords] = useState<LatLng | null>(() => resolveLocationCoords(DEFAULT_DROPOFFS[0]));
   const [selectedTier, setSelectedTier] = useState<string>('moto_comfort');
-  const [bookingMode, setBookingMode] = useState<'instant' | 'indrive'>('instant');
+  const [bookingMode] = useState<'indrive'>('indrive');
   const [customBidFare, setCustomBidFare] = useState<number>(14.5);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('upi');
 
@@ -154,6 +156,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [realtimeStatus, setRealtimeStatus] = useState<string>('idle');
 
   const { isLight } = useTheme();
+  const { pricing, calculateFare } = usePricing();
 
   // Modals & Post-Ride Feedback
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -183,7 +186,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     }
   };
 
-  // Recalculate estimated route and fare whenever pickup or dropoff changes
+  // Recalculate estimated route and fare whenever pickup, dropoff, selectedTier or admin pricing changes
   useEffect(() => {
     if (!pickup.trim() || !dropoff.trim()) return;
 
@@ -193,7 +196,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     setDistanceKm(route.distanceKm);
     setEstimatedMins(route.estimatedMins + (tierObj.etaMinsBonus || 0));
 
-    const breakdown = calculateMotoFare({
+    const breakdown = calculateFare({
       distanceKm: route.distanceKm,
       estimatedMins: route.estimatedMins + (tierObj.etaMinsBonus || 0),
       tierId: tierObj.id,
@@ -206,7 +209,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     setFareBreakdown(breakdown);
     setBaseCalculatedFare(breakdown.totalFare);
     setCustomBidFare(breakdown.totalFare);
-  }, [pickup, dropoff, selectedTier]);
+  }, [pickup, dropoff, selectedTier, pricing]);
 
   // Handler when map directions engine computes precise road route
   const handleRouteCalculated = (newDistKm: number, newDurMins: number) => {
@@ -217,7 +220,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     setEstimatedMins(newDurMins + (tierObj.etaMinsBonus || 0));
     setIsAccurateRoute(true);
 
-    const breakdown = calculateMotoFare({
+    const breakdown = calculateFare({
       distanceKm: newDistKm,
       estimatedMins: newDurMins + (tierObj.etaMinsBonus || 0),
       tierId: tierObj.id,
@@ -236,8 +239,11 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   // Swap pickup and dropoff locations
   const handleSwapLocations = () => {
     const currentPick = pickup;
+    const currentPickCoords = pickupCoords;
     setPickup(dropoff);
+    setPickupCoords(dropoffCoords);
     setDropoff(currentPick);
+    setDropoffCoords(currentPickCoords);
   };
 
   // Load existing active ride on mount
@@ -524,144 +530,56 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
       {/* Active Ride Mode vs Booking Mode */}
       {!activeRide ? (
-        /* ================= UBER / INDRIVE BOOKING INTERFACE ================= */
+        /* ================= INDRIVE OFFER PRICE BOOKING INTERFACE ================= */
         <div className="flex flex-col space-y-3 p-4">
-          {/* Uber Vector & Google Maps Preview */}
-          <MapMockup
-            pickupLocation={pickup}
-            dropoffLocation={dropoff}
-            distanceKm={distanceKm}
-            estimatedMins={estimatedMins}
-            heightClass="h-48 sm:h-56"
-            onRouteCalculated={handleRouteCalculated}
-            onSelectZoneLocation={(newPick, newDrop) => {
-              setPickup(newPick);
-              setDropoff(newDrop);
-            }}
-          />
-
-          {/* Service Area Tricity Hub Selector */}
-          <div
-            className={`border rounded-xl p-2 space-y-1.5 transition-colors ${
-              isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/90 border-slate-800'
-            }`}
-          >
-            <div className="flex items-center justify-between text-[11px]">
-              <span className={`font-bold flex items-center gap-1.5 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Active Service Areas (6 Zones)</span>
-              </span>
-              <span className="text-[10px] text-emerald-600 font-mono font-bold">Live Dispatch</span>
-            </div>
-
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-              {Object.values(SERVICE_ZONES).map((zone) => {
-                const isCurrent = detectZoneForLocation(pickup).id === zone.id;
-                return (
-                  <button
-                    key={zone.id}
-                    type="button"
-                    onClick={() => {
-                      if (zone.popularPickups[0]) {
-                        setPickup(zone.popularPickups[0]);
-                      }
-                      if (zone.popularDropoffs[0]) {
-                        setDropoff(zone.popularDropoffs[0]);
-                      }
-                    }}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all flex items-center gap-1 cursor-pointer border ${
-                      isCurrent
-                        ? isLight
-                          ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                          : 'bg-slate-800 text-white border-white/40 shadow-sm'
-                        : isLight
-                        ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
-                        : 'bg-slate-950/80 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
-                    }`}
-                  >
-                    <span
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ backgroundColor: zone.color }}
-                    />
-                    <span>{zone.name.split(' ')[0]}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Mode Tabs: Uber Instant vs inDrive Bidding */}
-          <div
-            className={`grid grid-cols-2 gap-1.5 p-1 rounded-2xl border transition-colors ${
-              isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-900/90 border-slate-800'
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => setBookingMode('instant')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                bookingMode === 'instant'
-                  ? isLight
-                    ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
-                    : 'bg-slate-800 text-white shadow-md border border-slate-700'
-                  : isLight
-                  ? 'text-slate-600 hover:text-slate-900'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-sky-500" />
-              Uber Fixed Price
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setBookingMode('indrive')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                bookingMode === 'indrive'
-                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20 font-black'
-                  : isLight
-                  ? 'text-slate-600 hover:text-slate-900'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Flame className="w-3.5 h-3.5 text-amber-500" />
-              inDrive Custom Offer
-            </button>
-          </div>
-
           <form onSubmit={handleBookRide} className="space-y-3.5">
-            {/* Pickup & Destination Inputs (Uber Pill Card with Swap Button) */}
+            {/* Pickup & Destination Inputs (Google Search Integrated) */}
             <div
               className={`border rounded-2xl p-3 space-y-2.5 relative transition-colors ${
                 isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
               }`}
             >
-              {/* Pickup */}
-              <div className="flex items-center gap-2.5">
-                <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-600 flex items-center justify-center text-[10px] font-black shrink-0">
-                  ●
+              {/* Pickup Google Location Search */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
+                    <span>Pickup Location</span>
+                  </span>
                 </div>
-                <div className="flex-1">
-                  <input
-                    type="text"
-                    required
-                    value={pickup}
-                    onChange={(e) => setPickup(e.target.value)}
-                    placeholder="Pickup location"
-                    className={`w-full bg-transparent text-xs font-semibold focus:outline-none ${
-                      isLight ? 'text-slate-900 placeholder-slate-400' : 'text-slate-100 placeholder-slate-500'
-                    }`}
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-600 flex items-center justify-center text-[10px] font-black shrink-0">
+                    ●
+                  </div>
+                  <div className="flex-1">
+                    <GoogleLocationSearchInput
+                      type="pickup"
+                      value={pickup}
+                      placeholder="Search Google Maps for Pickup location..."
+                      required
+                      referenceCoords={pickupCoords}
+                      onChange={(val, coords) => {
+                        setPickup(val);
+                        if (coords) {
+                          setPickupCoords(coords);
+                        } else if (val && val.trim() !== '') {
+                          setPickupCoords(resolveLocationCoords(val));
+                        } else {
+                          setPickupCoords(null);
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
               {/* Divider with Swap Button */}
-              <div className="relative flex items-center justify-center">
+              <div className="relative flex items-center justify-center py-0.5">
                 <div className={`w-full h-px ml-8 mr-8 ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />
                 <button
                   type="button"
                   onClick={handleSwapLocations}
-                  title="Swap Pickup & Destination"
+                  title="Swap Pickup & Drop-off"
                   className={`absolute right-2 p-1.5 rounded-full border transition-all hover:rotate-180 duration-300 cursor-pointer shadow-xs ${
                     isLight
                       ? 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
@@ -672,22 +590,37 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 </button>
               </div>
 
-              {/* Dropoff */}
-              <div className="flex items-center gap-2.5">
-                <div className="w-6 h-6 rounded-md bg-rose-500/20 border border-rose-500/50 text-rose-500 flex items-center justify-center text-[10px] font-black shrink-0">
-                  ■
+              {/* Dropoff Google Location Search */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 ring-2 ring-rose-500/20" />
+                    <span>Drop-off Destination</span>
+                  </span>
                 </div>
-                <div className="flex-1">
-                  <input
-                    type="text"
-                    required
-                    value={dropoff}
-                    onChange={(e) => setDropoff(e.target.value)}
-                    placeholder="Where to? (Destination)"
-                    className={`w-full bg-transparent text-xs font-semibold focus:outline-none ${
-                      isLight ? 'text-slate-900 placeholder-slate-400' : 'text-slate-100 placeholder-slate-500'
-                    }`}
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-md bg-rose-500/20 border border-rose-500/50 text-rose-500 flex items-center justify-center text-[10px] font-black shrink-0">
+                    ■
+                  </div>
+                  <div className="flex-1">
+                    <GoogleLocationSearchInput
+                      type="dropoff"
+                      value={dropoff}
+                      placeholder="Search Google Maps for Destination..."
+                      required
+                      referenceCoords={pickupCoords}
+                      onChange={(val, coords) => {
+                        setDropoff(val);
+                        if (coords) {
+                          setDropoffCoords(coords);
+                        } else if (val && val.trim() !== '') {
+                          setDropoffCoords(resolveLocationCoords(val));
+                        } else {
+                          setDropoffCoords(null);
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -701,7 +634,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 <button
                   key={loc}
                   type="button"
-                  onClick={() => setDropoff(loc)}
+                  onClick={() => {
+                    setDropoff(loc);
+                    setDropoffCoords(resolveLocationCoords(loc));
+                  }}
                   className={`text-[10px] px-2.5 py-1 rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     isLight
                       ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 shadow-xs'
@@ -714,49 +650,48 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             </div>
 
             {/* Distance & Fare Calculation Summary Badge */}
-            <div
-              className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 text-xs transition-colors ${
-                isLight ? 'bg-emerald-50/60 border-emerald-200/70 text-slate-800' : 'bg-emerald-950/20 border-emerald-500/20 text-slate-200'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-600 font-bold shrink-0">
-                  <Navigation className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-black text-xs text-emerald-700 dark:text-emerald-400">
-                      {distanceKm} km
-                    </span>
-                    <span className="text-[10px] font-semibold text-slate-500">
-                      (~{estimatedMins} mins)
-                    </span>
-                    {isAccurateRoute && (
-                      <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold">
-                        ROAD GPS
-                      </span>
-                    )}
+            {(() => {
+              const activeTierConfig = selectedTier === 'moto_delivery' ? pricing.tierPricing.moto_delivery : pricing.tierPricing.moto_comfort;
+              return (
+                <div
+                  className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 text-xs transition-colors ${
+                    isLight ? 'bg-emerald-50/60 border-emerald-200/70 text-slate-800' : 'bg-emerald-950/20 border-emerald-500/20 text-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-600 font-bold shrink-0">
+                      <Navigation className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-black text-xs text-emerald-700 dark:text-emerald-400">
+                          {distanceKm} km
+                        </span>
+                        <span className="text-[10px] font-semibold text-slate-500">
+                          (~{estimatedMins} mins)
+                        </span>
+                        {isAccurateRoute && (
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold">
+                            ROAD GPS
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                        {activeTierConfig.name}
+                        {pricing.surgeMultiplier > 1.0 && (
+                          <span className="ml-1 text-amber-500 font-bold">({pricing.surgeMultiplier}x Surge)</span>
+                        )}
+                      </p>
+                    </div>
                   </div>
-                  <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    Base ₹20 + ₹8/km rate · Fair Fare: <span className="font-bold text-emerald-600">₹{baseCalculatedFare.toFixed(2)}</span>
-                  </p>
-                </div>
-              </div>
 
-              <button
-                type="button"
-                onClick={() => setIsCalculatorModalOpen(true)}
-                className={`px-2.5 py-1.5 rounded-xl border text-[10px] font-black flex items-center gap-1 transition-all cursor-pointer ${
-                  isLight
-                    ? 'bg-white hover:bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs'
-                    : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-emerald-400'
-                }`}
-                title="View Detailed Distance Fare Formula & Simulator"
-              >
-                <Calculator className="w-3 h-3 text-emerald-500" />
-                <span>Calculator</span>
-              </button>
-            </div>
+                  <div className="text-right">
+                    <span className="text-[9px] uppercase font-bold text-slate-400 block">Recommended</span>
+                    <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">₹{baseCalculatedFare.toFixed(2)}</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Ride Tier Selection */}
             <div className="space-y-1.5">
@@ -771,12 +706,12 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               <div className="grid grid-cols-2 gap-2.5">
                 {RIDE_TIERS.map((tier) => {
                   const isSelected = selectedTier === tier.id;
-                  const tierFareObj = calculateMotoFare({
+                  const tierConfig = tier.id === 'moto_delivery' ? pricing.tierPricing.moto_delivery : pricing.tierPricing.moto_comfort;
+                  const tierFareObj = calculateFare({
                     distanceKm,
                     estimatedMins,
                     tierId: tier.id,
-                    tierMultiplier: tier.multiplier,
-                    tierName: tier.name,
+                    tierName: tierConfig.name,
                     pickupLocation: pickup,
                     isAccurateRoute,
                   });
@@ -796,26 +731,26 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-2xl">{tier.icon}</span>
+                        <span className="text-2xl">{tierConfig.icon || tier.icon}</span>
                         {tier.popular ? (
                           <span className="text-[8px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-black px-1.5 py-0.5 rounded">
                             RECOMMENDED
                           </span>
                         ) : (
                           <span className="text-[8px] bg-sky-500/20 text-sky-700 dark:text-sky-300 font-bold px-1.5 py-0.5 rounded">
-                            PARCEL
+                            COURIER
                           </span>
                         )}
                       </div>
                       <div>
                         <span className={`text-xs font-black block leading-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                          {tier.name}
+                          {tierConfig.name}
                         </span>
                         <span className={`text-xs font-black mt-0.5 block ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
                           ₹{tierFareObj.totalFare.toFixed(2)}
                         </span>
                         <span className={`text-[10px] block mt-0.5 truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                          {tier.tagline}
+                          {tierConfig.tagline || tier.tagline}
                         </span>
                       </div>
                     </button>
@@ -824,70 +759,71 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               </div>
             </div>
 
-            {/* inDrive Bidding Controls (When inDrive Mode active) */}
-            {bookingMode === 'indrive' && (
-              <div
-                className={`p-3.5 border rounded-2xl space-y-2.5 animate-in slide-in-from-top-2 transition-colors ${
-                  isLight
-                    ? 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 shadow-sm'
-                    : 'bg-gradient-to-r from-emerald-950/40 to-slate-900 border-emerald-500/30'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className={`text-xs font-black flex items-center gap-1 ${isLight ? 'text-emerald-800' : 'text-emerald-300'}`}>
-                      <Flame className="w-3.5 h-3.5 text-amber-500" />
-                      Offer Your Price to Captains
-                    </span>
-                    <p className={`text-[10px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                      Suggested Fair Price: ₹{baseCalculatedFare.toFixed(2)} for {distanceKm} km
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-lg font-black text-amber-600">₹{customBidFare.toFixed(2)}</span>
-                  </div>
+            {/* inDrive Bidding Controls (Always Active) */}
+            <div
+              className={`p-3.5 border rounded-2xl space-y-2.5 transition-colors ${
+                isLight
+                  ? 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 shadow-sm'
+                  : 'bg-gradient-to-r from-emerald-950/40 to-slate-900 border-emerald-500/30'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className={`text-xs font-black flex items-center gap-1 ${isLight ? 'text-emerald-800' : 'text-emerald-300'}`}>
+                    <Flame className="w-3.5 h-3.5 text-amber-500" />
+                    Offer Your Price to Captains
+                  </span>
+                  <p className={`text-[10px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                    Suggested Fair Price: ₹{baseCalculatedFare.toFixed(2)} for {distanceKm} km
+                    {pricing.surgeMultiplier > 1.0 && (
+                      <span className="ml-1 text-amber-600 font-bold">({pricing.surgeMultiplier}x Surge Active)</span>
+                    )}
+                  </p>
                 </div>
-
-                {/* Counter buttons */}
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setCustomBidFare((prev) => Math.max(25.0, Number((prev - 5.0).toFixed(2))))}
-                    className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
-                      isLight
-                        ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
-                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                    }`}
-                  >
-                    <Minus className="w-3.5 h-3.5" /> - ₹5
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setCustomBidFare(baseCalculatedFare)}
-                    className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer ${
-                      isLight
-                        ? 'bg-white hover:bg-slate-100 text-emerald-700 border-emerald-200 font-black'
-                        : 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border-slate-700 font-black'
-                    }`}
-                  >
-                    Fair (₹{baseCalculatedFare.toFixed(2)})
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setCustomBidFare((prev) => Number((prev + 5.0).toFixed(2)))}
-                    className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
-                      isLight
-                        ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
-                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                    }`}
-                  >
-                    <Plus className="w-3.5 h-3.5" /> + ₹5
-                  </button>
+                <div className="text-right">
+                  <span className="text-lg font-black text-amber-600">₹{customBidFare.toFixed(2)}</span>
                 </div>
               </div>
-            )}
+
+              {/* Counter buttons */}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setCustomBidFare((prev) => Math.max(25.0, Number((prev - 5.0).toFixed(2))))}
+                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+                    isLight
+                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                  }`}
+                >
+                  <Minus className="w-3.5 h-3.5" /> - ₹5
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCustomBidFare(baseCalculatedFare)}
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer ${
+                    isLight
+                      ? 'bg-white hover:bg-slate-100 text-emerald-700 border-emerald-200 font-black'
+                      : 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border-slate-700 font-black'
+                  }`}
+                >
+                  Fair (₹{baseCalculatedFare.toFixed(2)})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCustomBidFare((prev) => Number((prev + 5.0).toFixed(2)))}
+                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+                    isLight
+                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                  }`}
+                >
+                  <Plus className="w-3.5 h-3.5" /> + ₹5
+                </button>
+              </div>
+            </div>
 
             {/* Payment Mode (UPI or Cash Only) */}
             <div className="space-y-1.5">
@@ -985,30 +921,19 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
             {/* Main Booking Action Button */}
             <button
-              id="uber-book-ride-btn"
+              id="indrive-book-ride-btn"
               type="submit"
               disabled={isSubmitting}
-              className={`w-full py-4 px-4 font-black rounded-2xl text-sm flex items-center justify-center gap-2 shadow-xl transition-all transform active:scale-[0.99] cursor-pointer ${
-                bookingMode === 'indrive'
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 shadow-emerald-500/25'
-                  : isLight
-                  ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/20'
-                  : 'bg-white hover:bg-slate-200 text-slate-950 shadow-white/10'
-              }`}
+              className="w-full py-4 px-4 font-black rounded-2xl text-sm flex items-center justify-center gap-2 shadow-xl transition-all transform active:scale-[0.99] cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 shadow-emerald-500/25"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Broadcasting to Nearby Captains...
-                </>
-              ) : bookingMode === 'indrive' ? (
-                <>
-                  <span>Request Ride for ₹{customBidFare.toFixed(2)}</span>
-                  <ArrowRight className="w-4 h-4" />
+                  Broadcasting Offer to Nearby Captains...
                 </>
               ) : (
                 <>
-                  <span>Confirm MotoRide · ₹{baseCalculatedFare.toFixed(2)}</span>
+                  <span>Request Ride for ₹{customBidFare.toFixed(2)}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -1244,17 +1169,6 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               </p>
             </div>
           )}
-
-          {/* Full Interactive Navigation Map */}
-          <MapMockup
-            pickupLocation={activeRide.pickup_location}
-            dropoffLocation={activeRide.dropoff_location}
-            status={activeRide.status}
-            captainName={activeRide.captain_name || undefined}
-            distanceKm={activeRide.distance_km || distanceKm}
-            estimatedMins={activeRide.estimated_mins || estimatedMins}
-            heightClass="h-56 sm:h-64"
-          />
 
           {/* Captain Card (Uber Driver Profile Style) */}
           {activeRide.captain_id ? (

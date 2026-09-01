@@ -100,6 +100,9 @@ export function calculateMotoFare({
   pickupLocation,
   customBaseFare,
   customPerKmRate,
+  customBaseIncludedKm,
+  customPerMinuteRate,
+  customMinimumFare,
   customSurgeMultiplier,
   isAccurateRoute = false,
 }: {
@@ -111,14 +114,17 @@ export function calculateMotoFare({
   pickupLocation?: string;
   customBaseFare?: number;
   customPerKmRate?: number;
+  customBaseIncludedKm?: number;
+  customPerMinuteRate?: number;
+  customMinimumFare?: number;
   customSurgeMultiplier?: number;
   isAccurateRoute?: boolean;
 }): FareBreakdown {
   const baseFare = customBaseFare ?? DEFAULT_PRICING.baseFare;
-  const baseIncludedKm = DEFAULT_PRICING.baseIncludedKm;
+  const baseIncludedKm = customBaseIncludedKm ?? DEFAULT_PRICING.baseIncludedKm;
   const perKmRate = customPerKmRate ?? DEFAULT_PRICING.perKmRate;
-  const perMinuteRate = DEFAULT_PRICING.perMinuteRate;
-  const minimumFare = DEFAULT_PRICING.minimumFare;
+  const perMinuteRate = customPerMinuteRate ?? DEFAULT_PRICING.perMinuteRate;
+  const minimumFare = customMinimumFare ?? DEFAULT_PRICING.minimumFare;
 
   // Determine surge from location or custom override
   let surgeMultiplier = 1.0;

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { FareBreakdown, DEFAULT_PRICING, calculateMotoFare } from '../utils/fareCalculator';
 import { useTheme } from '../context/ThemeContext';
+import { usePricing } from '../context/PricingContext';
 
 interface FareCalculatorModalProps {
   isOpen: boolean;
@@ -47,6 +48,7 @@ export const FareCalculatorModal: React.FC<FareCalculatorModalProps> = ({
   onApplySimulatedRoute,
 }) => {
   const { isLight } = useTheme();
+  const { calculateFare, pricing } = usePricing();
 
   const effectivePickup = pickupLocation || initialPickup || 'Pickup Location';
   const effectiveDropoff = dropoffLocation || initialDropoff || 'Drop-off Destination';
@@ -70,25 +72,22 @@ export const FareCalculatorModal: React.FC<FareCalculatorModalProps> = ({
   if (!isOpen) return null;
 
   const simulatedMins = Math.max(3, Math.round(testDistance * 2.2 + 3));
-  const tierMultiplier = testTier === 'moto_delivery' ? 0.85 : 1.0;
-  const tierName = testTier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Ride';
+  const activeTierConfig = testTier === 'moto_delivery' ? pricing.tierPricing.moto_delivery : pricing.tierPricing.moto_comfort;
 
-  const effectiveBreakdown: FareBreakdown = propBreakdown ?? calculateMotoFare({
+  const effectiveBreakdown: FareBreakdown = propBreakdown ?? calculateFare({
     distanceKm: testDistance,
     estimatedMins: simulatedMins,
     tierId: testTier,
-    tierMultiplier,
-    tierName,
+    tierName: activeTierConfig.name,
     pickupLocation: effectivePickup,
     customSurgeMultiplier: testSurge,
   });
 
-  const simBreakdown = calculateMotoFare({
+  const simBreakdown = calculateFare({
     distanceKm: testDistance,
     estimatedMins: simulatedMins,
     tierId: testTier,
-    tierMultiplier,
-    tierName,
+    tierName: activeTierConfig.name,
     customSurgeMultiplier: testSurge,
   });
 
@@ -182,10 +181,25 @@ export const FareCalculatorModal: React.FC<FareCalculatorModalProps> = ({
             </div>
           </div>
 
+          {/* Admin Dispatch Rates Sync Badge */}
+          <div
+            className={`p-2.5 rounded-xl border flex items-center justify-between text-[11px] ${
+              isLight ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900' : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 font-bold">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+              <span>{activeTierConfig.name} Rate Engine</span>
+            </div>
+            <span className="font-mono text-[10px] font-semibold">
+              Base ₹{effectiveBreakdown.baseFare.toFixed(2)} · ₹{effectiveBreakdown.perKmRate.toFixed(2)}/km {pricing.surgeMultiplier > 1.0 ? `· ${pricing.surgeMultiplier}x Surge` : ''}
+            </span>
+          </div>
+
           {/* Detailed Mathematical Calculation Breakdown */}
           <div className="space-y-2">
             <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              Fare Line Items (Standard Formula)
+              Fare Line Items ({activeTierConfig.name} Formula)
             </span>
 
             <div
@@ -324,14 +338,24 @@ export const FareCalculatorModal: React.FC<FareCalculatorModalProps> = ({
             {/* Category Tier Pills for Simulator */}
             <div className="grid grid-cols-2 gap-2 pt-1">
               {[
-                { id: 'moto_comfort', label: 'Comfort Ride', icon: '🛵', mult: 1.0 },
-                { id: 'moto_delivery', label: 'Moto Courier', icon: '📦', mult: 0.85 },
+                {
+                  id: 'moto_comfort',
+                  label: pricing.tierPricing.moto_comfort.name,
+                  icon: pricing.tierPricing.moto_comfort.icon || '🛵',
+                  rate: `₹${pricing.tierPricing.moto_comfort.baseFare} + ₹${pricing.tierPricing.moto_comfort.perKmRate}/km`,
+                },
+                {
+                  id: 'moto_delivery',
+                  label: pricing.tierPricing.moto_delivery.name,
+                  icon: pricing.tierPricing.moto_delivery.icon || '📦',
+                  rate: `₹${pricing.tierPricing.moto_delivery.baseFare} + ₹${pricing.tierPricing.moto_delivery.perKmRate}/km`,
+                },
               ].map((tier) => (
                 <button
                   key={tier.id}
                   type="button"
                   onClick={() => setTestTier(tier.id)}
-                  className={`py-1.5 px-2 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer flex items-center justify-center gap-1 ${
+                  className={`py-2 px-2.5 rounded-xl text-left border transition-colors cursor-pointer ${
                     testTier === tier.id
                       ? 'bg-emerald-500 text-slate-950 border-emerald-500 font-black shadow-xs'
                       : isLight
@@ -339,8 +363,11 @@ export const FareCalculatorModal: React.FC<FareCalculatorModalProps> = ({
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                   }`}
                 >
-                  <span>{tier.icon}</span>
-                  <span>{tier.label}</span>
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span>{tier.icon}</span>
+                    <span className="truncate font-bold">{tier.label}</span>
+                  </div>
+                  <div className="text-[9px] font-mono opacity-80 mt-0.5">{tier.rate}</div>
                 </button>
               ))}
             </div>
@@ -369,8 +396,8 @@ export const FareCalculatorModal: React.FC<FareCalculatorModalProps> = ({
           }`}
         >
           <div className="text-[10px] text-slate-500 space-y-0.5">
-            <div>• Base: ₹20 (1.5 km) · ₹8/km · ₹0.50/min</div>
-            <div>• Real-time road distance routing enabled</div>
+            <div>• {pricing.tierPricing.moto_comfort.name}: ₹{pricing.tierPricing.moto_comfort.baseFare} Base · ₹{pricing.tierPricing.moto_comfort.perKmRate}/km</div>
+            <div>• {pricing.tierPricing.moto_delivery.name}: ₹{pricing.tierPricing.moto_delivery.baseFare} Base · ₹{pricing.tierPricing.moto_delivery.perKmRate}/km</div>
           </div>
           <button
             onClick={onClose}

@@ -127,6 +127,23 @@ export interface CreateRideParams {
   tier_name?: string;
 }
 
+export const setStoredRideTier = (rideId: string, tier: string, tierName?: string) => {
+  try {
+    const map = JSON.parse(localStorage.getItem('motoride_ride_tier_map') || '{}');
+    map[rideId] = { tier, tierName: tierName || (tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto') };
+    localStorage.setItem('motoride_ride_tier_map', JSON.stringify(map));
+  } catch {}
+};
+
+export const getStoredRideTier = (rideId: string): { tier: string; tierName: string } | null => {
+  try {
+    const map = JSON.parse(localStorage.getItem('motoride_ride_tier_map') || '{}');
+    return map[rideId] || null;
+  } catch {
+    return null;
+  }
+};
+
 export const createRideBooking = async (
   params: CreateRideParams
 ): Promise<{ data: Ride | null; error: string | null }> => {
@@ -137,6 +154,7 @@ export const createRideBooking = async (
 
   const chosenServiceType = params.service_type || 'moto_comfort';
   const isCourier = chosenServiceType === 'moto_delivery';
+  const chosenTierName = params.tier_name || (isCourier ? 'Moto Courier' : 'Comfort Moto');
 
   try {
     const payload: any = {
@@ -184,11 +202,12 @@ export const createRideBooking = async (
       }
 
       const resData = retryRes.data as Ride;
+      setStoredRideTier(resData.id, chosenServiceType, chosenTierName);
       return {
         data: {
           ...resData,
           service_type: chosenServiceType,
-          tier_name: isCourier ? 'Moto Courier' : 'Comfort Moto',
+          tier_name: chosenTierName,
         },
         error: null,
       };
@@ -200,11 +219,12 @@ export const createRideBooking = async (
     }
 
     const resData = data as Ride;
+    setStoredRideTier(resData.id, chosenServiceType, chosenTierName);
     return {
       data: {
         ...resData,
         service_type: resData.service_type || chosenServiceType,
-        tier_name: isCourier ? 'Moto Courier' : 'Comfort Moto',
+        tier_name: chosenTierName,
       },
       error: null,
     };
@@ -233,7 +253,17 @@ export const fetchActiveRequestedRides = async (): Promise<{
       return { data: [], error: formatSupabaseError(error) };
     }
 
-    return { data: (data as Ride[]) || [], error: null };
+    const rawList = (data as Ride[]) || [];
+    const enrichedList = rawList.map((ride) => {
+      const cached = getStoredRideTier(ride.id);
+      return {
+        ...ride,
+        service_type: ride.service_type || cached?.tier || (ride.ride_tier as any) || 'moto_comfort',
+        tier_name: ride.tier_name || cached?.tierName || (ride.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
+      };
+    });
+
+    return { data: enrichedList, error: null };
   } catch (err: any) {
     return { data: [], error: formatSupabaseError(err) };
   }
@@ -589,7 +619,14 @@ export const subscribeToCaptainRealtime = (callbacks: {
       },
       (payload) => {
         if (payload.new) {
-          callbacks.onInsert(payload.new as Ride);
+          const raw = payload.new as Ride;
+          const cached = getStoredRideTier(raw.id);
+          const enriched: Ride = {
+            ...raw,
+            service_type: raw.service_type || cached?.tier || (raw.ride_tier as any) || 'moto_comfort',
+            tier_name: raw.tier_name || cached?.tierName || (raw.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
+          };
+          callbacks.onInsert(enriched);
         }
       }
     )
@@ -602,7 +639,14 @@ export const subscribeToCaptainRealtime = (callbacks: {
       },
       (payload) => {
         if (payload.new) {
-          callbacks.onUpdate(payload.new as Ride);
+          const raw = payload.new as Ride;
+          const cached = getStoredRideTier(raw.id);
+          const enriched: Ride = {
+            ...raw,
+            service_type: raw.service_type || cached?.tier || (raw.ride_tier as any) || 'moto_comfort',
+            tier_name: raw.tier_name || cached?.tierName || (raw.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
+          };
+          callbacks.onUpdate(enriched);
         }
       }
     )

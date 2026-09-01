@@ -1205,6 +1205,33 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
 
                   <div className={`w-full h-px ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />
 
+                  {/* Incoming Request Sweet Alert Tune */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className={`font-bold block ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>Incoming Request Alert Tune</span>
+                      <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Play sweet 4-tone melodic chime for new broadcasts</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !audioAlerts;
+                        setAudioAlerts(next);
+                        localStorage.setItem('motoride_captain_alert_sound', String(next));
+                      }}
+                      className={`w-10 h-6 rounded-full transition-colors relative cursor-pointer ${
+                        audioAlerts ? 'bg-amber-500' : isLight ? 'bg-slate-300' : 'bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                          audioAlerts ? 'right-1' : 'left-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <div className={`w-full h-px ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />
+
                   <div className="space-y-1.5">
                     <div className="flex justify-between">
                       <span className={`font-bold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>Max Pickup Radar Radius</span>
