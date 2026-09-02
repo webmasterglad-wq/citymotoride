@@ -43,6 +43,7 @@ import {
 import { UserProfile, Ride } from '../types/ride';
 import { AvatarUploader } from './AvatarUploader';
 import { useTheme } from '../context/ThemeContext';
+import { playSweetAlertTune, unlockAudio } from '../utils/audioAlert';
 
 interface CaptainProfileModalProps {
   isOpen: boolean;
@@ -1211,23 +1212,46 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                       <span className={`font-bold block ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>Incoming Request Alert Tune</span>
                       <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Play sweet 4-tone melodic chime for new broadcasts</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const next = !audioAlerts;
-                        setAudioAlerts(next);
-                        localStorage.setItem('motoride_captain_alert_sound', String(next));
-                      }}
-                      className={`w-10 h-6 rounded-full transition-colors relative cursor-pointer ${
-                        audioAlerts ? 'bg-amber-500' : isLight ? 'bg-slate-300' : 'bg-slate-700'
-                      }`}
-                    >
-                      <span
-                        className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
-                          audioAlerts ? 'right-1' : 'left-1'
+                    <div className="flex items-center gap-2">
+                      {audioAlerts && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            unlockAudio();
+                            playSweetAlertTune(true);
+                          }}
+                          className={`p-1.5 rounded-lg border text-[10px] font-bold transition-all cursor-pointer ${
+                            isLight
+                              ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
+                              : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+                          }`}
+                          title="Test melodic chime"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !audioAlerts;
+                          setAudioAlerts(next);
+                          localStorage.setItem('motoride_captain_alert_sound', String(next));
+                          if (next) {
+                            unlockAudio();
+                            playSweetAlertTune(true);
+                          }
+                        }}
+                        className={`w-10 h-6 rounded-full transition-colors relative cursor-pointer ${
+                          audioAlerts ? 'bg-amber-500' : isLight ? 'bg-slate-300' : 'bg-slate-700'
                         }`}
-                      />
-                    </button>
+                      >
+                        <span
+                          className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                            audioAlerts ? 'right-1' : 'left-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
                   </div>
 
                   <div className={`w-full h-px ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />

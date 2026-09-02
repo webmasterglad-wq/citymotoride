@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../lib/supabase';
-import { Ride, RideStatus, ConcurrencyClaimResult, CaptainEarningsSummary } from '../types/ride';
+import { Ride, RideStatus, ConcurrencyClaimResult, CaptainEarningsSummary, CaptainOffer } from '../types/ride';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { notifyNewIncomingRide } from '../utils/audioAlert';
 
 /**
  * Returns ISO timestamp bounds for the local calendar day (start of today, start of tomorrow, start of yesterday)
@@ -203,12 +204,14 @@ export const createRideBooking = async (
 
       const resData = retryRes.data as Ride;
       setStoredRideTier(resData.id, chosenServiceType, chosenTierName);
+      const enrichedRide: Ride = {
+        ...resData,
+        service_type: chosenServiceType,
+        tier_name: chosenTierName,
+      };
+      notifyNewIncomingRide(enrichedRide);
       return {
-        data: {
-          ...resData,
-          service_type: chosenServiceType,
-          tier_name: chosenTierName,
-        },
+        data: enrichedRide,
         error: null,
       };
     }
@@ -220,12 +223,14 @@ export const createRideBooking = async (
 
     const resData = data as Ride;
     setStoredRideTier(resData.id, chosenServiceType, chosenTierName);
+    const enrichedRide: Ride = {
+      ...resData,
+      service_type: resData.service_type || chosenServiceType,
+      tier_name: chosenTierName,
+    };
+    notifyNewIncomingRide(enrichedRide);
     return {
-      data: {
-        ...resData,
-        service_type: resData.service_type || chosenServiceType,
-        tier_name: chosenTierName,
-      },
+      data: enrichedRide,
       error: null,
     };
   } catch (err: any) {
@@ -439,7 +444,8 @@ export const fetchCaptainEarningsSummary = async (
 export const claimRideAtomic = async (
   rideId: string,
   captainId: string,
-  captainInfo?: { name: string; phone?: string; vehicle?: string; rating?: number }
+  captainInfo?: { name: string; phone?: string; vehicle?: string; rating?: number },
+  agreedFare?: number
 ): Promise<ConcurrencyClaimResult> => {
   const supabase = getSupabaseClient();
   if (!supabase) {
@@ -463,10 +469,17 @@ export const claimRideAtomic = async (
 
     if (!rpcError && rpcData) {
       if (rpcData.success) {
+        let finalRide = rpcData.ride as Ride;
+        if (agreedFare !== undefined && agreedFare !== null && agreedFare > 0) {
+          try {
+            await supabase.from('rides').update({ fare: agreedFare }).eq('id', rideId);
+            finalRide = { ...finalRide, fare: agreedFare };
+          } catch {}
+        }
         return {
           success: true,
           message: 'Ride claimed successfully!',
-          ride: rpcData.ride as Ride,
+          ride: finalRide,
         };
       } else {
         return {
@@ -482,17 +495,23 @@ export const claimRideAtomic = async (
   // Attempt 2: Direct Atomic Conditional UPDATE (WHERE id = rideId AND status = 'requested')
   try {
     const now = new Date().toISOString();
+    const updatePayload: Record<string, any> = {
+      captain_id: captainId,
+      status: 'accepted',
+      accepted_at: now,
+      captain_name: captainName,
+      captain_phone: captainPhone,
+      captain_vehicle: captainVehicle,
+      captain_rating: captainRating,
+    };
+
+    if (agreedFare !== undefined && agreedFare !== null && agreedFare > 0) {
+      updatePayload.fare = agreedFare;
+    }
+
     const { data, error } = await supabase
       .from('rides')
-      .update({
-        captain_id: captainId,
-        status: 'accepted',
-        accepted_at: now,
-        captain_name: captainName,
-        captain_phone: captainPhone,
-        captain_vehicle: captainVehicle,
-        captain_rating: captainRating,
-      })
+      .update(updatePayload)
       .eq('id', rideId)
       .eq('status', 'requested')
       .select()
@@ -917,4 +936,336 @@ export const subscribeToAdminRealtime = (callbacks: {
 
   return channel;
 };
+
+/**
+ * ==========================================
+ * MUTUAL BIDDING & CAPTAIN OFFER MANAGEMENT
+ * ==========================================
+ * Bidding lifecycle requires mutual acceptance:
+ * 1. Passenger broadcasts ride request with proposed fare
+ * 2. Captain reviews and submits their proposed fare offer
+ * 3. Passenger receives captain's offer in passenger dashboard
+ * 4. Passenger reviews & clicks "Accept Offer"
+ * 5. ONLY THEN the ride transitions to "accepted" for both captain & passenger
+ */
+
+const OFFERS_KEY_PREFIX = 'motoride_offers_';
+
+let offersBroadcastChannel: BroadcastChannel | null = null;
+try {
+  if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+    offersBroadcastChannel = new BroadcastChannel('motoride_offers_bus');
+  }
+} catch {
+  offersBroadcastChannel = null;
+}
+
+export const getStoredRideOffers = (rideId: string): CaptainOffer[] => {
+  if (!rideId) return [];
+  try {
+    const raw = localStorage.getItem(OFFERS_KEY_PREFIX + rideId);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+};
+
+export const saveStoredRideOffers = (rideId: string, offers: CaptainOffer[]): void => {
+  if (!rideId) return;
+  try {
+    localStorage.setItem(OFFERS_KEY_PREFIX + rideId, JSON.stringify(offers));
+  } catch {}
+
+  // Dispatch local custom event
+  try {
+    window.dispatchEvent(
+      new CustomEvent('motoride_offers_sync', {
+        detail: { rideId, offers },
+      })
+    );
+  } catch {}
+
+  // Broadcast to other tabs / windows
+  try {
+    offersBroadcastChannel?.postMessage({
+      type: 'offers_update',
+      rideId,
+      offers,
+    });
+  } catch {}
+};
+
+/**
+ * Submit or update a captain's offer for a ride request
+ */
+export const submitCaptainOffer = (
+  offerParams: Omit<CaptainOffer, 'id' | 'created_at' | 'status'>
+): CaptainOffer => {
+  const currentOffers = getStoredRideOffers(offerParams.ride_id);
+  const existingIdx = currentOffers.findIndex(
+    (o) => o.captain_id === offerParams.captain_id && o.status !== 'cancelled'
+  );
+
+  const offer: CaptainOffer = {
+    ...offerParams,
+    id: `offer_${offerParams.ride_id.slice(0, 8)}_${offerParams.captain_id.slice(0, 8)}_${Date.now()}`,
+    created_at: new Date().toISOString(),
+    status: 'pending',
+  };
+
+  let updated: CaptainOffer[];
+  if (existingIdx >= 0) {
+    updated = [...currentOffers];
+    updated[existingIdx] = offer;
+  } else {
+    updated = [offer, ...currentOffers];
+  }
+
+  saveStoredRideOffers(offerParams.ride_id, updated);
+  return offer;
+};
+
+/**
+ * Captain cancels their pending offer
+ */
+export const cancelCaptainOffer = (rideId: string, captainId: string): void => {
+  const currentOffers = getStoredRideOffers(rideId);
+  const updated = currentOffers.map((o) =>
+    o.captain_id === captainId && o.status === 'pending'
+      ? { ...o, status: 'cancelled' as const }
+      : o
+  );
+  saveStoredRideOffers(rideId, updated);
+};
+
+/**
+ * Passenger declines a specific captain's offer
+ */
+export const declineCaptainOffer = (rideId: string, captainId: string): void => {
+  const currentOffers = getStoredRideOffers(rideId);
+  const updated = currentOffers.map((o) =>
+    o.captain_id === captainId
+      ? { ...o, status: 'declined' as const }
+      : o
+  );
+  saveStoredRideOffers(rideId, updated);
+};
+
+/**
+ * Passenger accepts a captain's offer - establishes MUTUAL ACCEPTANCE!
+ * 1. Atomically claims the ride in the database for this captain at agreed fare
+ * 2. Marks the offer as 'accepted'
+ * 3. Marks any other pending offers on this ride as 'declined'
+ * 4. Broadcasts the mutual acceptance event across all tabs & realtime
+ */
+export const acceptCaptainOffer = async (
+  ride: Ride,
+  offer: CaptainOffer
+): Promise<ConcurrencyClaimResult> => {
+  // First attempt atomic claim in Supabase
+  const result = await claimRideAtomic(
+    ride.id,
+    offer.captain_id,
+    {
+      name: offer.captain_name,
+      phone: offer.captain_phone,
+      vehicle: offer.captain_vehicle,
+      rating: offer.captain_rating,
+    },
+    offer.offered_fare
+  );
+
+  if (result.success) {
+    // Update local offers state: mark this offer as accepted, others declined
+    const currentOffers = getStoredRideOffers(ride.id);
+    const updated = currentOffers.map((o) => {
+      if (o.captain_id === offer.captain_id) {
+        return { ...o, status: 'accepted' as const };
+      }
+      if (o.status === 'pending') {
+        return { ...o, status: 'declined' as const };
+      }
+      return o;
+    });
+
+    saveStoredRideOffers(ride.id, updated);
+
+    // Broadcast mutual acceptance message
+    try {
+      offersBroadcastChannel?.postMessage({
+        type: 'offer_mutually_accepted',
+        rideId: ride.id,
+        captainId: offer.captain_id,
+        fare: offer.offered_fare,
+        ride: result.ride || { ...ride, status: 'accepted', captain_id: offer.captain_id, fare: offer.offered_fare },
+      });
+    } catch {}
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('motoride_offer_mutually_accepted', {
+          detail: {
+            rideId: ride.id,
+            captainId: offer.captain_id,
+            fare: offer.offered_fare,
+            ride: result.ride,
+          },
+        })
+      );
+    } catch {}
+  }
+
+  return result;
+};
+
+/**
+ * Subscribes to real-time offer updates for a specific ride
+ */
+export const subscribeToRideOffers = (
+  rideId: string,
+  callback: (offers: CaptainOffer[]) => void
+): (() => void) => {
+  if (!rideId) return () => {};
+
+  // Initial call with current stored offers
+  callback(getStoredRideOffers(rideId));
+
+  const handleCustomEvent = (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail && detail.rideId === rideId) {
+      callback(detail.offers || getStoredRideOffers(rideId));
+    }
+  };
+
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === OFFERS_KEY_PREFIX + rideId && e.newValue) {
+      try {
+        callback(JSON.parse(e.newValue));
+      } catch {}
+    }
+  };
+
+  const handleBroadcast = (msgEvent: MessageEvent) => {
+    const data = msgEvent.data;
+    if (data && data.rideId === rideId && (data.type === 'offers_update' || data.type === 'offer_mutually_accepted')) {
+      callback(getStoredRideOffers(rideId));
+    }
+  };
+
+  window.addEventListener('motoride_offers_sync', handleCustomEvent);
+  window.addEventListener('storage', handleStorage);
+  if (offersBroadcastChannel) {
+    offersBroadcastChannel.addEventListener('message', handleBroadcast);
+  }
+
+  return () => {
+    window.removeEventListener('motoride_offers_sync', handleCustomEvent);
+    window.removeEventListener('storage', handleStorage);
+    if (offersBroadcastChannel) {
+      offersBroadcastChannel.removeEventListener('message', handleBroadcast);
+    }
+  };
+};
+
+const SKIPPED_RIDES_KEY_PREFIX = 'motoride_skipped_rides_';
+
+/**
+ * Record a ride as skipped by a specific captain.
+ * Does NOT cancel the ride request - leaves it open for other online captains.
+ * Cancels any active offer this captain had submitted.
+ */
+export const recordCaptainSkippedRide = (rideId: string, captainId: string) => {
+  try {
+    const key = SKIPPED_RIDES_KEY_PREFIX + captainId;
+    const existing: string[] = JSON.parse(localStorage.getItem(key) || '[]');
+    if (!existing.includes(rideId)) {
+      existing.push(rideId);
+      localStorage.setItem(key, JSON.stringify(existing));
+    }
+  } catch {}
+
+  // Cancel any offer this captain made for this ride
+  cancelCaptainOffer(rideId, captainId);
+
+  // Broadcast skip notification so passenger radar and other captains are alerted
+  const payload = {
+    type: 'captain_skipped',
+    rideId,
+    captainId,
+    timestamp: Date.now(),
+  };
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('motoride_captain_skipped', { detail: payload }));
+  }
+  if (offersBroadcastChannel) {
+    try {
+      offersBroadcastChannel.postMessage(payload);
+    } catch {}
+  }
+};
+
+/**
+ * Retrieves the set of ride IDs skipped by a specific captain
+ */
+export const getCaptainSkippedRideIds = (captainId: string): Set<string> => {
+  try {
+    const key = SKIPPED_RIDES_KEY_PREFIX + captainId;
+    const list = JSON.parse(localStorage.getItem(key) || '[]');
+    return new Set(list);
+  } catch {
+    return new Set();
+  }
+};
+
+/**
+ * Unskips a ride for a captain (e.g. if they click "Restore to Stream")
+ */
+export const unskipCaptainRide = (rideId: string, captainId: string) => {
+  try {
+    const key = SKIPPED_RIDES_KEY_PREFIX + captainId;
+    const list: string[] = JSON.parse(localStorage.getItem(key) || '[]');
+    const filtered = list.filter((id) => id !== rideId);
+    localStorage.setItem(key, JSON.stringify(filtered));
+  } catch {}
+};
+
+/**
+ * Subscribes to captain skip notifications
+ */
+export const subscribeToCaptainSkipEvents = (
+  callback: (data: { rideId: string; captainId: string; timestamp: number }) => void
+): (() => void) => {
+  const handleCustomEvent = (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail && detail.type === 'captain_skipped') {
+      callback(detail);
+    }
+  };
+
+  const handleBroadcast = (msgEvent: MessageEvent) => {
+    const data = msgEvent.data;
+    if (data && data.type === 'captain_skipped') {
+      callback(data);
+    }
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('motoride_captain_skipped', handleCustomEvent);
+  }
+  if (offersBroadcastChannel) {
+    offersBroadcastChannel.addEventListener('message', handleBroadcast);
+  }
+
+  return () => {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('motoride_captain_skipped', handleCustomEvent);
+    }
+    if (offersBroadcastChannel) {
+      offersBroadcastChannel.removeEventListener('message', handleBroadcast);
+    }
+  };
+};
+
 

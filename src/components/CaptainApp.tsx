@@ -41,7 +41,7 @@ import {
   BellOff,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Ride, RideStatus, UserProfile, CaptainEarningsSummary, getRideServiceInfo } from '../types/ride';
+import { Ride, RideStatus, UserProfile, CaptainEarningsSummary, getRideServiceInfo, CaptainOffer } from '../types/ride';
 import {
   fetchActiveRequestedRides,
   fetchActiveRideForCaptain,
@@ -51,12 +51,24 @@ import {
   unsubscribeChannel,
   fetchCaptainEarningsSummary,
   getLocalDayBounds,
+  submitCaptainOffer,
+  cancelCaptainOffer,
+  getStoredRideOffers,
+  recordCaptainSkippedRide,
+  getCaptainSkippedRideIds,
+  unskipCaptainRide,
 } from '../services/rideService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { InRideChatModal } from './InRideChatModal';
 import { CaptainProfileModal } from './CaptainProfileModal';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useTheme } from '../context/ThemeContext';
+import { usePricing, DEFAULT_PLATFORM_PRICING } from '../context/PricingContext';
+import {
+  playSweetAlertTune,
+  subscribeToIncomingRideBroadcasts,
+  unlockAudio,
+} from '../utils/audioAlert';
 
 interface CaptainAppProps {
   captainUser?: UserProfile;
@@ -67,8 +79,41 @@ interface CaptainAppProps {
 interface DeclinedRideItem {
   ride: Ride;
   declinedAt: string;
-  reason: string;
+  reason?: string;
 }
+
+export const DEMO_CAPTAINS: UserProfile[] = [
+  {
+    id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
+    name: 'Captain Alex Rivera',
+    phone: '+1 (555) 749-3021',
+    role: 'captain',
+    rating: 4.96,
+    vehicle_details: 'Yamaha MT-07 · Stealth Black #7492',
+    acceptance_rate: 98,
+    total_trips: 1420,
+  },
+  {
+    id: 'c93bd82c-40ee-5283-c678-1f13c3d4e092',
+    name: 'Captain Marcus Chen',
+    phone: '+1 (555) 882-1944',
+    role: 'captain',
+    rating: 4.92,
+    vehicle_details: 'Honda CBR650R · Grand Prix Red #3821',
+    acceptance_rate: 96,
+    total_trips: 890,
+  },
+  {
+    id: 'd04ce93d-51ff-6394-d789-2024d4e5f103',
+    name: 'Captain Sara Vance',
+    phone: '+1 (555) 304-9182',
+    role: 'captain',
+    rating: 4.98,
+    vehicle_details: 'KTM 390 Duke · Electric Orange #5103',
+    acceptance_rate: 99,
+    total_trips: 1640,
+  },
+];
 
 const getStoredCaptainId = (key = 'motoride_captain_uuid') => {
   let id = localStorage.getItem(key);
@@ -80,24 +125,15 @@ const getStoredCaptainId = (key = 'motoride_captain_uuid') => {
 };
 
 export const CaptainApp: React.FC<CaptainAppProps> = ({
-  captainUser = {
-    id: getStoredCaptainId('motoride_captain_1_uuid'),
-    name: 'Captain Alex Rivera',
-    phone: '+1 (555) 749-3021',
-    role: 'captain',
-    rating: 4.96,
-    vehicle_details: 'Yamaha MT-07 · Stealth Black #7492',
-    acceptance_rate: 98,
-    total_trips: 1420,
-  },
+  captainUser = DEMO_CAPTAINS[0],
   titleSuffix = '',
   onOpenSqlModal,
 }) => {
+  const { pricing } = usePricing();
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [requestedRides, setRequestedRides] = useState<Ride[]>([]);
   const [declinedRides, setDeclinedRides] = useState<DeclinedRideItem[]>([]);
   const [requestTab, setRequestTab] = useState<'incoming' | 'declined'>('incoming');
-  const [decliningRideId, setDecliningRideId] = useState<string | null>(null);
 
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   const [currentCaptain, setCurrentCaptain] = useState<UserProfile>(captainUser);
@@ -134,13 +170,34 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     return saved !== null ? saved === 'true' : true;
   });
 
+  // Track captain's submitted fare offers per rideId
+  const [myOffers, setMyOffers] = useState<Record<string, CaptainOffer>>({});
+
+  const requestedRidesRef = useRef<Ride[]>([]);
+  const isOnlineRef = useRef<boolean>(isOnline);
+  const initialLoadDoneRef = useRef<boolean>(false);
+  const currentCaptainRef = useRef<UserProfile>(currentCaptain);
+
+  useEffect(() => {
+    currentCaptainRef.current = currentCaptain;
+  }, [currentCaptain]);
+
+  useEffect(() => {
+    requestedRidesRef.current = requestedRides;
+  }, [requestedRides]);
+
+  useEffect(() => {
+    isOnlineRef.current = isOnline;
+  }, [isOnline]);
+
   const toggleAlertSound = () => {
     setIsAlertSoundEnabled((prev) => {
       const next = !prev;
       localStorage.setItem('motoride_captain_alert_sound', String(next));
       if (next) {
+        unlockAudio();
         // Play sweet alert tune preview when toggled ON
-        playAlertSound(true);
+        playSweetAlertTune(true);
       }
       return next;
     });
@@ -171,80 +228,86 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     }
   };
 
-  // Play melodic 3-tone Sweet Alert Tune for incoming requests
+  // Play melodic Sweet Alert Tune for incoming requests
   const playAlertSound = (force = false) => {
     if (!isAlertSoundEnabled && !force) return;
-    try {
-      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtxClass) return;
-      const audioCtx = new AudioCtxClass();
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-
-      const notes = [
-        { freq: 523.25, time: 0, dur: 0.12 },     // C5 (Bright chime start)
-        { freq: 659.25, time: 0.12, dur: 0.14 },  // E5 (Melodic harmony)
-        { freq: 783.99, time: 0.26, dur: 0.14 },  // G5 (Sweet ascending peak)
-        { freq: 1046.50, time: 0.40, dur: 0.35 }, // C6 (Crystal clear bell tail)
-      ];
-
-      notes.forEach((n) => {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(n.freq, audioCtx.currentTime + n.time);
-
-        // Gentle envelope for sweet bell-like chime
-        gain.gain.setValueAtTime(0.001, audioCtx.currentTime + n.time);
-        gain.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime + n.time + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + n.time + n.dur);
-
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start(audioCtx.currentTime + n.time);
-        osc.stop(audioCtx.currentTime + n.time + n.dur);
-      });
-    } catch (e) {}
+    playSweetAlertTune(force);
   };
 
   // Database-driven earnings fetch for this captain
   const loadEarningsData = async () => {
-    if (!isSupabaseConfigured() || !captainUser.id) return;
-    const { data } = await fetchCaptainEarningsSummary(captainUser.id);
+    const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
+    if (!isSupabaseConfigured() || !activeCapId) return;
+    const { data } = await fetchCaptainEarningsSummary(activeCapId);
     if (data) {
       setEarningsSummary(data);
     }
   };
 
-  // Initial fetch
+  // Initial fetch & Polling synchronization
   const loadInitialData = async () => {
     if (!isSupabaseConfigured()) return;
     setTableMissingNotice(false);
+
+    const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
 
     // 1. Fetch real-time Today's Income & lifetime summary
     loadEarningsData();
 
     // 2. Check if captain already has an ongoing accepted ride
-    const { data: activeData } = await fetchActiveRideForCaptain(captainUser.id);
+    const { data: activeData } = await fetchActiveRideForCaptain(activeCapId);
     if (activeData) {
       setActiveRide(activeData);
     }
 
-    // 3. Fetch pending requested rides
+    // 3. Fetch pending requested rides - exclude rides skipped by this captain
     const { data: pendingData, error } = await fetchActiveRequestedRides();
     if (error) {
       if (error.includes('missing') || error.includes('SQL') || error.includes('schema cache')) {
         setTableMissingNotice(true);
       }
     } else if (pendingData) {
-      setRequestedRides(pendingData);
+      const skippedSet = getCaptainSkippedRideIds(activeCapId);
+      const filteredPending = pendingData.filter((r) => !skippedSet.has(r.id));
+
+      // Check if new incoming requests arrived during polling
+      if (initialLoadDoneRef.current && isOnlineRef.current) {
+        const prevIds = new Set(requestedRidesRef.current.map((r) => r.id));
+        const hasNewIncoming = filteredPending.some((r) => r.status === 'requested' && !prevIds.has(r.id));
+        if (hasNewIncoming) {
+          playSweetAlertTune();
+        }
+      }
+      initialLoadDoneRef.current = true;
+      setRequestedRides(filteredPending);
     }
   };
 
   useEffect(() => {
     loadInitialData();
-  }, [captainUser.id]);
+  }, [currentCaptain.id]);
+
+  // Subscribe to in-app & cross-tab broadcast notifications
+  useEffect(() => {
+    const unsubBroadcasts = subscribeToIncomingRideBroadcasts((incomingRide: Ride) => {
+      if (!isOnlineRef.current) return;
+      if (incomingRide && (!incomingRide.status || incomingRide.status === 'requested')) {
+        const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
+        const skippedSet = getCaptainSkippedRideIds(activeCapId);
+        if (skippedSet.has(incomingRide.id)) return;
+
+        playSweetAlertTune();
+        setRequestedRides((prev) => {
+          if (prev.some((r) => r.id === incomingRide.id)) {
+            return prev;
+          }
+          return [incomingRide, ...prev];
+        });
+      }
+    });
+
+    return () => unsubBroadcasts();
+  }, [currentCaptain.id]);
 
   // Automatic Daily Reset: Watches calendar date transitions (e.g. 12:00 AM midnight rollover)
   // Automatically switches Today's Income to ₹0 on a new day without manual captain intervention
@@ -260,7 +323,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     }, 10000);
 
     return () => clearInterval(dateCheckInterval);
-  }, [captainUser.id]);
+  }, [currentCaptain.id]);
 
   // Establish Supabase Realtime Subscription
   useEffect(() => {
@@ -276,7 +339,11 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     const channel = subscribeToCaptainRealtime({
       onInsert: (newRide: Ride) => {
         if (newRide.status === 'requested') {
-          playAlertSound();
+          const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
+          const skippedSet = getCaptainSkippedRideIds(activeCapId);
+          if (skippedSet.has(newRide.id)) return;
+
+          playSweetAlertTune();
           setRequestedRides((prev) => {
             if (prev.some((r) => r.id === newRide.id)) {
               return prev;
@@ -286,7 +353,8 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         }
       },
       onUpdate: (updatedRide: Ride) => {
-        if (updatedRide.captain_id === captainUser.id) {
+        const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
+        if (updatedRide.captain_id === activeCapId) {
           if (updatedRide.status === 'completed' || updatedRide.status === 'cancelled') {
             setActiveRide(null);
             // Refresh database-calculated earnings immediately
@@ -304,6 +372,10 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         // Maintain pending requested rides list
         setRequestedRides((prev) => {
           if (updatedRide.status === 'requested') {
+            const skippedSet = getCaptainSkippedRideIds(activeCapId);
+            if (skippedSet.has(updatedRide.id)) {
+              return prev.filter((r) => r.id !== updatedRide.id);
+            }
             return prev.map((r) => (r.id === updatedRide.id ? updatedRide : r));
           } else {
             return prev.filter((r) => r.id !== updatedRide.id);
@@ -331,19 +403,129 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         channelRef.current = null;
       }
     };
-  }, [isOnline, captainUser.id]);
+  }, [isOnline, currentCaptain.id]);
+
+  // Sync stored offers for requested rides on load and whenever requestedRides changes
+  useEffect(() => {
+    const updated: Record<string, CaptainOffer> = {};
+    requestedRides.forEach((r) => {
+      const offers = getStoredRideOffers(r.id);
+      const mine = offers.find((o) => o.captain_id === captainUser.id && o.status !== 'cancelled');
+      if (mine) {
+        updated[r.id] = mine;
+      }
+    });
+    setMyOffers((prev) => ({ ...prev, ...updated }));
+  }, [requestedRides, captainUser.id]);
+
+  // Listen for realtime offer sync and mutual acceptance from passenger
+  useEffect(() => {
+    const handleOffersSync = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
+      if (detail && detail.rideId && detail.offers) {
+        const myOffer = (detail.offers as CaptainOffer[]).find(
+          (o) => o.captain_id === activeCapId
+        );
+        if (myOffer) {
+          setMyOffers((prev) => ({ ...prev, [detail.rideId]: myOffer }));
+        } else {
+          setMyOffers((prev) => {
+            const next = { ...prev };
+            delete next[detail.rideId];
+            return next;
+          });
+        }
+      }
+    };
+
+    const handleMutualAccepted = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
+      if (detail && detail.captainId === activeCapId) {
+        if (detail.ride) {
+          setActiveRide(detail.ride);
+          setRequestedRides((prev) => prev.filter((r) => r.id !== detail.rideId));
+          setDeclinedRides((prev) => prev.filter((d) => d.ride.id !== detail.rideId));
+          setConcurrencyAlert({
+            type: 'success',
+            message: `Mutual acceptance confirmed! Passenger accepted your offer of ₹${Number(detail.fare).toFixed(2)}. Proceed to pickup!`,
+          });
+          try {
+            confetti({ particleCount: 65, spread: 75, origin: { y: 0.6 } });
+          } catch (e) {}
+        }
+      }
+    };
+
+    window.addEventListener('motoride_offers_sync', handleOffersSync);
+    window.addEventListener('motoride_offer_mutually_accepted', handleMutualAccepted);
+
+    return () => {
+      window.removeEventListener('motoride_offers_sync', handleOffersSync);
+      window.removeEventListener('motoride_offer_mutually_accepted', handleMutualAccepted);
+    };
+  }, [currentCaptain.id]);
+
+  // Handle Captain Sending Fare Offer (Awaiting Passenger Acceptance)
+  const handleSendCaptainOffer = (ride: Ride, fareOffer: number) => {
+    setIsClaimingId(ride.id);
+    setConcurrencyAlert(null);
+
+    const offer = submitCaptainOffer({
+      ride_id: ride.id,
+      captain_id: currentCaptain.id,
+      captain_name: currentCaptain.name,
+      captain_phone: currentCaptain.phone,
+      captain_vehicle: currentCaptain.vehicle_details,
+      captain_rating: currentCaptain.rating,
+      captain_avatar: currentCaptain.avatar_url,
+      offered_fare: fareOffer,
+      original_fare: Number(ride.fare) || fareOffer,
+      eta_minutes: 3,
+    });
+
+    setMyOffers((prev) => ({ ...prev, [ride.id]: offer }));
+    setIsClaimingId(null);
+
+    setConcurrencyAlert({
+      type: 'success',
+      message: `Offer of ₹${fareOffer} sent to ${ride.passenger_name || 'passenger'}! Waiting for passenger to accept in their dashboard...`,
+    });
+  };
+
+  // Handle Captain Cancelling Sent Offer
+  const handleCancelCaptainOffer = (rideId: string) => {
+    cancelCaptainOffer(rideId, currentCaptain.id);
+    setMyOffers((prev) => {
+      const next = { ...prev };
+      delete next[rideId];
+      return next;
+    });
+    setConcurrencyAlert({
+      type: 'success',
+      message: 'Offer withdrawn. You can select another fare option or skip.',
+    });
+  };
 
   // Handle Atomic Claim Ride (Concurrency Protected)
   const handleAcceptRide = async (ride: Ride, customFareOffer?: number) => {
     setIsClaimingId(ride.id);
     setConcurrencyAlert(null);
 
-    const result = await claimRideAtomic(ride.id, captainUser.id, {
-      name: captainUser.name,
-      phone: captainUser.phone,
-      vehicle: captainUser.vehicle_details,
-      rating: captainUser.rating,
-    });
+    const agreedFare = customFareOffer && customFareOffer > 0 ? customFareOffer : (ride.fare || 25);
+
+    const result = await claimRideAtomic(
+      ride.id,
+      currentCaptain.id,
+      {
+        name: currentCaptain.name,
+        phone: currentCaptain.phone,
+        vehicle: currentCaptain.vehicle_details,
+        rating: currentCaptain.rating,
+      },
+      agreedFare
+    );
 
     setIsClaimingId(null);
 
@@ -351,9 +533,14 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       setActiveRide(result.ride);
       setRequestedRides((prev) => prev.filter((r) => r.id !== ride.id));
       setDeclinedRides((prev) => prev.filter((d) => d.ride.id !== ride.id));
+      
+      const fareNotice = customFareOffer && customFareOffer !== ride.fare
+        ? ` with agreed offer of ₹${Number(customFareOffer).toFixed(2)}`
+        : ` (Fare: ₹${Number(agreedFare).toFixed(2)})`;
+
       setConcurrencyAlert({
         type: 'success',
-        message: `Ride accepted! Proceed to pickup: ${ride.pickup_location}`,
+        message: `Ride accepted${fareNotice}! Proceed to pickup: ${ride.pickup_location}`,
       });
 
       try {
@@ -368,26 +555,40 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     }
   };
 
-  // Handle Captain Declining an Incoming Ride
-  const handleDeclineRide = (ride: Ride, reason: string = 'Passed by captain') => {
+  // Handle Captain Skipping an Incoming Ride (No reason prompt, passes to next online captain)
+  const handleDeclineRide = (ride: Ride) => {
+    const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
+    // 1. Cancel any active fare offer this captain submitted for this ride
+    cancelCaptainOffer(ride.id, activeCapId);
+    setMyOffers((prev) => {
+      const next = { ...prev };
+      delete next[ride.id];
+      return next;
+    });
+
+    // 2. Persist captain's skip so this captain doesn't see it again, but other captains online do
+    recordCaptainSkippedRide(ride.id, activeCapId);
+
+    // 3. Move to Skipped tab (no reason shown)
     const newItem: DeclinedRideItem = {
       ride,
       declinedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      reason,
     };
 
     setDeclinedRides((prev) => [newItem, ...prev.filter((d) => d.ride.id !== ride.id)]);
     setRequestedRides((prev) => prev.filter((r) => r.id !== ride.id));
-    setDecliningRideId(null);
 
+    // 4. Clean confirmation toast without showing any reason
     setConcurrencyAlert({
-      type: 'error',
-      message: `Ride #${ride.id.slice(0, 6)} skipped (${reason}). Moved to Skipped tab.`,
+      type: 'success',
+      message: `Ride request skipped. Passed on to next available online captain.`,
     });
   };
 
   // Restore a declined ride back to incoming broadcasts
   const handleRestoreRide = (item: DeclinedRideItem) => {
+    const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
+    unskipCaptainRide(item.ride.id, activeCapId);
     setDeclinedRides((prev) => prev.filter((d) => d.ride.id !== item.ride.id));
     setRequestedRides((prev) => [item.ride, ...prev.filter((r) => r.id !== item.ride.id)]);
     setRequestTab('incoming');
@@ -399,6 +600,10 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
   // Clear all declined history
   const handleClearDeclined = () => {
+    const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
+    declinedRides.forEach((item) => {
+      unskipCaptainRide(item.ride.id, activeCapId);
+    });
     setDeclinedRides([]);
     setConcurrencyAlert({
       type: 'success',
@@ -582,6 +787,49 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             <Power className="w-3.5 h-3.5" />
             {isOnline ? 'ONLINE' : 'GO ONLINE'}
           </button>
+        </div>
+      </div>
+
+      {/* Online Captain Switcher Bar (Allows testing passing skipped ride to next online captain) */}
+      <div
+        className={`px-3.5 py-2 border-b flex items-center justify-between text-xs transition-colors ${
+          isLight ? 'bg-slate-100/90 border-slate-200' : 'bg-[#090d17] border-slate-800'
+        }`}
+      >
+        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+          <span>Active Driver:</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {DEMO_CAPTAINS.map((cap) => {
+            const isCurrent = cap.id === currentCaptain.id;
+            return (
+              <button
+                key={cap.id}
+                type="button"
+                id={`switch-captain-btn-${cap.id.slice(0, 5)}`}
+                onClick={() => {
+                  setCurrentCaptain(cap);
+                  setActiveRide(null);
+                  setDeclinedRides([]);
+                  setRequestTab('incoming');
+                  setConcurrencyAlert({
+                    type: 'success',
+                    message: `Switched dashboard to ${cap.name}.`,
+                  });
+                }}
+                className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer ${
+                  isCurrent
+                    ? 'bg-amber-500 text-slate-950 shadow-sm font-black ring-1 ring-amber-400'
+                    : isLight
+                    ? 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'
+                    : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                }`}
+              >
+                {cap.name.replace('Captain ', '')}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1189,8 +1437,8 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                               <h4 className={`text-xs font-bold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
                                 {item.ride.passenger_name || 'Passenger'}
                               </h4>
-                              <span className="text-[9px] px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-600 dark:text-rose-300 font-bold border border-rose-500/30">
-                                {item.reason}
+                              <span className="text-[9px] px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30">
+                                Passed to Next Captain
                               </span>
                             </div>
                             <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -1391,115 +1639,183 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                     </div>
                   </div>
 
-                  {/* inDrive / Uber Acceptance, Counter Offer & Decline Bar */}
-                  <div className="space-y-2 pt-1">
-                    <div className="grid grid-cols-3 gap-2">
-                      {/* inDrive Counter Offer 1 */}
-                      <button
-                        type="button"
-                        onClick={() => handleAcceptRide(ride, (ride.fare || 14.5) + 1.0)}
-                        className={`py-2.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
-                          isLight
-                            ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                        }`}
-                      >
-                        Offer +₹1
-                      </button>
+                  {/* 3 Acceptance Fare Price Options (Connected to Admin Dynamic Pricing) */}
+                  {(() => {
+                    const existingOffer = myOffers[ride.id];
+                    if (existingOffer && existingOffer.status === 'pending') {
+                      return (
+                        <div className="pt-2 space-y-2.5">
+                          <div className={`p-3 rounded-2xl border ${
+                            isLight ? 'bg-amber-50/90 border-amber-300 text-amber-950' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                          }`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="relative flex h-2.5 w-2.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                                </span>
+                                <span className="text-xs font-black">
+                                  Offer Sent: ₹{existingOffer.offered_fare}
+                                </span>
+                              </div>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                                Awaiting Passenger
+                              </span>
+                            </div>
+                            <p className={`text-[11px] mt-1.5 leading-snug ${isLight ? 'text-amber-800' : 'text-amber-300/90'}`}>
+                              Waiting for {ride.passenger_name || 'Passenger'} to accept your offer in passenger dashboard. Ride starts upon mutual acceptance.
+                            </p>
+                          </div>
 
-                      {/* inDrive Counter Offer 2 */}
-                      <button
-                        type="button"
-                        onClick={() => handleAcceptRide(ride, (ride.fare || 14.5) + 2.0)}
-                        className={`py-2.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
-                          isLight
-                            ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                        }`}
-                      >
-                        Offer +₹2
-                      </button>
-
-                      {/* Instant Accept Button (Protected by Atomic Claim RPC) */}
-                      <button
-                        id={`accept-ride-btn-${ride.id}`}
-                        onClick={() => handleAcceptRide(ride)}
-                        disabled={isClaimingId === ride.id}
-                        className={`py-2.5 font-black rounded-xl text-xs flex items-center justify-center gap-1 shadow-md transition-all cursor-pointer ${
-                          serviceInfo.isCourier
-                            ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
-                            : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
-                        }`}
-                      >
-                        {isClaimingId === ride.id ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <>
-                            {serviceInfo.isCourier ? 'Accept Courier' : 'Accept Ride'}
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Skip Request Action */}
-                    {decliningRideId === ride.id ? (
-                      <div
-                        className={`p-2.5 rounded-xl border space-y-2 animate-in fade-in duration-200 ${
-                          isLight ? 'bg-rose-50/70 border-rose-300' : 'bg-slate-950 border-rose-500/40'
-                        }`}
-                      >
-                        <div className={`flex items-center justify-between text-[11px] font-bold ${isLight ? 'text-rose-700' : 'text-rose-300'}`}>
-                          <span>Select reason to skip:</span>
                           <button
                             type="button"
-                            onClick={() => setDecliningRideId(null)}
-                            className={`cursor-pointer ${isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-400 hover:text-white'}`}
+                            id={`cancel-offer-btn-${ride.id}`}
+                            onClick={() => handleCancelCaptainOffer(ride.id)}
+                            className={`w-full py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                              isLight
+                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                            }`}
                           >
-                            ✕
+                            <X className="w-3.5 h-3.5 text-rose-500" />
+                            <span>Cancel / Change Offer</span>
                           </button>
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-                          {['Pickup too far', 'Low fare rate', 'Heavy traffic', 'Taking a break'].map((reason) => (
+                      );
+                    }
+
+                    if (existingOffer && existingOffer.status === 'declined') {
+                      return (
+                        <div className="pt-2 space-y-2">
+                          <div className={`p-2.5 rounded-xl border text-xs flex items-center justify-between ${
+                            isLight ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                          }`}>
+                            <div className="flex items-center gap-1.5">
+                              <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                              <span>Passenger declined offer of ₹{existingOffer.offered_fare}</span>
+                            </div>
                             <button
-                              key={reason}
                               type="button"
-                              onClick={() => handleDeclineRide(ride, reason)}
-                              className={`p-1.5 rounded-lg border text-left truncate transition-colors cursor-pointer ${
-                                isLight
-                                  ? 'bg-white hover:bg-rose-100 text-slate-700 hover:text-rose-800 border-slate-200'
-                                  : 'bg-slate-900 hover:bg-rose-500/20 text-slate-300 hover:text-rose-200 border-slate-800'
-                              }`}
+                              onClick={() => handleCancelCaptainOffer(ride.id)}
+                              className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-rose-500 text-white hover:bg-rose-600 cursor-pointer shadow-xs"
                             >
-                              • {reason}
+                              Propose New Fare
                             </button>
-                          ))}
+                          </div>
                         </div>
+                      );
+                    }
+
+                    const bidding = pricing?.biddingConfig || DEFAULT_PLATFORM_PRICING.biddingConfig;
+                    const baseFare = Number(ride.fare || 25.0);
+                    
+                    // Option 1: Base Fare
+                    const t1Percent = bidding.tier1Percent ?? 0;
+                    const rawT1 = baseFare * (1 + t1Percent / 100);
+                    const t1Fare = bidding.roundToWholeRupee ? Math.round(rawT1) : Number(rawT1.toFixed(2));
+                    
+                    // Option 2: Tier 2 Fare
+                    const t2Percent = bidding.tier2Percent ?? 10;
+                    const rawT2 = baseFare * (1 + t2Percent / 100);
+                    const t2Fare = bidding.roundToWholeRupee ? Math.round(rawT2) : Number(rawT2.toFixed(2));
+                    
+                    // Option 3: Tier 3 Fare
+                    const t3Percent = bidding.tier3Percent ?? 15;
+                    const rawT3 = baseFare * (1 + t3Percent / 100);
+                    const t3Fare = bidding.roundToWholeRupee ? Math.round(rawT3) : Number(rawT3.toFixed(2));
+
+                    return (
+                      <div className="pt-2 space-y-2">
+                        {/* 1. First show: Accept for ₹{t1Fare} */}
                         <button
+                          id={`accept-offer-form1-${ride.id}`}
                           type="button"
-                          onClick={() => handleDeclineRide(ride, 'Skipped by captain')}
-                          className="w-full py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                          onClick={() => handleSendCaptainOffer(ride, t1Fare)}
+                          disabled={isClaimingId === ride.id}
+                          className={`w-full py-3 px-4 rounded-2xl text-sm font-black border transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-98 ${
+                            isLight
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-emerald-600/20'
+                              : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-400 shadow-emerald-500/20'
+                          }`}
                         >
-                          Confirm Skip
+                          {isClaimingId === ride.id ? (
+                            <Loader2 className="w-5 h-5 animate-spin my-0.5" />
+                          ) : (
+                            <span className="flex items-center gap-2 tracking-tight font-black">
+                              <Check className="w-4 h-4 stroke-[3]" />
+                              <span>Accept for ₹{t1Fare}</span>
+                            </span>
+                          )}
                         </button>
+
+                        {/* 2. Offer your fare label */}
+                        <div className="flex items-center gap-2 pt-1">
+                          <div className={`h-px flex-1 ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />
+                          <span className={`text-[11px] font-bold tracking-tight uppercase ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                            Offer your fare
+                          </span>
+                          <div className={`h-px flex-1 ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />
+                        </div>
+
+                        {/* 3. Offer Fare buttons: ₹110      ₹115 */}
+                        <div className="grid grid-cols-2 gap-2.5">
+                          {/* Fare 2 */}
+                          <button
+                            id={`accept-offer-form2-${ride.id}`}
+                            type="button"
+                            onClick={() => handleSendCaptainOffer(ride, t2Fare)}
+                            disabled={isClaimingId === ride.id}
+                            className={`py-3 px-3 rounded-2xl text-base font-black font-mono border transition-all flex items-center justify-center cursor-pointer shadow-sm active:scale-95 ${
+                              isLight
+                                ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 border-amber-500 shadow-amber-500/20'
+                                : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400 shadow-amber-500/20'
+                            }`}
+                          >
+                            {isClaimingId === ride.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin my-0.5" />
+                            ) : (
+                              <span>₹{t2Fare}</span>
+                            )}
+                          </button>
+
+                          {/* Fare 3 */}
+                          <button
+                            id={`accept-offer-form3-${ride.id}`}
+                            type="button"
+                            onClick={() => handleSendCaptainOffer(ride, t3Fare)}
+                            disabled={isClaimingId === ride.id}
+                            className={`py-3 px-3 rounded-2xl text-base font-black font-mono border transition-all flex items-center justify-center cursor-pointer shadow-sm active:scale-95 ${
+                              isLight
+                                ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-indigo-600/20'
+                                : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-indigo-600/20'
+                            }`}
+                          >
+                            {isClaimingId === ride.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin my-0.5" />
+                            ) : (
+                              <span>₹{t3Fare}</span>
+                            )}
+                          </button>
+                        </div>
                       </div>
-                    ) : (
-                      <button
-                        type="button"
-                        id={`decline-ride-btn-${ride.id}`}
-                        onClick={() => setDecliningRideId(ride.id)}
-                        className={`w-full py-2 border rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                          isLight
-                            ? 'bg-slate-50 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border-slate-200 hover:border-rose-300'
-                            : 'bg-slate-950/60 hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 border-slate-800/80 hover:border-rose-500/30'
-                        }`}
-                      >
-                        <XCircle className="w-3.5 h-3.5 text-rose-500" />
-                        Skip
-                      </button>
-                    )}
+                    );
+                  })()}
+
+                    {/* Skip Request Action - 1-click direct skip, reason hidden, passes to next online captain */}
+                    <button
+                      type="button"
+                      id={`decline-ride-btn-${ride.id}`}
+                      onClick={() => handleDeclineRide(ride)}
+                      className={`w-full py-2.5 border rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-98 ${
+                        isLight
+                          ? 'bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-600 border-slate-300 hover:border-rose-300'
+                          : 'bg-slate-800/80 hover:bg-rose-500/15 text-slate-300 hover:text-rose-300 border-slate-700 hover:border-rose-500/40'
+                      }`}
+                    >
+                      <XCircle className="w-4 h-4 text-rose-500" />
+                      <span>Skip Request</span>
+                    </button>
                   </div>
-                </div>
                 );
               })}
             </div>

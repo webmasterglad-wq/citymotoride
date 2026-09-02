@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   AlertCircle,
   XCircle,
+  X,
   Loader2,
   Compass,
   Bike,
@@ -37,7 +38,7 @@ import {
   Settings,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Ride, RideStatus, UserProfile, RideTier, PaymentMethodType, getRideServiceInfo } from '../types/ride';
+import { Ride, RideStatus, UserProfile, RideTier, PaymentMethodType, getRideServiceInfo, CaptainOffer } from '../types/ride';
 import {
   createRideBooking,
   fetchActiveRideForPassenger,
@@ -47,6 +48,10 @@ import {
   updateRideStatus,
   subscribeToPassengerRide,
   unsubscribeChannel,
+  subscribeToRideOffers,
+  acceptCaptainOffer,
+  declineCaptainOffer,
+  subscribeToCaptainSkipEvents,
 } from '../services/rideService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { InRideChatModal } from './InRideChatModal';
@@ -130,6 +135,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [bookingMode] = useState<'indrive'>('indrive');
   const [customBidFare, setCustomBidFare] = useState<number>(14.5);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('upi');
+  const [skipNotice, setSkipNotice] = useState<string | null>(null);
 
   // Distance & Fare Calculator State
   const [distanceKm, setDistanceKm] = useState<number>(4.8);
@@ -154,6 +160,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<string>('idle');
+
+  // Captain Offers State for Mutual Bidding Acceptance
+  const [captainOffers, setCaptainOffers] = useState<CaptainOffer[]>([]);
+  const [isAcceptingOfferId, setIsAcceptingOfferId] = useState<string | null>(null);
 
   const { isLight } = useTheme();
   const { pricing, calculateFare } = usePricing();
@@ -326,6 +336,73 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       }
     };
   }, [activeRide?.id, activeRide?.status, passengerUser?.id]);
+
+  // Subscribe to Captain Offers when activeRide is requested (Mutual Acceptance Flow)
+  useEffect(() => {
+    if (!activeRide?.id || activeRide.status !== 'requested') {
+      setCaptainOffers([]);
+      return;
+    }
+
+    const unsubscribe = subscribeToRideOffers(activeRide.id, (offers) => {
+      setCaptainOffers(offers);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [activeRide?.id, activeRide?.status]);
+
+  // Subscribe to Captain Skip events when activeRide is requested
+  useEffect(() => {
+    if (!activeRide?.id || activeRide.status !== 'requested') {
+      setSkipNotice(null);
+      return;
+    }
+
+    const unsubSkip = subscribeToCaptainSkipEvents((eventData) => {
+      if (eventData.rideId === activeRide.id) {
+        setSkipNotice('A nearby captain passed · Routing request to next available online captain...');
+        const timer = setTimeout(() => {
+          setSkipNotice(null);
+        }, 6000);
+        return () => clearTimeout(timer);
+      }
+    });
+
+    return () => {
+      unsubSkip();
+    };
+  }, [activeRide?.id, activeRide?.status]);
+
+  // Passenger Accepts Captain's Offer - Establishes Mutual Acceptance
+  const handleAcceptCaptainOffer = async (offer: CaptainOffer) => {
+    if (!activeRide) return;
+    setIsAcceptingOfferId(offer.id);
+    setErrorMessage(null);
+
+    try {
+      const result = await acceptCaptainOffer(activeRide, offer);
+      if (result.success && result.ride) {
+        setActiveRide(result.ride);
+        try {
+          confetti({ particleCount: 70, spread: 80, origin: { y: 0.6 } });
+        } catch (e) {}
+      } else {
+        setErrorMessage(result.message || 'Could not accept this offer. The ride or offer may no longer be available.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Error accepting offer. Please try again.');
+    } finally {
+      setIsAcceptingOfferId(null);
+    }
+  };
+
+  // Passenger Declines Captain's Offer
+  const handleDeclineCaptainOffer = (captainId: string) => {
+    if (!activeRide) return;
+    declineCaptainOffer(activeRide.id, captainId);
+  };
 
   // Safety PIN generated per ride ID
   const safetyPin = activeRide ? `${(Math.abs(activeRide.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % 9000) + 1000}` : '4829';
@@ -1252,26 +1329,150 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 </button>
               </div>
             </div>
-          ) : (
-            /* Searching State Radar Card */
-            <div
-              className={`border p-4 rounded-2xl flex items-center gap-3 animate-pulse transition-colors ${
-                isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
-              }`}
-            >
-              <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-500 flex items-center justify-center">
-                <Radio className="w-5 h-5 animate-spin" />
+          ) : (() => {
+            const pendingOffers = captainOffers.filter((o) => o.status === 'pending');
+
+            if (pendingOffers.length > 0) {
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                      </span>
+                      <h4 className={`text-xs font-black uppercase tracking-wider ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                        Captain Offers Received ({pendingOffers.length})
+                      </h4>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      Mutual Acceptance Required
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {pendingOffers.map((offer) => {
+                      const baseRideFare = Number(activeRide.fare) || offer.original_fare;
+                      const fareDiff = offer.offered_fare - baseRideFare;
+
+                      return (
+                        <div
+                          key={offer.id}
+                          id={`captain-offer-${offer.id}`}
+                          className={`p-3.5 rounded-2xl border transition-all shadow-md ${
+                            isLight
+                              ? 'bg-white border-emerald-300 ring-1 ring-emerald-500/15 shadow-slate-200/60'
+                              : 'bg-slate-900 border-emerald-500/40 ring-1 ring-emerald-500/20'
+                          }`}
+                        >
+                          {/* Captain Info & Offered Fare */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-amber-500 text-slate-950 flex items-center justify-center font-black text-xl shrink-0 shadow-sm">
+                                🏍️
+                              </div>
+                              <div className="min-w-0">
+                                <h5 className={`text-xs font-black truncate flex items-center gap-1.5 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                                  <span className="truncate">{offer.captain_name || 'Captain Driver'}</span>
+                                  <span className="text-[10px] text-amber-500 font-bold shrink-0">
+                                    ★ {offer.captain_rating || 4.96}
+                                  </span>
+                                </h5>
+                                <p className={`text-[11px] truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                                  {offer.captain_vehicle || 'Yamaha MT-07'} · ~{offer.eta_minutes || 3}m away
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <span className="text-base font-black text-emerald-600 dark:text-emerald-400 block font-mono">
+                                ₹{offer.offered_fare}
+                              </span>
+                              {fareDiff === 0 ? (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 inline-block">
+                                  Matches your fare
+                                </span>
+                              ) : fareDiff > 0 ? (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 inline-block">
+                                  +₹{fareDiff} counter
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 inline-block">
+                                  -₹{Math.abs(fareDiff)} discount
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action Buttons: Accept & Decline */}
+                          <div className="grid grid-cols-3 gap-2 pt-3">
+                            <button
+                              type="button"
+                              id={`decline-captain-offer-${offer.id}`}
+                              onClick={() => handleDeclineCaptainOffer(offer.captain_id)}
+                              disabled={isAcceptingOfferId === offer.id}
+                              className={`py-2 px-2 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+                                isLight
+                                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                              }`}
+                            >
+                              <X className="w-3.5 h-3.5 text-rose-500" />
+                              <span>Decline</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              id={`accept-captain-offer-${offer.id}`}
+                              onClick={() => handleAcceptCaptainOffer(offer)}
+                              disabled={isAcceptingOfferId === offer.id}
+                              className="col-span-2 py-2 px-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/25 transition-all cursor-pointer active:scale-98"
+                            >
+                              {isAcceptingOfferId === offer.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <>
+                                  <Check className="w-4 h-4 stroke-[3]" />
+                                  <span>Accept Offer · ₹{offer.offered_fare}</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              /* Searching State Radar Card */
+              <div
+                className={`border p-4 rounded-2xl flex items-center gap-3 animate-pulse transition-colors ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
+                }`}
+              >
+                <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-500 flex items-center justify-center">
+                  <Radio className="w-5 h-5 animate-spin" />
+                </div>
+                <div className="flex-1">
+                  <h4 className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                    Broadcasting Request to Captains
+                  </h4>
+                  {skipNotice ? (
+                    <p className="text-[11px] font-bold text-amber-500 animate-pulse">
+                      {skipNotice}
+                    </p>
+                  ) : (
+                    <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                      Nearby drivers are reviewing your request of ₹{activeRide.fare?.toFixed(2) || '14.50'}. Captain fare offers will appear here for mutual acceptance.
+                    </p>
+                  )}
+                </div>
               </div>
-              <div className="flex-1">
-                <h4 className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                  Broadcasting Request to Drivers
-                </h4>
-                <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Nearby captains are reviewing your offer of ₹{activeRide.fare?.toFixed(2) || '14.50'}
-                </p>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Stepper Progress Bar */}
           <div

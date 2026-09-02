@@ -304,7 +304,7 @@ const INITIAL_PASSENGERS: AdminPassenger[] = [
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }) => {
   const { isLight } = useTheme();
   const { pricing, updatePricing, resetPricingToDefault, calculateFare, isCustomized } = usePricing();
-  const [activeTab, setActiveTab] = useState<'live_rides' | 'captains' | 'passengers' | 'pricing' | 'audit_log'>('live_rides');
+  const [activeTab, setActiveTab] = useState<'live_rides' | 'captains' | 'passengers' | 'pricing' | 'bidding' | 'audit_log'>('live_rides');
   const [rides, setRides] = useState<Ride[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -319,6 +319,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
   const [pricingActiveCategory, setPricingActiveCategory] = useState<'both' | 'moto_comfort' | 'moto_delivery'>('both');
   const [simDistAdmin, setSimDistAdmin] = useState<number>(4.8);
   const [simTierAdmin, setSimTierAdmin] = useState<'moto_comfort' | 'moto_delivery'>('moto_comfort');
+  const [simOfferFareAdmin, setSimOfferFareAdmin] = useState<number>(100);
 
   useEffect(() => {
     setSettings(pricing);
@@ -929,6 +930,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
         </button>
 
         <button
+          id="admin-tab-pricing-btn"
           onClick={() => setActiveTab('pricing')}
           className={`flex items-center gap-2 px-4 py-3 font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'pricing'
@@ -938,6 +940,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
         >
           <Sliders className="w-4 h-4" />
           Surge & Fare Dispatch Rules
+        </button>
+
+        <button
+          id="admin-tab-bidding-btn"
+          onClick={() => setActiveTab('bidding')}
+          className={`flex items-center gap-2 px-4 py-3 font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'bidding'
+              ? 'border-indigo-500 text-indigo-600 bg-indigo-500/10'
+              : isLight ? 'border-transparent text-slate-600 hover:text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-indigo-500" />
+          Captain 3-Form Offer Rules
         </button>
       </div>
 
@@ -1572,6 +1587,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
             </div>
           </div>
 
+          {/* Captain 3-Form Bidding Banner Link */}
+          <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+            isLight ? 'bg-indigo-50/70 border-indigo-200' : 'bg-indigo-950/30 border-indigo-800/60'
+          }`}>
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 rounded-xl bg-indigo-500/20 text-indigo-500">
+                <Sparkles className="w-4 h-4" />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                    Captain 3-Form Ride Acceptance Bidding
+                  </span>
+                  <span className="text-[10px] bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-bold px-2 py-0.5 rounded-full">
+                    {settings.biddingConfig.enabled ? `Active (0%, +${settings.biddingConfig.tier2Percent}%, +${settings.biddingConfig.tier3Percent}%)` : 'Disabled'}
+                  </span>
+                </div>
+                <p className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                  Manage passenger proposed fare forms, counter-bidding percentages (+10%, +15%), and button labels.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('bidding')}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shrink-0 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span>Manage 3-Form Rules</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Column 1: Category 1 - Comfort Moto Ride Pricing */}
             {(pricingActiveCategory === 'both' || pricingActiveCategory === 'moto_comfort') && (
@@ -2080,6 +2127,623 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                   <CheckCircle2 className="w-4 h-4" />
                   <span>Deploy & Broadcast Fare Rules</span>
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB 5: CAPTAIN 3-FORM OFFER & BIDDING RULES ================= */}
+      {activeTab === 'bidding' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Header Description & Status Banner */}
+          <div className={`p-5 rounded-3xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm ${
+            isLight ? 'bg-gradient-to-r from-indigo-50/80 to-white border-indigo-200/80' : 'bg-gradient-to-r from-indigo-950/40 to-[#0b0f19] border-indigo-800/60'
+          }`}>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-xl bg-indigo-500/20 text-indigo-500 border border-indigo-500/30">
+                  <Sparkles className="w-4 h-4" />
+                </span>
+                <h2 className={`text-base sm:text-lg font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                  Captain 3-Form Offer & Counter-Bidding Dispatch Central
+                </h2>
+                <span className="text-[10px] bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full font-black">
+                  IN-DRIVE REALTIME ENGINE
+                </span>
+              </div>
+              <p className={`text-xs max-w-3xl ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                Configure the three dynamic acceptance forms presented to Captains when a passenger books a ride and offers a custom fare price:
+                <strong> 1. Accept Passenger Offer Price</strong>,
+                <strong> 2. 10% Increased Price</strong>, and
+                <strong> 3. 15% Increased Price</strong>.
+              </p>
+            </div>
+
+            {/* Master Toggle & Quick Actions */}
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const updated = {
+                    ...settings,
+                    biddingConfig: {
+                      ...settings.biddingConfig,
+                      enabled: !settings.biddingConfig.enabled,
+                    },
+                  };
+                  setSettings(updated);
+                }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-bold border transition-all cursor-pointer ${
+                  settings.biddingConfig.enabled
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-500 shadow-md shadow-emerald-500/20'
+                    : isLight
+                    ? 'bg-slate-100 text-slate-600 border-slate-300'
+                    : 'bg-slate-900 text-slate-400 border-slate-700'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${settings.biddingConfig.enabled ? 'bg-slate-950' : 'bg-slate-400'}`} />
+                {settings.biddingConfig.enabled ? '3-Form Bidding: ACTIVE' : '3-Form Bidding: DISABLED'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSavePricing}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition-all cursor-pointer"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Deploy Rules
+              </button>
+            </div>
+          </div>
+
+          {/* Main 2-Column Grid: Form Tiers Settings (Left) & Real-time Live Simulator (Right) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Column (7 Cols): The 3 Forms Configuration */}
+            <div className="lg:col-span-7 space-y-4">
+              {/* Quick Strategy Preset Chips */}
+              <div className={`p-4 rounded-3xl border space-y-2 ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Quick Bidding Strategy Presets
+                  </span>
+                  <span className="text-[10px] text-indigo-500 font-bold">1-Click Apply</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { name: 'Standard (0%, +10%, +15%)', t1: 0, t2: 10, t3: 15, t2l: 'Offer +10%', t3l: 'Offer +15%' },
+                    { name: 'Peak Hours (0%, +12%, +20%)', t1: 0, t2: 12, t3: 20, t2l: 'Offer +12%', t3l: 'Offer +20%' },
+                    { name: 'High Demand (0%, +15%, +25%)', t1: 0, t2: 15, t3: 25, t2l: 'Offer +15%', t3l: 'Offer +25%' },
+                    { name: 'Competitive (0%, +5%, +10%)', t1: 0, t2: 5, t3: 10, t2l: 'Offer +5%', t3l: 'Offer +10%' },
+                  ].map((preset) => {
+                    const isSelected =
+                      settings.biddingConfig.tier1Percent === preset.t1 &&
+                      settings.biddingConfig.tier2Percent === preset.t2 &&
+                      settings.biddingConfig.tier3Percent === preset.t3;
+                    return (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        onClick={() => {
+                          setSettings({
+                            ...settings,
+                            biddingConfig: {
+                              ...settings.biddingConfig,
+                              tier1Percent: preset.t1,
+                              tier2Percent: preset.t2,
+                              tier3Percent: preset.t3,
+                              tier2Label: preset.t2l,
+                              tier3Label: preset.t3l,
+                            },
+                          });
+                        }}
+                        className={`p-2 rounded-2xl text-[11px] font-bold border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-500 text-white border-indigo-500 shadow-md shadow-indigo-500/20'
+                            : isLight
+                            ? 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                            : 'bg-slate-950 hover:bg-slate-900 border-slate-800 text-slate-300'
+                        }`}
+                      >
+                        <span className="block font-black truncate">{preset.name.split(' ')[0]}</span>
+                        <span className="text-[9px] opacity-80">{preset.name.match(/\((.*?)\)/)?.[0] || ''}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Form Tier 1: Passenger Base Offer (0% Markup) */}
+              <div className={`p-5 rounded-3xl border space-y-3 transition-all ${
+                isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#0b0f19] border-slate-800 shadow-sm'
+              }`}>
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-xs flex items-center justify-center border border-emerald-500/30">
+                      1
+                    </span>
+                    <div>
+                      <h3 className={`text-sm font-black flex items-center gap-1.5 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                        Form 1: Accept Passenger Offer Price
+                      </h3>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block">
+                        Base direct acceptance with zero negotiation markup
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-black border border-emerald-500/20">
+                    BASE OFFER (0%)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block">Button Display Label</label>
+                    <input
+                      type="text"
+                      value={settings.biddingConfig.tier1Label}
+                      onChange={(e) => {
+                        setSettings({
+                          ...settings,
+                          biddingConfig: {
+                            ...settings.biddingConfig,
+                            tier1Label: e.target.value,
+                          },
+                        });
+                      }}
+                      placeholder="Accept Offer"
+                      className={`w-full border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-emerald-500 ${
+                        isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                      }`}
+                    />
+                  </div>
+
+                  <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold uppercase text-slate-400">Markup Percentage</label>
+                      <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">{settings.biddingConfig.tier1Percent}%</span>
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={settings.biddingConfig.tier1Percent}
+                      disabled
+                      className={`w-full border rounded-xl px-3 py-2 text-xs font-bold opacity-75 cursor-not-allowed ${
+                        isLight ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-slate-900 border-slate-800 text-slate-300'
+                      }`}
+                    />
+                    <span className="text-[9px] text-slate-400 block">Locked to 0% to directly match passenger's offer price.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Tier 2: 10% Increased in Accept Offer Price */}
+              <div className={`p-5 rounded-3xl border space-y-3 transition-all ${
+                isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#0b0f19] border-slate-800 shadow-sm'
+              }`}>
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-7 h-7 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 font-black text-xs flex items-center justify-center border border-amber-500/30">
+                      2
+                    </span>
+                    <div>
+                      <h3 className={`text-sm font-black flex items-center gap-1.5 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                        Form 2: 10% Increased Offer Price
+                      </h3>
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold block">
+                        Moderate counter-offer (+{settings.biddingConfig.tier2Percent}% markup)
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-black border border-amber-500/20">
+                    +{settings.biddingConfig.tier2Percent}% COUNTER
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block">Button Display Label</label>
+                    <input
+                      type="text"
+                      value={settings.biddingConfig.tier2Label}
+                      onChange={(e) => {
+                        setSettings({
+                          ...settings,
+                          biddingConfig: {
+                            ...settings.biddingConfig,
+                            tier2Label: e.target.value,
+                          },
+                        });
+                      }}
+                      placeholder="Offer +10%"
+                      className={`w-full border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-amber-500 ${
+                        isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                      }`}
+                    />
+                  </div>
+
+                  <div className={`p-3 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold uppercase text-slate-400">Increase Percentage</label>
+                      <span className="text-xs font-black text-amber-600 dark:text-amber-400">+{settings.biddingConfig.tier2Percent}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1"
+                      max="50"
+                      step="1"
+                      value={settings.biddingConfig.tier2Percent}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setSettings({
+                          ...settings,
+                          biddingConfig: {
+                            ...settings.biddingConfig,
+                            tier2Percent: val,
+                            tier2Label: `Offer +${val}%`,
+                          },
+                        });
+                      }}
+                      className="w-full accent-amber-500 cursor-pointer"
+                    />
+                    <div className="flex items-center gap-1 pt-1">
+                      {[5, 8, 10, 12, 15].map((pct) => (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => {
+                            setSettings({
+                              ...settings,
+                              biddingConfig: {
+                                ...settings.biddingConfig,
+                                tier2Percent: pct,
+                                tier2Label: `Offer +${pct}%`,
+                              },
+                            });
+                          }}
+                          className={`flex-1 py-1 rounded-lg text-[9px] font-bold border transition-colors cursor-pointer text-center ${
+                            settings.biddingConfig.tier2Percent === pct
+                              ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs'
+                              : isLight
+                              ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
+                              : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300'
+                          }`}
+                        >
+                          +{pct}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Tier 3: 15% Increase in Passenger Accept Price Offer */}
+              <div className={`p-5 rounded-3xl border space-y-3 transition-all ${
+                isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#0b0f19] border-slate-800 shadow-sm'
+              }`}>
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-7 h-7 rounded-xl bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-black text-xs flex items-center justify-center border border-indigo-500/30">
+                      3
+                    </span>
+                    <div>
+                      <h3 className={`text-sm font-black flex items-center gap-1.5 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                        Form 3: 15% Increased Offer Price
+                      </h3>
+                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold block">
+                        Maximum counter-bid (+{settings.biddingConfig.tier3Percent}% markup for traffic/peak)
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-black border border-indigo-500/20">
+                    +{settings.biddingConfig.tier3Percent}% COUNTER
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block">Button Display Label</label>
+                    <input
+                      type="text"
+                      value={settings.biddingConfig.tier3Label}
+                      onChange={(e) => {
+                        setSettings({
+                          ...settings,
+                          biddingConfig: {
+                            ...settings.biddingConfig,
+                            tier3Label: e.target.value,
+                          },
+                        });
+                      }}
+                      placeholder="Offer +15%"
+                      className={`w-full border rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:border-indigo-500 ${
+                        isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+                      }`}
+                    />
+                  </div>
+
+                  <div className={`p-3 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold uppercase text-slate-400">Increase Percentage</label>
+                      <span className="text-xs font-black text-indigo-600 dark:text-indigo-400">+{settings.biddingConfig.tier3Percent}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="5"
+                      max="80"
+                      step="1"
+                      value={settings.biddingConfig.tier3Percent}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setSettings({
+                          ...settings,
+                          biddingConfig: {
+                            ...settings.biddingConfig,
+                            tier3Percent: val,
+                            tier3Label: `Offer +${val}%`,
+                          },
+                        });
+                      }}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                    <div className="flex items-center gap-1 pt-1">
+                      {[12, 15, 18, 20, 25].map((pct) => (
+                        <button
+                          key={pct}
+                          type="button"
+                          onClick={() => {
+                            setSettings({
+                              ...settings,
+                              biddingConfig: {
+                                ...settings.biddingConfig,
+                                tier3Percent: pct,
+                                tier3Label: `Offer +${pct}%`,
+                              },
+                            });
+                          }}
+                          className={`flex-1 py-1 rounded-lg text-[9px] font-bold border transition-colors cursor-pointer text-center ${
+                            settings.biddingConfig.tier3Percent === pct
+                              ? 'bg-indigo-500 text-white border-indigo-500 shadow-xs'
+                              : isLight
+                              ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
+                              : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300'
+                          }`}
+                        >
+                          +{pct}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rounding & Persistence Preferences */}
+              <div className={`p-4 rounded-3xl border flex items-center justify-between gap-3 ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+              }`}>
+                <div>
+                  <h4 className={`text-xs font-black ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                    Round Counter Fares to Nearest Rupee
+                  </h4>
+                  <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Clean fare numbers (e.g. ₹110 instead of ₹110.40) for seamless passenger cash & UPI settlements.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettings({
+                      ...settings,
+                      biddingConfig: {
+                        ...settings.biddingConfig,
+                        roundToWholeRupee: !settings.biddingConfig.roundToWholeRupee,
+                      },
+                    });
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                    settings.biddingConfig.roundToWholeRupee
+                      ? 'bg-emerald-500 text-slate-950 border-emerald-500 font-black'
+                      : isLight
+                      ? 'bg-white text-slate-600 border-slate-300'
+                      : 'bg-slate-900 text-slate-400 border-slate-700'
+                  }`}
+                >
+                  {settings.biddingConfig.roundToWholeRupee ? 'Enabled (Whole ₹)' : 'Disabled (Cents)'}
+                </button>
+              </div>
+            </div>
+
+            {/* Right Column (5 Cols): Live Captain Request Simulator & Real-time Visualizer */}
+            <div className={`lg:col-span-5 border rounded-3xl p-5 space-y-4 shadow-md flex flex-col justify-between ${
+              isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'
+            }`}>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-slate-800">
+                  <h3 className={`text-sm font-black flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                    <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
+                    Live Captain Dashboard Preview
+                  </h3>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold">
+                    WYSIWYG SIMULATOR
+                  </span>
+                </div>
+
+                {/* Passenger Proposed Fare Tester */}
+                <div className={`p-3.5 rounded-2xl border space-y-2 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[10px] font-bold uppercase text-slate-400">Test Passenger Offered Fare</span>
+                    <span className="font-mono text-base font-black text-emerald-600 dark:text-emerald-400">
+                      ₹{simOfferFareAdmin.toFixed(0)}
+                    </span>
+                  </div>
+
+                  <input
+                    type="range"
+                    min="30"
+                    max="500"
+                    step="5"
+                    value={simOfferFareAdmin}
+                    onChange={(e) => setSimOfferFareAdmin(parseFloat(e.target.value))}
+                    className="w-full accent-emerald-500 cursor-pointer"
+                  />
+
+                  <div className="grid grid-cols-5 gap-1 pt-1">
+                    {[50, 80, 100, 150, 250].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setSimOfferFareAdmin(val)}
+                        className={`py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer text-center ${
+                          simOfferFareAdmin === val
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-500 shadow-xs'
+                            : isLight
+                            ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700'
+                            : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300'
+                        }`}
+                      >
+                        ₹{val}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Exact Simulated Captain Incoming Request Card */}
+                {(() => {
+                  const baseFare = simOfferFareAdmin;
+                  const calc1 = settings.biddingConfig.roundToWholeRupee
+                    ? Math.round(baseFare * (1 + settings.biddingConfig.tier1Percent / 100))
+                    : Number((baseFare * (1 + settings.biddingConfig.tier1Percent / 100)).toFixed(2));
+                  const calc2 = settings.biddingConfig.roundToWholeRupee
+                    ? Math.round(baseFare * (1 + settings.biddingConfig.tier2Percent / 100))
+                    : Number((baseFare * (1 + settings.biddingConfig.tier2Percent / 100)).toFixed(2));
+                  const calc3 = settings.biddingConfig.roundToWholeRupee
+                    ? Math.round(baseFare * (1 + settings.biddingConfig.tier3Percent / 100))
+                    : Number((baseFare * (1 + settings.biddingConfig.tier3Percent / 100)).toFixed(2));
+
+                  const captainSharePct = (100 - settings.commissionRate) / 100;
+
+                  return (
+                    <div className="space-y-3">
+                      {/* Realistic Captain UI Card */}
+                      <div className={`p-4 rounded-2xl border-2 shadow-lg space-y-3 ${
+                        isLight ? 'bg-amber-500/5 border-amber-500/30' : 'bg-amber-500/10 border-amber-500/30'
+                      }`}>
+                        {/* Passenger header & Offer badge */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-600 flex items-center justify-center font-bold text-xs">
+                              PR
+                            </span>
+                            <div>
+                              <span className="font-black text-xs block text-slate-900 dark:text-white">Priya Sharma</span>
+                              <span className="text-[10px] text-slate-500">⭐ 4.9 • 3.8 km trip</span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[9px] uppercase font-black text-amber-600 dark:text-amber-400 block tracking-wider">
+                              Passenger Offer
+                            </span>
+                            <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                              ₹{baseFare.toFixed(0)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Route snippet */}
+                        <div className="text-[11px] space-y-1 p-2 rounded-xl bg-black/5 dark:bg-black/20 text-slate-700 dark:text-slate-300">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="text-emerald-500 font-black">●</span>
+                            <span className="truncate">Cyber City Hub, Tower 3</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="text-rose-500 font-black">■</span>
+                            <span className="truncate">Sector 18 Metro Terminal</span>
+                          </div>
+                        </div>
+
+                        {/* The Acceptance Fare Buttons Preview */}
+                        <div className="pt-2 space-y-2">
+                          {/* First show: Accept for ₹calc1 */}
+                          <div className="w-full py-3 px-4 rounded-2xl bg-emerald-500 text-slate-950 font-black text-center shadow-md shadow-emerald-500/20 cursor-default flex items-center justify-center gap-2">
+                            <Check className="w-4 h-4 stroke-[3]" />
+                            <span className="text-sm font-black">Accept for ₹{calc1}</span>
+                          </div>
+
+                          {/* Offer your fare */}
+                          <div className="flex items-center gap-2 pt-1">
+                            <div className={`h-px flex-1 ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />
+                            <span className={`text-[11px] font-bold tracking-tight uppercase ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                              Offer your fare
+                            </span>
+                            <div className={`h-px flex-1 ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />
+                          </div>
+
+                          {/* Offer fare buttons: ₹calc2      ₹calc3 */}
+                          <div className="grid grid-cols-2 gap-2.5">
+                            {/* Fare 2 */}
+                            <div className="py-3 px-3 rounded-2xl bg-amber-500 text-slate-950 font-black text-center shadow-md shadow-amber-500/20 cursor-default flex items-center justify-center">
+                              <span className="text-base font-black font-mono">
+                                ₹{calc2}
+                              </span>
+                            </div>
+
+                            {/* Fare 3 */}
+                            <div className="py-3 px-3 rounded-2xl bg-indigo-600 text-white font-black text-center shadow-md shadow-indigo-600/20 cursor-default flex items-center justify-center">
+                              <span className="text-base font-black font-mono">
+                                ₹{calc3}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Financial Distribution Table */}
+                      <div className={`p-3.5 rounded-2xl border space-y-2 text-xs ${
+                        isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'
+                      }`}>
+                        <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-400">
+                          <span>Form Option</span>
+                          <span>Agreed Fare</span>
+                          <span>Captain Payout</span>
+                          <span>Platform Cut ({settings.commissionRate}%)</span>
+                        </div>
+
+                        {[
+                          { name: 'Form 1 (Base Offer)', fare: calc1, color: 'text-emerald-500' },
+                          { name: `Form 2 (+${settings.biddingConfig.tier2Percent}%)`, fare: calc2, color: 'text-amber-500' },
+                          { name: `Form 3 (+${settings.biddingConfig.tier3Percent}%)`, fare: calc3, color: 'text-indigo-500' },
+                        ].map((row) => {
+                          const capPayout = (row.fare * captainSharePct).toFixed(2);
+                          const platCut = (row.fare * (settings.commissionRate / 100)).toFixed(2);
+                          return (
+                            <div key={row.name} className="flex items-center justify-between text-[11px] py-1 border-b border-slate-200/40 dark:border-slate-800/40 last:border-none">
+                              <span className={`font-bold ${row.color}`}>{row.name}</span>
+                              <span className="font-mono font-bold text-slate-900 dark:text-white">₹{row.fare}</span>
+                              <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">₹{capPayout}</span>
+                              <span className="font-mono text-amber-600 dark:text-amber-400">₹{platCut}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Deploy Action */}
+              <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800 space-y-2">
+                <button
+                  type="button"
+                  onClick={handleSavePricing}
+                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-black rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25 transition-all cursor-pointer active:scale-95"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Deploy & Sync 3-Form Bidding Rules</span>
+                </button>
+                <p className="text-[10px] text-center text-slate-400">
+                  Instantly updates live pricing context for all active Captains across tabs.
+                </p>
               </div>
             </div>
           </div>

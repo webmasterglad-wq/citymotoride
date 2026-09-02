@@ -14,6 +14,17 @@ export interface TierPricingConfig {
   minimumFare: number;
 }
 
+export interface OfferBiddingConfig {
+  enabled: boolean;
+  tier1Percent: number; // default 0% (Accept Passenger Offer)
+  tier2Percent: number; // default 10% (+10% Increase)
+  tier3Percent: number; // default 15% (+15% Increase)
+  roundToWholeRupee: boolean; // default true
+  tier1Label?: string;
+  tier2Label?: string;
+  tier3Label?: string;
+}
+
 export interface ExtendedPlatformPricing extends PlatformSettings {
   baseIncludedKm: number;
   perMinuteRate: number;
@@ -23,6 +34,7 @@ export interface ExtendedPlatformPricing extends PlatformSettings {
     moto_comfort: TierPricingConfig;
     moto_delivery: TierPricingConfig;
   };
+  biddingConfig: OfferBiddingConfig;
   lastUpdated: string;
   updatedBy: string;
 }
@@ -67,6 +79,16 @@ export const DEFAULT_PLATFORM_PRICING: ExtendedPlatformPricing = {
       minimumFare: 20.0,
     },
   },
+  biddingConfig: {
+    enabled: true,
+    tier1Percent: 0,
+    tier2Percent: 10,
+    tier3Percent: 15,
+    roundToWholeRupee: true,
+    tier1Label: 'Accept Offer',
+    tier2Label: 'Offer +10%',
+    tier3Label: 'Offer +15%',
+  },
   lastUpdated: new Date().toISOString(),
   updatedBy: 'System Admin',
 };
@@ -100,6 +122,7 @@ function loadSavedPricing(): ExtendedPlatformPricing {
     if (raw) {
       const parsed = JSON.parse(raw);
       const savedTierPricing = parsed.tierPricing || {};
+      const savedBidding = parsed.biddingConfig || {};
       return {
         ...DEFAULT_PLATFORM_PRICING,
         ...parsed,
@@ -123,6 +146,10 @@ function loadSavedPricing(): ExtendedPlatformPricing {
             ...(savedTierPricing.moto_delivery || {}),
           },
         },
+        biddingConfig: {
+          ...DEFAULT_PLATFORM_PRICING.biddingConfig,
+          ...savedBidding,
+        },
       };
     }
   } catch (err) {
@@ -141,6 +168,7 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
         try {
           const parsed = JSON.parse(e.newValue);
           const savedTierPricing = parsed.tierPricing || {};
+          const savedBidding = parsed.biddingConfig || {};
           setPricing({
             ...DEFAULT_PLATFORM_PRICING,
             ...parsed,
@@ -157,6 +185,10 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
                 ...DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery,
                 ...(savedTierPricing.moto_delivery || {}),
               },
+            },
+            biddingConfig: {
+              ...DEFAULT_PLATFORM_PRICING.biddingConfig,
+              ...savedBidding,
             },
           });
         } catch {
@@ -204,6 +236,10 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
             ...prev.tierPricing.moto_delivery,
             ...(updates.tierPricing?.moto_delivery || {}),
           },
+        },
+        biddingConfig: {
+          ...prev.biddingConfig,
+          ...(updates.biddingConfig || {}),
         },
         lastUpdated: new Date().toISOString(),
       };

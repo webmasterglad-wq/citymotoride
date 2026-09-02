@@ -206,3 +206,19 @@ export interface CaptainEarningsSummary {
   lastCalculatedAt: string;
 }
 
+export interface CaptainOffer {
+  id: string;
+  ride_id: string;
+  captain_id: string;
+  captain_name: string;
+  captain_phone?: string;
+  captain_vehicle?: string;
+  captain_rating?: number;
+  captain_avatar?: string;
+  offered_fare: number;
+  original_fare: number;
+  eta_minutes?: number;
+  created_at: string;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+}
+
