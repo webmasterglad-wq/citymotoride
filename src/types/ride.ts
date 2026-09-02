@@ -222,3 +222,12 @@ export interface CaptainOffer {
   status: 'pending' | 'accepted' | 'declined' | 'cancelled';
 }
 
+/**
+ * Generates the deterministic 4-digit safety ride PIN for a ride
+ */
+export const getRidePin = (rideId?: string | null): string => {
+  if (!rideId) return '4829';
+  const sum = Math.abs(rideId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0));
+  return `${(sum % 9000) + 1000}`;
+};
+

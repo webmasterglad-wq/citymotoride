@@ -345,3 +345,136 @@ export const subscribeToIncomingRideBroadcasts = (onNewRide: (ride: any) => void
     }
   };
 };
+
+/**
+ * Play a friendly, pleasant chime when the Captain arrives at pickup
+ */
+export const playCaptainArrivedChime = async (): Promise<boolean> => {
+  try {
+    const ctx = getAudioContext();
+    if (ctx) {
+      if (ctx.state === 'suspended') {
+        await ctx.resume().catch(() => {});
+      }
+      if (ctx.state === 'running') {
+        const now = ctx.currentTime + 0.02;
+        // Two-tone bright arrival chime: G5 (784Hz) -> C6 (1046Hz) with harmonic resonance
+        const notes = [
+          { freq: 783.99, time: 0.00, dur: 0.22, gain: 0.45 },
+          { freq: 1046.5, time: 0.20, dur: 0.45, gain: 0.50 },
+        ];
+
+        notes.forEach((n) => {
+          const startTime = now + n.time;
+          const stopTime = startTime + n.dur;
+
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(n.freq, startTime);
+
+          gain.gain.setValueAtTime(0.001, startTime);
+          gain.gain.linearRampToValueAtTime(n.gain, startTime + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, stopTime);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(startTime);
+          osc.stop(stopTime);
+        });
+        return true;
+      }
+    }
+    return false;
+  } catch (err) {
+    console.warn('[Motoride Audio] Arrival chime note:', err);
+    return false;
+  }
+};
+
+/**
+ * Broadcast when captain clicks "I have arrived at pickup spot"
+ */
+export const notifyCaptainArrived = (ride: any) => {
+  if (typeof window === 'undefined' || !ride) return;
+
+  try {
+    // 1. Dispatch custom event for same window (DualView simulator & active tabs)
+    window.dispatchEvent(
+      new CustomEvent('motoride:captain_arrived', {
+        detail: ride,
+      })
+    );
+
+    // 2. BroadcastChannel across browser tabs
+    if ('BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+        bc.postMessage({ type: 'CAPTAIN_ARRIVED_BROADCAST', ride, timestamp: Date.now() });
+        setTimeout(() => bc.close(), 1500);
+      } catch {}
+    }
+
+    // 3. LocalStorage event trigger
+    localStorage.setItem(
+      'motoride_last_arrived_event',
+      JSON.stringify({
+        id: ride.id,
+        captain_id: ride.captain_id,
+        passenger_id: ride.passenger_id,
+        pickup_location: ride.pickup_location,
+        timestamp: Date.now(),
+      })
+    );
+  } catch (e) {
+    console.warn('[Motoride Audio] Captain arrived notification note:', e);
+  }
+};
+
+/**
+ * Subscribe to captain arrival announcements
+ */
+export const subscribeToCaptainArrivedBroadcasts = (onArrived: (ride: any) => void) => {
+  if (typeof window === 'undefined') return () => {};
+
+  const handleCustomEvent = (e: any) => {
+    if (e.detail) {
+      onArrived(e.detail);
+    }
+  };
+  window.addEventListener('motoride:captain_arrived', handleCustomEvent);
+
+  let bc: BroadcastChannel | null = null;
+  if ('BroadcastChannel' in window) {
+    try {
+      bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'CAPTAIN_ARRIVED_BROADCAST' && event.data?.ride) {
+          onArrived(event.data.ride);
+        }
+      };
+    } catch {}
+  }
+
+  const handleStorageEvent = (e: StorageEvent) => {
+    if (e.key === 'motoride_last_arrived_event' && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        if (parsed?.id) {
+          onArrived(parsed);
+        }
+      } catch {}
+    }
+  };
+  window.addEventListener('storage', handleStorageEvent);
+
+  return () => {
+    window.removeEventListener('motoride:captain_arrived', handleCustomEvent);
+    window.removeEventListener('storage', handleStorageEvent);
+    if (bc) {
+      try {
+        bc.close();
+      } catch {}
+    }
+  };
+};

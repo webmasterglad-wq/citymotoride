@@ -36,9 +36,15 @@ import {
   QrCode,
   Banknote,
   Settings,
+  Bell,
+  Sparkles,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Ride, RideStatus, UserProfile, RideTier, PaymentMethodType, getRideServiceInfo, CaptainOffer } from '../types/ride';
+import {
+  playCaptainArrivedChime,
+  subscribeToCaptainArrivedBroadcasts,
+} from '../utils/audioAlert';
+import { Ride, RideStatus, UserProfile, RideTier, PaymentMethodType, getRideServiceInfo, CaptainOffer, getRidePin } from '../types/ride';
 import {
   createRideBooking,
   fetchActiveRideForPassenger,
@@ -127,31 +133,30 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   },
   onOpenSqlModal,
 }) => {
-  const [pickup, setPickup] = useState(DEFAULT_PICKUPS[0]);
-  const [dropoff, setDropoff] = useState(DEFAULT_DROPOFFS[0]);
-  const [pickupCoords, setPickupCoords] = useState<LatLng | null>(() => resolveLocationCoords(DEFAULT_PICKUPS[0]));
-  const [dropoffCoords, setDropoffCoords] = useState<LatLng | null>(() => resolveLocationCoords(DEFAULT_DROPOFFS[0]));
+  const [pickup, setPickup] = useState<string>('');
+  const [dropoff, setDropoff] = useState<string>('');
+  const [pickupCoords, setPickupCoords] = useState<LatLng | null>(null);
+  const [dropoffCoords, setDropoffCoords] = useState<LatLng | null>(null);
   const [selectedTier, setSelectedTier] = useState<string>('moto_comfort');
   const [bookingMode] = useState<'indrive'>('indrive');
-  const [customBidFare, setCustomBidFare] = useState<number>(14.5);
+  const [customBidFare, setCustomBidFare] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('upi');
   const [skipNotice, setSkipNotice] = useState<string | null>(null);
 
   // Distance & Fare Calculator State
-  const [distanceKm, setDistanceKm] = useState<number>(4.8);
-  const [estimatedMins, setEstimatedMins] = useState<number>(12);
-  const [baseCalculatedFare, setBaseCalculatedFare] = useState<number>(52.0);
+  const [distanceKm, setDistanceKm] = useState<number>(0);
+  const [estimatedMins, setEstimatedMins] = useState<number>(0);
+  const [baseCalculatedFare, setBaseCalculatedFare] = useState<number>(0);
   const [isAccurateRoute, setIsAccurateRoute] = useState<boolean>(false);
   const [isCalculatorModalOpen, setIsCalculatorModalOpen] = useState<boolean>(false);
   const [fareBreakdown, setFareBreakdown] = useState<FareBreakdown>(() => {
-    const route = calculateEstimatedRoute(DEFAULT_PICKUPS[0], DEFAULT_DROPOFFS[0]);
     return calculateMotoFare({
-      distanceKm: route.distanceKm,
-      estimatedMins: route.estimatedMins,
+      distanceKm: 0,
+      estimatedMins: 0,
       tierId: 'moto_comfort',
       tierMultiplier: 1.0,
       tierName: 'Comfort Ride',
-      pickupLocation: DEFAULT_PICKUPS[0],
+      pickupLocation: '',
     });
   });
 
@@ -198,7 +203,14 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
   // Recalculate estimated route and fare whenever pickup, dropoff, selectedTier or admin pricing changes
   useEffect(() => {
-    if (!pickup.trim() || !dropoff.trim()) return;
+    if (!pickup.trim() || !dropoff.trim()) {
+      setDistanceKm(0);
+      setEstimatedMins(0);
+      setBaseCalculatedFare(0);
+      setCustomBidFare(0);
+      setIsAccurateRoute(false);
+      return;
+    }
 
     const route = calculateEstimatedRoute(pickup, dropoff);
     const tierObj = RIDE_TIERS.find((t) => t.id === selectedTier) || RIDE_TIERS[0];
@@ -223,7 +235,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
   // Handler when map directions engine computes precise road route
   const handleRouteCalculated = (newDistKm: number, newDurMins: number) => {
-    if (newDistKm <= 0) return;
+    if (newDistKm <= 0 || !pickup.trim() || !dropoff.trim()) return;
     const tierObj = RIDE_TIERS.find((t) => t.id === selectedTier) || RIDE_TIERS[0];
     
     setDistanceKm(newDistKm);
@@ -242,8 +254,8 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
     setFareBreakdown(breakdown);
     setBaseCalculatedFare(breakdown.totalFare);
-    // Keep custom inDrive bid updated if at default
-    setCustomBidFare((prev) => (prev <= breakdown.baseFare ? breakdown.totalFare : prev));
+    // Keep custom inDrive bid updated if at default or 0
+    setCustomBidFare((prev) => (prev <= 0 || prev <= breakdown.baseFare ? breakdown.totalFare : prev));
   };
 
   // Swap pickup and dropoff locations
@@ -405,7 +417,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   };
 
   // Safety PIN generated per ride ID
-  const safetyPin = activeRide ? `${(Math.abs(activeRide.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % 9000) + 1000}` : '4829';
+  const safetyPin = getRidePin(activeRide?.id);
 
   // Book Ride Action
   const handleBookRide = async (e: React.FormEvent) => {
@@ -499,6 +511,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
   const handleBookAnother = () => {
     setActiveRide(null);
+    setPickup('');
+    setDropoff('');
+    setPickupCoords(null);
+    setDropoffCoords(null);
     setErrorMessage(null);
     setReviewSubmitted(false);
   };
@@ -729,6 +745,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             {/* Distance & Fare Calculation Summary Badge */}
             {(() => {
               const activeTierConfig = selectedTier === 'moto_delivery' ? pricing.tierPricing.moto_delivery : pricing.tierPricing.moto_comfort;
+              const hasRoute = Boolean(pickup.trim() && dropoff.trim() && distanceKm > 0);
               return (
                 <div
                   className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 text-xs transition-colors ${
@@ -742,10 +759,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-black text-xs text-emerald-700 dark:text-emerald-400">
-                          {distanceKm} km
+                          {hasRoute ? `${distanceKm} km` : '— km'}
                         </span>
                         <span className="text-[10px] font-semibold text-slate-500">
-                          (~{estimatedMins} mins)
+                          {hasRoute ? `(~${estimatedMins} mins)` : '(Awaiting locations)'}
                         </span>
                         {isAccurateRoute && (
                           <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold">
@@ -754,8 +771,8 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                         )}
                       </div>
                       <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                        {activeTierConfig.name}
-                        {pricing.surgeMultiplier > 1.0 && (
+                        {hasRoute ? activeTierConfig.name : 'Enter pickup & drop-off to calculate fare'}
+                        {hasRoute && pricing.surgeMultiplier > 1.0 && (
                           <span className="ml-1 text-amber-500 font-bold">({pricing.surgeMultiplier}x Surge)</span>
                         )}
                       </p>
@@ -764,7 +781,9 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
                   <div className="text-right">
                     <span className="text-[9px] uppercase font-bold text-slate-400 block">Recommended</span>
-                    <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">₹{baseCalculatedFare.toFixed(2)}</span>
+                    <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
+                      {hasRoute ? `₹${baseCalculatedFare.toFixed(2)}` : '—'}
+                    </span>
                   </div>
                 </div>
               );
@@ -777,16 +796,17 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                   Choose Motoride Booking Category
                 </span>
                 <span className={`text-[10px] font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Rates for {distanceKm} km
+                  {distanceKm > 0 ? `Rates for ${distanceKm} km` : 'Fares calculated on entry'}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2.5">
                 {RIDE_TIERS.map((tier) => {
                   const isSelected = selectedTier === tier.id;
                   const tierConfig = tier.id === 'moto_delivery' ? pricing.tierPricing.moto_delivery : pricing.tierPricing.moto_comfort;
+                  const hasRoute = Boolean(pickup.trim() && dropoff.trim() && distanceKm > 0);
                   const tierFareObj = calculateFare({
-                    distanceKm,
-                    estimatedMins,
+                    distanceKm: distanceKm || 1.5,
+                    estimatedMins: estimatedMins || 5,
                     tierId: tier.id,
                     tierName: tierConfig.name,
                     pickupLocation: pickup,
@@ -824,7 +844,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                           {tierConfig.name}
                         </span>
                         <span className={`text-xs font-black mt-0.5 block ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
-                          ₹{tierFareObj.totalFare.toFixed(2)}
+                          {hasRoute ? `₹${tierFareObj.totalFare.toFixed(2)}` : `From ₹${tierConfig.baseFare.toFixed(2)}`}
                         </span>
                         <span className={`text-[10px] block mt-0.5 truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                           {tierConfig.tagline || tier.tagline}
@@ -851,14 +871,18 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                     Offer Your Price to Captains
                   </span>
                   <p className={`text-[10px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                    Suggested Fair Price: ₹{baseCalculatedFare.toFixed(2)} for {distanceKm} km
-                    {pricing.surgeMultiplier > 1.0 && (
+                    {pickup.trim() && dropoff.trim() && baseCalculatedFare > 0
+                      ? `Suggested Fair Price: ₹${baseCalculatedFare.toFixed(2)} for ${distanceKm} km`
+                      : 'Fill pickup & drop-off to compute fair fare'}
+                    {pickup.trim() && dropoff.trim() && pricing.surgeMultiplier > 1.0 && (
                       <span className="ml-1 text-amber-600 font-bold">({pricing.surgeMultiplier}x Surge Active)</span>
                     )}
                   </p>
                 </div>
                 <div className="text-right">
-                  <span className="text-lg font-black text-amber-600">₹{customBidFare.toFixed(2)}</span>
+                  <span className="text-lg font-black text-amber-600">
+                    {customBidFare > 0 ? `₹${customBidFare.toFixed(2)}` : '—'}
+                  </span>
                 </div>
               </div>
 
@@ -866,8 +890,9 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               <div className="flex items-center gap-2 pt-1">
                 <button
                   type="button"
+                  disabled={!pickup.trim() || !dropoff.trim()}
                   onClick={() => setCustomBidFare((prev) => Math.max(25.0, Number((prev - 5.0).toFixed(2))))}
-                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                     isLight
                       ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
@@ -878,20 +903,22 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
                 <button
                   type="button"
+                  disabled={!pickup.trim() || !dropoff.trim()}
                   onClick={() => setCustomBidFare(baseCalculatedFare)}
-                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                     isLight
                       ? 'bg-white hover:bg-slate-100 text-emerald-700 border-emerald-200 font-black'
                       : 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border-slate-700 font-black'
                   }`}
                 >
-                  Fair (₹{baseCalculatedFare.toFixed(2)})
+                  Fair ({baseCalculatedFare > 0 ? `₹${baseCalculatedFare.toFixed(2)}` : '—'})
                 </button>
 
                 <button
                   type="button"
+                  disabled={!pickup.trim() || !dropoff.trim()}
                   onClick={() => setCustomBidFare((prev) => Number((prev + 5.0).toFixed(2)))}
-                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                     isLight
                       ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
@@ -1000,13 +1027,22 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             <button
               id="indrive-book-ride-btn"
               type="submit"
-              disabled={isSubmitting}
-              className="w-full py-4 px-4 font-black rounded-2xl text-sm flex items-center justify-center gap-2 shadow-xl transition-all transform active:scale-[0.99] cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 shadow-emerald-500/25"
+              disabled={isSubmitting || !pickup.trim() || !dropoff.trim()}
+              className={`w-full py-4 px-4 font-black rounded-2xl text-sm flex items-center justify-center gap-2 shadow-xl transition-all transform active:scale-[0.99] ${
+                !pickup.trim() || !dropoff.trim()
+                  ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none border border-slate-300 dark:border-slate-700'
+                  : 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 shadow-emerald-500/25 cursor-pointer'
+              }`}
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Broadcasting Offer to Nearby Captains...
+                </>
+              ) : !pickup.trim() || !dropoff.trim() ? (
+                <>
+                  <span>Enter Pickup & Destination to Request</span>
+                  <ArrowRight className="w-4 h-4 opacity-40" />
                 </>
               ) : (
                 <>

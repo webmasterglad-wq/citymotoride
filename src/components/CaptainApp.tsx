@@ -41,7 +41,7 @@ import {
   BellOff,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Ride, RideStatus, UserProfile, CaptainEarningsSummary, getRideServiceInfo, CaptainOffer } from '../types/ride';
+import { Ride, RideStatus, UserProfile, CaptainEarningsSummary, getRideServiceInfo, CaptainOffer, getRidePin } from '../types/ride';
 import {
   fetchActiveRequestedRides,
   fetchActiveRideForCaptain,
@@ -68,6 +68,7 @@ import {
   playSweetAlertTune,
   subscribeToIncomingRideBroadcasts,
   unlockAudio,
+  notifyCaptainArrived,
 } from '../utils/audioAlert';
 
 interface CaptainAppProps {
@@ -161,8 +162,21 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
   // Chat Modal
   const [isChatOpen, setIsChatOpen] = useState(false);
+
+  // Ride PIN Verification State for starting trip
   const [enteredPin, setEnteredPin] = useState('');
   const [pinVerified, setPinVerified] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+  const pinInputsRef = useRef<(HTMLInputElement | null)[]>([]);
+
+  // Reset PIN state whenever active ride changes
+  useEffect(() => {
+    setEnteredPin('');
+    setPinVerified(false);
+    setPinError(null);
+    setIsVerifyingPin(false);
+  }, [activeRide?.id]);
 
   // Incoming Request Sweet Alert Tune On/Off State with localStorage persistence
   const [isAlertSoundEnabled, setIsAlertSoundEnabled] = useState<boolean>(() => {
@@ -680,6 +694,13 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           setConcurrencyAlert({ type: 'error', message: 'Trip was cancelled.' });
         } else {
           setActiveRide(data);
+          if (nextStatus === 'arrived') {
+            notifyCaptainArrived(data);
+            setConcurrencyAlert({
+              type: 'success',
+              message: `Notified ${data.passenger_name || activeRide.passenger_name || 'passenger'} that you have arrived at pickup!`,
+            });
+          }
         }
       }
     } catch (err: any) {
@@ -687,6 +708,102 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     } finally {
       setIsUpdatingStatus(false);
     }
+  };
+
+  // Verify rider PIN and start the trip
+  const handleVerifyPinAndStart = async (pinToVerify?: string) => {
+    if (!activeRide) return;
+    const pin = (pinToVerify !== undefined ? pinToVerify : enteredPin).trim();
+    const expectedPin = getRidePin(activeRide.id);
+
+    if (pin.length < 4) {
+      setPinError('Please enter all 4 digits of the rider PIN.');
+      return;
+    }
+
+    if (pin !== expectedPin) {
+      setPinError(`Incorrect PIN. Please ask ${activeRide.passenger_name || 'the passenger'} for their 4-digit Ride PIN.`);
+      setPinVerified(false);
+      return;
+    }
+
+    setPinError(null);
+    setPinVerified(true);
+    setIsVerifyingPin(true);
+
+    try {
+      confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
+    } catch (e) {}
+
+    setConcurrencyAlert({
+      type: 'success',
+      message: `PIN verified! Starting ride with ${activeRide.passenger_name || 'passenger'}.`,
+    });
+
+    await handleProgressRide('started');
+    setIsVerifyingPin(false);
+  };
+
+  const handlePinDigitChange = (index: number, val: string) => {
+    const cleaned = val.replace(/\D/g, '');
+    const currentChars = (enteredPin + '    ').slice(0, 4).split('');
+
+    if (!cleaned) {
+      currentChars[index] = ' ';
+      const updated = currentChars.join('').trimEnd();
+      setEnteredPin(updated);
+      setPinError(null);
+      return;
+    }
+
+    const digit = cleaned.slice(-1);
+    currentChars[index] = digit;
+    const newPin = currentChars.join('').trimEnd();
+    setEnteredPin(newPin);
+    setPinError(null);
+
+    // Auto advance focus
+    if (index < 3 && digit) {
+      pinInputsRef.current[index + 1]?.focus();
+    }
+
+    // Auto-verify if all 4 digits are present and match
+    const fullPin = currentChars.join('');
+    if (fullPin.length === 4 && !fullPin.includes(' ') && activeRide) {
+      const expectedPin = getRidePin(activeRide.id);
+      if (fullPin === expectedPin) {
+        handleVerifyPinAndStart(fullPin);
+      }
+    }
+  };
+
+  const handlePinKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && (!enteredPin[index] || enteredPin[index] === ' ') && index > 0) {
+      pinInputsRef.current[index - 1]?.focus();
+    }
+  };
+
+  const handlePinPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
+    if (!pasted) return;
+    setEnteredPin(pasted);
+    setPinError(null);
+    const targetIdx = Math.min(pasted.length - 1, 3);
+    pinInputsRef.current[targetIdx]?.focus();
+    if (pasted.length === 4 && activeRide) {
+      const expected = getRidePin(activeRide.id);
+      if (pasted === expected) {
+        handleVerifyPinAndStart(pasted);
+      }
+    }
+  };
+
+  const handleClearPin = () => {
+    setEnteredPin('');
+    setPinError(null);
+    setPinVerified(false);
+    pinInputsRef.current[0]?.focus();
   };
 
   return (
@@ -1016,29 +1133,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             );
           })()}
 
-          {/* Turn-by-Turn Navigation Header Banner */}
-          <div className="bg-emerald-500 text-slate-950 p-3.5 rounded-2xl flex items-center justify-between shadow-lg">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-slate-950 text-white flex items-center justify-center font-black">
-                <Navigation className="w-5 h-5 -rotate-45" />
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-black tracking-wider text-slate-900 block">
-                  {activeRide.status === 'accepted' && 'NEXT: 350m TO PICKUP'}
-                  {activeRide.status === 'arrived' && 'WAITING AT PICKUP SPOT'}
-                  {activeRide.status === 'started' && 'NEXT: 200m TURN RIGHT ONTO MARKET ST'}
-                </span>
-                <span className="text-sm font-black leading-tight block">
-                  {activeRide.status === 'accepted' ? activeRide.pickup_location.split(',')[0] : activeRide.dropoff_location.split(',')[0]}
-                </span>
-              </div>
-            </div>
-
-            <div className="text-right pl-2 border-l border-slate-900/20">
-              <span className="text-xs font-black block leading-none">35 mph</span>
-              <span className="text-[9px] font-bold text-slate-800">Speed Limit</span>
-            </div>
-          </div>
 
           {/* Passenger Contact Card */}
           <div
@@ -1156,6 +1250,164 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             </div>
           </div>
 
+          {/* PIN Verification to Start Ride Option */}
+          {(activeRide.status === 'accepted' || activeRide.status === 'arrived') && (
+            <div
+              id="captain-pin-verification-card"
+              className={`p-4 rounded-2xl border transition-all space-y-3 ${
+                pinError
+                  ? isLight
+                    ? 'bg-rose-50/70 border-rose-300 shadow-sm'
+                    : 'bg-rose-950/20 border-rose-500/40 shadow-sm'
+                  : pinVerified
+                  ? isLight
+                    ? 'bg-emerald-50 border-emerald-300 shadow-sm'
+                    : 'bg-emerald-950/20 border-emerald-500/40 shadow-sm'
+                  : isLight
+                  ? 'bg-gradient-to-b from-amber-50/60 to-slate-50 border-amber-200/90 shadow-sm'
+                  : 'bg-gradient-to-b from-amber-950/25 to-slate-900 border-amber-500/30 shadow-md'
+              }`}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                      pinVerified
+                        ? 'bg-emerald-500 text-slate-950'
+                        : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                    }`}
+                  >
+                    {pinVerified ? <Check className="w-5 h-5 stroke-[3]" /> : <KeyRound className="w-4 h-4" />}
+                  </div>
+                  <div>
+                    <h5 className={`text-xs font-black flex items-center gap-1.5 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                      <span>Enter Rider Safety PIN</span>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-black tracking-wider uppercase ${
+                        activeRide.status === 'arrived'
+                          ? 'bg-indigo-500 text-white'
+                          : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                      }`}>
+                        {activeRide.status === 'arrived' ? 'At Pickup' : 'Ride Accepted'}
+                      </span>
+                    </h5>
+                    <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                      Ask {activeRide.passenger_name || 'the rider'} for their 4-digit Ride PIN
+                    </p>
+                  </div>
+                </div>
+
+                {/* Clear Input Helper if digits entered */}
+                {enteredPin.trim().length > 0 && !pinVerified && (
+                  <button
+                    type="button"
+                    id="captain-clear-pin-btn"
+                    onClick={handleClearPin}
+                    className={`text-[10px] px-2.5 py-1.5 rounded-xl font-bold border flex items-center gap-1 transition-all cursor-pointer ${
+                      isLight
+                        ? 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200 shadow-2xs'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                    }`}
+                  >
+                    <span>Clear</span>
+                  </button>
+                )}
+              </div>
+
+              {/* 4 Digit Boxes */}
+              <div className="flex items-center justify-center gap-2.5 py-1">
+                {[0, 1, 2, 3].map((idx) => {
+                  const digit = enteredPin[idx] || '';
+                  return (
+                    <input
+                      key={idx}
+                      ref={(el) => {
+                        pinInputsRef.current[idx] = el;
+                      }}
+                      id={`captain-pin-digit-${idx}`}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={1}
+                      autoComplete="one-time-code"
+                      value={digit.trim()}
+                      onChange={(e) => handlePinDigitChange(idx, e.target.value)}
+                      onKeyDown={(e) => handlePinKeyDown(idx, e)}
+                      onPaste={handlePinPaste}
+                      disabled={isUpdatingStatus || pinVerified}
+                      className={`w-12 h-13 text-xl font-mono font-black text-center rounded-xl border transition-all focus:outline-none ${
+                        pinError
+                          ? 'border-rose-500 bg-rose-500/10 text-rose-500'
+                          : pinVerified
+                          ? 'border-emerald-500 bg-emerald-500/10 text-emerald-500'
+                          : digit.trim()
+                          ? isLight
+                            ? 'border-emerald-500 bg-emerald-50 text-slate-950 ring-2 ring-emerald-500/20'
+                            : 'border-emerald-400 bg-emerald-950/30 text-emerald-300 ring-2 ring-emerald-400/20'
+                          : isLight
+                          ? 'border-slate-300 bg-white text-slate-900 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20'
+                          : 'border-slate-700 bg-slate-950 text-slate-100 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20'
+                      }`}
+                      placeholder="•"
+                    />
+                  );
+                })}
+              </div>
+
+              {/* Error or Verified Status */}
+              {pinError && (
+                <div className="flex items-center justify-between gap-1.5 px-1 text-rose-500 text-[11px] font-bold animate-in fade-in duration-200">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{pinError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleClearPin}
+                    className="text-[10px] underline hover:text-rose-400 shrink-0 cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+
+              {pinVerified && (
+                <div className="flex items-center gap-1.5 px-1 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold animate-in fade-in duration-200">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>PIN verified successfully! Starting trip...</span>
+                </div>
+              )}
+
+              {/* Verify & Start Ride Button */}
+              <button
+                id="captain-verify-start-trip-btn"
+                type="button"
+                onClick={() => handleVerifyPinAndStart()}
+                disabled={isUpdatingStatus || isVerifyingPin || enteredPin.trim().length < 4}
+                className={`w-full py-3.5 px-4 font-black rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg transition-all transform active:scale-[0.99] ${
+                  enteredPin.trim().length === 4 && !pinError
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 shadow-emerald-500/25 cursor-pointer font-black'
+                    : isLight
+                    ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed shadow-none'
+                    : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed shadow-none'
+                }`}
+              >
+                {isUpdatingStatus || isVerifyingPin ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Verifying & Starting Trip...</span>
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-4 h-4" />
+                    <span>{enteredPin.trim().length === 4 ? 'Verify PIN & Start Ride' : 'Enter 4-Digit PIN to Start'}</span>
+                    <ChevronRight className="w-4 h-4 ml-auto" />
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
           {/* Tactile Action Slider / Buttons */}
           <div className="space-y-2 pt-1">
             {activeRide.status === 'accepted' && (
@@ -1163,22 +1415,10 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                 id="uber-driver-arrived-btn"
                 onClick={() => handleProgressRide('arrived')}
                 disabled={isUpdatingStatus}
-                className="w-full py-4 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black rounded-2xl text-sm flex items-center justify-center gap-2 shadow-xl shadow-sky-500/25 transition-all cursor-pointer"
+                className="w-full py-3.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-sky-500/20 transition-all cursor-pointer"
               >
                 {isUpdatingStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
-                I Have Arrived at Pickup
-              </button>
-            )}
-
-            {activeRide.status === 'arrived' && (
-              <button
-                id="uber-driver-start-trip-btn"
-                onClick={() => handleProgressRide('started')}
-                disabled={isUpdatingStatus}
-                className="w-full py-4 bg-indigo-500 hover:bg-indigo-400 text-white font-black rounded-2xl text-sm flex items-center justify-center gap-2 shadow-xl shadow-indigo-500/25 transition-all cursor-pointer"
-              >
-                {isUpdatingStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
-                Passenger On Board · Start Trip
+                I Have Arrived at Pickup Spot
               </button>
             )}
 
