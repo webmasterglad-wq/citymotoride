@@ -478,12 +478,48 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       }
     };
 
+    // Also listen to cross-tab BroadcastChannel
+    let capBroadcastChannel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        capBroadcastChannel = new BroadcastChannel('motoride_offers_bus');
+        capBroadcastChannel.onmessage = (msgEvent: MessageEvent) => {
+          const data = msgEvent.data;
+          const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
+          if (data && data.type === 'offer_mutually_accepted' && data.captainId === activeCapId) {
+            if (data.ride) {
+              setActiveRide(data.ride);
+              setRequestedRides((prev) => prev.filter((r) => r.id !== data.rideId));
+              setDeclinedRides((prev) => prev.filter((d) => d.ride.id !== data.rideId));
+              setConcurrencyAlert({
+                type: 'success',
+                message: `Mutual acceptance confirmed! Passenger accepted your offer of ₹${Number(data.fare).toFixed(2)}. Proceed to pickup!`,
+              });
+              try {
+                confetti({ particleCount: 65, spread: 75, origin: { y: 0.6 } });
+              } catch (e) {}
+            }
+          } else if (data && data.type === 'offers_update' && data.rideId && Array.isArray(data.offers)) {
+            const myOffer = (data.offers as CaptainOffer[]).find(
+              (o) => o.captain_id === activeCapId
+            );
+            if (myOffer) {
+              setMyOffers((prev) => ({ ...prev, [data.rideId]: myOffer }));
+            }
+          }
+        };
+      }
+    } catch {}
+
     window.addEventListener('motoride_offers_sync', handleOffersSync);
     window.addEventListener('motoride_offer_mutually_accepted', handleMutualAccepted);
 
     return () => {
       window.removeEventListener('motoride_offers_sync', handleOffersSync);
       window.removeEventListener('motoride_offer_mutually_accepted', handleMutualAccepted);
+      if (capBroadcastChannel) {
+        capBroadcastChannel.close();
+      }
     };
   }, [currentCaptain.id]);
 

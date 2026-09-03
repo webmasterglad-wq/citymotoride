@@ -55,6 +55,7 @@ import {
   subscribeToPassengerRide,
   unsubscribeChannel,
   subscribeToRideOffers,
+  getStoredRideOffers,
   acceptCaptainOffer,
   declineCaptainOffer,
   subscribeToCaptainSkipEvents,
@@ -343,19 +344,31 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     const pollInterval = setInterval(async () => {
       if (!isSupabaseConfigured()) return;
       const { data } = await fetchRideById(currentActiveRideId);
-      if (data && data.status !== activeRide.status) {
-        if (data.status === 'arrived' && activeRide.status !== 'arrived') {
-          playCaptainArrivedChime();
-          setCaptainArrivedNotice({
-            captainName: data.captain_name || 'Your Captain',
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          });
+      if (data) {
+        if (data.status !== activeRide.status) {
+          if (data.status === 'arrived' && activeRide.status !== 'arrived') {
+            playCaptainArrivedChime();
+            setCaptainArrivedNotice({
+              captainName: data.captain_name || 'Your Captain',
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            });
+          }
+          setActiveRide(data);
+          if (data.status === 'completed') {
+            try {
+              confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
+            } catch (e) {}
+          }
         }
-        setActiveRide(data);
-        if (data.status === 'completed') {
-          try {
-            confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
-          } catch (e) {}
+
+        // Also sync captain offers if available in DB or localStorage
+        if (Array.isArray((data as any).captain_offers) && (data as any).captain_offers.length > 0) {
+          setCaptainOffers((data as any).captain_offers);
+        } else {
+          const stored = getStoredRideOffers(currentActiveRideId);
+          if (stored.length > 0) {
+            setCaptainOffers(stored);
+          }
         }
       }
     }, 1500);

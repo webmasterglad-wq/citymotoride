@@ -291,6 +291,12 @@ export const fetchRideById = async (
       return { data: null, error: formatSupabaseError(error) };
     }
 
+    if (data && Array.isArray((data as any).captain_offers) && (data as any).captain_offers.length > 0) {
+      try {
+        localStorage.setItem(OFFERS_KEY_PREFIX + data.id, JSON.stringify((data as any).captain_offers));
+      } catch {}
+    }
+
     return { data: data as Ride | null, error: null };
   } catch (err: any) {
     return { data: null, error: formatSupabaseError(err) };
@@ -314,6 +320,13 @@ export const fetchActiveRideForPassenger = async (
       .maybeSingle();
 
     if (error) return { data: null, error: formatSupabaseError(error) };
+
+    if (data && Array.isArray((data as any).captain_offers) && (data as any).captain_offers.length > 0) {
+      try {
+        localStorage.setItem(OFFERS_KEY_PREFIX + data.id, JSON.stringify((data as any).captain_offers));
+      } catch {}
+    }
+
     return { data: data as Ride | null, error: null };
   } catch (err: any) {
     return { data: null, error: formatSupabaseError(err) };
@@ -971,7 +984,88 @@ export const getStoredRideOffers = (rideId: string): CaptainOffer[] => {
   }
 };
 
-export const saveStoredRideOffers = (rideId: string, offers: CaptainOffer[]): void => {
+/**
+ * Broadcast an offer update across Supabase Realtime WebSocket channels
+ */
+export const broadcastOffersUpdate = (rideId: string, offers: CaptainOffer[], offer?: CaptainOffer) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  try {
+    const channel = supabase.channel(`ride_offers_${rideId}`);
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        channel.send({
+          type: 'broadcast',
+          event: 'offers_update',
+          payload: { rideId, offers, offer },
+        }).catch(() => {});
+      }
+    });
+
+    channel.send({
+      type: 'broadcast',
+      event: 'offers_update',
+      payload: { rideId, offers, offer },
+    }).catch(() => {});
+  } catch (e) {
+    console.warn('[Motoride Realtime] broadcastOffersUpdate note:', e);
+  }
+};
+
+/**
+ * Broadcast mutual acceptance of an offer across Supabase Realtime WebSocket channels
+ */
+export const broadcastMutualAcceptance = (
+  rideId: string,
+  captainId: string,
+  fare: number,
+  ride?: Ride
+) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  try {
+    const channel = supabase.channel(`ride_offers_${rideId}`);
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        channel.send({
+          type: 'broadcast',
+          event: 'offer_mutually_accepted',
+          payload: { rideId, captainId, fare, ride },
+        }).catch(() => {});
+      }
+    });
+
+    channel.send({
+      type: 'broadcast',
+      event: 'offer_mutually_accepted',
+      payload: { rideId, captainId, fare, ride },
+    }).catch(() => {});
+  } catch (e) {
+    console.warn('[Motoride Realtime] broadcastMutualAcceptance note:', e);
+  }
+};
+
+/**
+ * Persist captain offers in the Supabase rides table (graceful if column not yet added)
+ */
+export const persistOffersToDatabase = async (rideId: string, offers: CaptainOffer[]) => {
+  const supabase = getSupabaseClient();
+  if (!supabase || !rideId) return;
+
+  try {
+    await supabase.from('rides').update({ captain_offers: offers }).eq('id', rideId);
+  } catch (err) {
+    // Non-blocking fallback if column doesn't exist yet
+  }
+};
+
+export const saveStoredRideOffers = (
+  rideId: string,
+  offers: CaptainOffer[],
+  skipRemote = false
+): void => {
   if (!rideId) return;
   try {
     localStorage.setItem(OFFERS_KEY_PREFIX + rideId, JSON.stringify(offers));
@@ -986,7 +1080,7 @@ export const saveStoredRideOffers = (rideId: string, offers: CaptainOffer[]): vo
     );
   } catch {}
 
-  // Broadcast to other tabs / windows
+  // Broadcast to other tabs / windows via BroadcastChannel
   try {
     offersBroadcastChannel?.postMessage({
       type: 'offers_update',
@@ -994,6 +1088,13 @@ export const saveStoredRideOffers = (rideId: string, offers: CaptainOffer[]): vo
       offers,
     });
   } catch {}
+
+  if (!skipRemote) {
+    // Broadcast via Supabase Realtime WebSocket channel across devices/browsers
+    broadcastOffersUpdate(rideId, offers);
+    // Persist to Supabase database if column is present
+    persistOffersToDatabase(rideId, offers).catch(() => {});
+  }
 };
 
 /**
@@ -1057,7 +1158,7 @@ export const declineCaptainOffer = (rideId: string, captainId: string): void => 
  * 1. Atomically claims the ride in the database for this captain at agreed fare
  * 2. Marks the offer as 'accepted'
  * 3. Marks any other pending offers on this ride as 'declined'
- * 4. Broadcasts the mutual acceptance event across all tabs & realtime
+ * 4. Broadcasts the mutual acceptance event across all tabs, windows, and Supabase Realtime
  */
 export const acceptCaptainOffer = async (
   ride: Ride,
@@ -1091,17 +1192,32 @@ export const acceptCaptainOffer = async (
 
     saveStoredRideOffers(ride.id, updated);
 
-    // Broadcast mutual acceptance message
+    const finalRide = result.ride || {
+      ...ride,
+      status: 'accepted',
+      captain_id: offer.captain_id,
+      fare: offer.offered_fare,
+      captain_name: offer.captain_name,
+      captain_phone: offer.captain_phone,
+      captain_vehicle: offer.captain_vehicle,
+      captain_rating: offer.captain_rating,
+    };
+
+    // Broadcast mutual acceptance over Supabase Realtime
+    broadcastMutualAcceptance(ride.id, offer.captain_id, offer.offered_fare, finalRide);
+
+    // Broadcast mutual acceptance message over BroadcastChannel
     try {
       offersBroadcastChannel?.postMessage({
         type: 'offer_mutually_accepted',
         rideId: ride.id,
         captainId: offer.captain_id,
         fare: offer.offered_fare,
-        ride: result.ride || { ...ride, status: 'accepted', captain_id: offer.captain_id, fare: offer.offered_fare },
+        ride: finalRide,
       });
     } catch {}
 
+    // Dispatch local custom event
     try {
       window.dispatchEvent(
         new CustomEvent('motoride_offer_mutually_accepted', {
@@ -1109,7 +1225,7 @@ export const acceptCaptainOffer = async (
             rideId: ride.id,
             captainId: offer.captain_id,
             fare: offer.offered_fare,
-            ride: result.ride,
+            ride: finalRide,
           },
         })
       );
@@ -1121,6 +1237,12 @@ export const acceptCaptainOffer = async (
 
 /**
  * Subscribes to real-time offer updates for a specific ride
+ * Listens to:
+ * 1. Supabase Realtime WebSocket broadcast channel (cross-device/cross-browser)
+ * 2. Supabase database query for stored captain_offers
+ * 3. BroadcastChannel (cross-tab in same browser)
+ * 4. Custom window events (same-window)
+ * 5. Local storage sync
  */
 export const subscribeToRideOffers = (
   rideId: string,
@@ -1130,6 +1252,79 @@ export const subscribeToRideOffers = (
 
   // Initial call with current stored offers
   callback(getStoredRideOffers(rideId));
+
+  const supabase = getSupabaseClient();
+
+  // Async load existing offers from Supabase database if present
+  if (supabase) {
+    Promise.resolve(
+      supabase
+        .from('rides')
+        .select('captain_offers')
+        .eq('id', rideId)
+        .maybeSingle()
+    )
+      .then(({ data }) => {
+        if (data && Array.isArray((data as any).captain_offers) && (data as any).captain_offers.length > 0) {
+          const dbOffers = (data as any).captain_offers as CaptainOffer[];
+          saveStoredRideOffers(rideId, dbOffers, true);
+          callback(dbOffers);
+        }
+      })
+      .catch(() => {});
+  }
+
+  // Supabase Realtime WebSocket Channel for this ride's offers
+  const channelName = `ride_offers_${rideId}`;
+  const realtimeChannel = supabase?.channel(channelName, {
+    config: { broadcast: { ack: true } },
+  });
+
+  if (realtimeChannel) {
+    realtimeChannel
+      .on('broadcast', { event: 'offers_update' }, ({ payload }) => {
+        if (payload && payload.rideId === rideId && Array.isArray(payload.offers)) {
+          try {
+            localStorage.setItem(OFFERS_KEY_PREFIX + rideId, JSON.stringify(payload.offers));
+          } catch {}
+          callback(payload.offers);
+        }
+      })
+      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => {
+        if (payload && payload.rideId === rideId) {
+          try {
+            window.dispatchEvent(
+              new CustomEvent('motoride_offer_mutually_accepted', {
+                detail: payload,
+              })
+            );
+          } catch {}
+          callback(getStoredRideOffers(rideId));
+        }
+      })
+      .on('broadcast', { event: 'request_offers' }, ({ payload }) => {
+        if (payload && payload.rideId === rideId) {
+          const current = getStoredRideOffers(rideId);
+          if (current.length > 0) {
+            realtimeChannel.send({
+              type: 'broadcast',
+              event: 'offers_update',
+              payload: { rideId, offers: current },
+            }).catch(() => {});
+          }
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          // Announce presence and request current offers
+          realtimeChannel.send({
+            type: 'broadcast',
+            event: 'request_offers',
+            payload: { rideId },
+          }).catch(() => {});
+        }
+      });
+  }
 
   const handleCustomEvent = (e: Event) => {
     const detail = (e as CustomEvent).detail;
@@ -1148,8 +1343,15 @@ export const subscribeToRideOffers = (
 
   const handleBroadcast = (msgEvent: MessageEvent) => {
     const data = msgEvent.data;
-    if (data && data.rideId === rideId && (data.type === 'offers_update' || data.type === 'offer_mutually_accepted')) {
-      callback(getStoredRideOffers(rideId));
+    if (data && data.rideId === rideId) {
+      if (data.type === 'offers_update' && Array.isArray(data.offers)) {
+        try {
+          localStorage.setItem(OFFERS_KEY_PREFIX + rideId, JSON.stringify(data.offers));
+        } catch {}
+        callback(data.offers);
+      } else if (data.type === 'offer_mutually_accepted') {
+        callback(getStoredRideOffers(rideId));
+      }
     }
   };
 
@@ -1164,6 +1366,9 @@ export const subscribeToRideOffers = (
     window.removeEventListener('storage', handleStorage);
     if (offersBroadcastChannel) {
       offersBroadcastChannel.removeEventListener('message', handleBroadcast);
+    }
+    if (realtimeChannel && supabase) {
+      supabase.removeChannel(realtimeChannel);
     }
   };
 };

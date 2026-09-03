@@ -40,6 +40,7 @@ export interface Ride {
   ride_tier?: 'moto_standard' | 'moto_comfort' | 'moto_delivery' | 'moto_xl' | string | null;
   tier_name?: string | null;
   delivery_notes?: string | null;
+  captain_offers?: CaptainOffer[] | null;
 }
 
 export interface RideServiceInfo {
