@@ -14,6 +14,7 @@ import {
   Moon,
   LogOut,
   UserCheck,
+  Star,
 } from 'lucide-react';
 import {
   getStoredSupabaseConfig,
@@ -156,15 +157,13 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
     >
       <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
         {/* Left: Brand */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-950 text-sm shadow-md shadow-amber-500/20">
-              M
-            </div>
-            <span className={`font-bold tracking-tight text-sm ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-              Moto<span className="text-amber-500">Ride</span>
-            </span>
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-950 text-sm shadow-md shadow-amber-500/20">
+            M
           </div>
+          <span className={`font-bold tracking-tight text-sm ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+            Moto<span className="text-amber-500">Ride</span>
+          </span>
         </div>
 
         {/* Center/Right: View Switcher */}
@@ -199,88 +198,92 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
           >
             Captain App
           </button>
-          <button
-            id="view-admin-btn"
-            onClick={() => onChangeView('admin')}
-            className={`px-3 py-1 rounded-lg font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeView === 'admin'
-                ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-black shadow-md shadow-emerald-500/20'
-                : isLight
-                ? 'text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200 shadow-xs'
-                : 'text-slate-300 hover:text-white bg-slate-900/60 hover:bg-slate-800'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Admin Dashboard
-          </button>
         </div>
 
         {/* Action buttons & Auth Session */}
         <div className="flex items-center gap-2">
-          {/* User badge and Sign Out button if signed in */}
-          {getUserForRole(activeView) ? (
-            <div className="flex items-center gap-2">
-              <div
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border ${
-                  isLight ? 'bg-slate-100 border-slate-200 text-slate-800' : 'bg-slate-800 border-slate-700 text-slate-200'
-                }`}
-              >
-                <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span className="max-w-[120px] truncate">{getUserForRole(activeView)?.name}</span>
-                <span className="text-[10px] uppercase font-bold text-amber-500">({activeView})</span>
+          {/* User badge, Sign Out, Database Setup, and Theme Toggle are only shown when signed in */}
+          {getUserForRole(activeView) && (
+            <>
+              <div className="flex items-center gap-2">
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border ${
+                    isLight ? 'bg-slate-100 border-slate-200 text-slate-800' : 'bg-slate-800 border-slate-700 text-slate-200'
+                  }`}
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
+                  <span className="max-w-[120px] truncate">{getUserForRole(activeView)?.name}</span>
+                  <span className="text-[10px] uppercase font-bold text-amber-500">({activeView})</span>
+                </div>
+                <button
+                  type="button"
+                  id="header-signout-btn"
+                  onClick={() => signOut(activeView)}
+                  title="Sign Out of this account"
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                    isLight
+                      ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                      : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border-rose-800'
+                  }`}
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
               </div>
+
+              {/* Database Setup Button */}
               <button
                 type="button"
-                id="header-signout-btn"
-                onClick={() => signOut(activeView)}
-                title="Sign Out of this account"
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                id="header-sql-setup-btn"
+                onClick={onOpenSqlModal}
+                title="Open Supabase SQL Schema setup"
+                className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
                   isLight
-                    ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                    : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border-rose-800'
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                 }`}
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Sign Out</span>
+                <Database className="w-3.5 h-3.5 text-emerald-500" />
               </button>
-            </div>
-          ) : (
-            <span
-              className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${
-                isLight ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-950/50 text-amber-400 border-amber-800'
-              }`}
-            >
-              Sign In Required
-            </span>
+
+              {/* Theme Toggle */}
+              <button
+                type="button"
+                onClick={toggleTheme}
+                title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+                className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
+                  isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                }`}
+              >
+                {isLight ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+              </button>
+            </>
           )}
 
-          {/* Database Setup Button */}
+          {/* Admin Panel Star Icon Button in far right corner of top bar */}
           <button
             type="button"
-            id="header-sql-setup-btn"
-            onClick={onOpenSqlModal}
-            title="Open Supabase SQL Schema setup"
-            className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
-              isLight
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+            id="admin-panel-star-btn"
+            onClick={() => onChangeView(activeView === 'admin' ? 'passenger' : 'admin')}
+            title="Admin Panel"
+            aria-label="Admin Panel"
+            className={`p-1.5 sm:p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
+              activeView === 'admin'
+                ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-md shadow-amber-400/30 ring-2 ring-amber-400/40'
+                : isLight
+                ? 'bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border-slate-200 hover:border-amber-300'
+                : 'bg-slate-950 hover:bg-amber-950/40 text-slate-300 hover:text-amber-400 border-slate-800 hover:border-amber-700/60'
             }`}
           >
-            <Database className="w-3.5 h-3.5 text-emerald-500" />
-          </button>
-
-          {/* Theme Toggle */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-            className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
-              isLight
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-            }`}
-          >
-            {isLight ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+            <Star
+              className={`w-4 h-4 transition-transform ${
+                activeView === 'admin'
+                  ? 'fill-slate-950 text-slate-950 scale-110'
+                  : 'fill-amber-400 text-amber-500 hover:scale-110'
+              }`}
+            />
           </button>
         </div>
       </div>

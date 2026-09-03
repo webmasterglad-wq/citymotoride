@@ -12,13 +12,10 @@ import {
   ArrowRight,
   AlertCircle,
   CheckCircle2,
-  Database,
   KeyRound,
-  Zap,
 } from 'lucide-react';
 import { useAuth, AppRole, AuthUser } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { isSupabaseConfigured } from '../lib/supabase';
 
 interface AuthScreenProps {
   role: AppRole;
@@ -27,7 +24,7 @@ interface AuthScreenProps {
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenSqlModal }) => {
-  const { signUp, signIn, quickDemoLogin, isLoading: authContextLoading, authError, clearAuthError } = useAuth();
+  const { signUp, signIn, isLoading: authContextLoading, authError, clearAuthError } = useAuth();
   const { isLight } = useTheme();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -166,25 +163,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
     }
   };
 
-  const handleQuickDemo = async () => {
-    setLocalError(null);
-    setInfoMessage(null);
-    clearAuthError();
-    setIsSubmitting(true);
-    try {
-      const demoUser = await quickDemoLogin(role);
-      if (onSuccess) {
-        onSuccess(demoUser);
-      }
-    } catch (e: any) {
-      setLocalError(e?.message || 'Quick login failed');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const displayError = localError || authError;
-  const isConnected = isSupabaseConfigured();
 
   return (
     <div className="w-full max-w-md mx-auto py-8 px-4">
@@ -539,34 +518,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
           </button>
         </form>
 
-        {/* Divider */}
-        <div className="relative my-5">
-          <div className="absolute inset-0 flex items-center">
-            <div className={`w-full border-t ${isLight ? 'border-slate-200' : 'border-slate-800'}`} />
-          </div>
-          <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-wider">
-            <span className={`px-2 ${isLight ? 'bg-white text-slate-500' : 'bg-slate-900 text-slate-500'}`}>
-              Or Fast Evaluation
-            </span>
-          </div>
-        </div>
-
-        {/* 1-Click Quick Demo Sign In Button */}
-        <button
-          type="button"
-          id={`quick-demo-login-${role}-btn`}
-          onClick={handleQuickDemo}
-          disabled={isSubmitting}
-          className={`w-full py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-            isLight
-              ? 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
-              : 'bg-slate-950 hover:bg-slate-800 text-slate-200 border-slate-700'
-          }`}
-        >
-          <Zap className="w-3.5 h-3.5 text-amber-500" />
-          <span>⚡ Instant Demo Sign In as {role.charAt(0).toUpperCase() + role.slice(1)}</span>
-        </button>
-
         {/* Bottom Switch Mode link */}
         <div className="mt-5 text-center text-xs">
           {mode === 'signup' ? (
@@ -601,18 +552,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
             </p>
           )}
         </div>
-      </div>
-
-      {/* Supabase Engine Status Note */}
-      <div className="mt-4 flex items-center justify-between px-2 text-[11px] text-slate-500">
-        <div className="flex items-center gap-1.5">
-          <Database className="w-3.5 h-3.5 text-emerald-500" />
-          <span>Supabase Auth & Database</span>
-        </div>
-        <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          {isConnected ? 'Connected & Ready' : 'Local Auth Fallback'}
-        </span>
       </div>
     </div>
   );
