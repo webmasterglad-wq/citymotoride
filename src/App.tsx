@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Star } from 'lucide-react';
 import { ConnectionStatusBanner } from './components/ConnectionStatusBanner';
 import { PassengerApp } from './components/PassengerApp';
 import { CaptainApp } from './components/CaptainApp';
@@ -116,8 +115,23 @@ function AppContent() {
             : 'border-slate-900 bg-slate-950/80 text-slate-500'
         }`}
       >
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-2">
-          <span className="font-medium">MotoRide Real-Time Dispatch System · Supabase Realtime & Auth Engine</span>
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-1.5">
+          <span className="font-medium">MotoRide Real-Time Dispatch System · Supabase Realtime &amp;</span>
+          <button
+            type="button"
+            id="admin-dashboard-auth-engine-link"
+            onClick={() => setActiveView('admin')}
+            title="Open Admin Dashboard"
+            className={`font-semibold underline underline-offset-4 decoration-amber-500/60 hover:decoration-amber-500 transition-colors cursor-pointer inline-flex items-center gap-1 ${
+              activeView === 'admin'
+                ? 'text-amber-500 font-bold decoration-amber-500'
+                : isLight
+                ? 'text-slate-700 hover:text-amber-600'
+                : 'text-slate-400 hover:text-amber-400'
+            }`}
+          >
+            Auth Engine
+          </button>
         </div>
       </footer>
 
@@ -126,30 +140,6 @@ function AppContent() {
         isOpen={isSqlModalOpen}
         onClose={() => setIsSqlModalOpen(false)}
       />
-
-      {/* Admin Panel Star Icon in last right corner bottom of main page */}
-      <button
-        type="button"
-        id="admin-panel-star-btn"
-        onClick={() => setActiveView(activeView === 'admin' ? 'passenger' : 'admin')}
-        title="Admin Panel"
-        aria-label="Admin Panel"
-        className={`fixed bottom-4 right-4 z-50 p-2.5 sm:p-3 rounded-full border shadow-xl transition-all duration-200 cursor-pointer flex items-center justify-center hover:scale-110 active:scale-95 ${
-          activeView === 'admin'
-            ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-amber-400/30 ring-2 ring-amber-400/50'
-            : isLight
-            ? 'bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-800 border-slate-200 shadow-slate-900/10'
-            : 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-amber-400 border-slate-800 shadow-black/40'
-        }`}
-      >
-        <Star
-          className={`w-5 h-5 transition-transform ${
-            activeView === 'admin'
-              ? 'fill-slate-950 text-slate-950 scale-110'
-              : 'fill-amber-400 text-amber-500 hover:scale-110'
-          }`}
-        />
-      </button>
     </div>
   );
 }
