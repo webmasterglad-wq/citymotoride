@@ -165,6 +165,13 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<string>('idle');
+  const [captainArrivedNotice, setCaptainArrivedNotice] = useState<{ captainName: string; time: string } | null>(null);
+
+  useEffect(() => {
+    if (passengerUser) {
+      setCurrentUser(passengerUser);
+    }
+  }, [passengerUser]);
 
   // Captain Offers State for Mutual Bidding Acceptance
   const [captainOffers, setCaptainOffers] = useState<CaptainOffer[]>([]);
@@ -313,6 +320,12 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
           try {
             confetti({ particleCount: 45, spread: 60, origin: { y: 0.6 } });
           } catch (e) {}
+        } else if (updatedRide.status === 'arrived' && activeRide.status !== 'arrived') {
+          playCaptainArrivedChime();
+          setCaptainArrivedNotice({
+            captainName: updatedRide.captain_name || 'Your Captain',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
         } else if (updatedRide.status === 'completed') {
           try {
             confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
@@ -326,11 +339,18 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
     channelRef.current = channel;
 
-    // Fast polling fallback: Poll this exact ride ID to catch ride completion instantly
+    // Fast polling fallback: Poll this exact ride ID to catch status transitions instantly
     const pollInterval = setInterval(async () => {
       if (!isSupabaseConfigured()) return;
       const { data } = await fetchRideById(currentActiveRideId);
       if (data && data.status !== activeRide.status) {
+        if (data.status === 'arrived' && activeRide.status !== 'arrived') {
+          playCaptainArrivedChime();
+          setCaptainArrivedNotice({
+            captainName: data.captain_name || 'Your Captain',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+        }
         setActiveRide(data);
         if (data.status === 'completed') {
           try {
@@ -386,6 +406,23 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       unsubSkip();
     };
   }, [activeRide?.id, activeRide?.status]);
+
+  // Subscribe to Captain Arrived broadcast alerts across tabs / simulator
+  useEffect(() => {
+    const unsubArrived = subscribeToCaptainArrivedBroadcasts((arrivedRide) => {
+      if (activeRide && arrivedRide?.id === activeRide.id) {
+        playCaptainArrivedChime();
+        setCaptainArrivedNotice({
+          captainName: arrivedRide.captain_name || activeRide.captain_name || 'Your Captain',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        });
+      }
+    });
+
+    return () => {
+      unsubArrived();
+    };
+  }, [activeRide?.id, activeRide?.captain_name]);
 
   // Passenger Accepts Captain's Offer - Establishes Mutual Acceptance
   const handleAcceptCaptainOffer = async (offer: CaptainOffer) => {
@@ -1280,6 +1317,58 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               <p className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                 You rated {activeRide.captain_name || 'Captain'} {ratingStars} ★ {tipAmount > 0 ? `with a ₹${tipAmount} tip` : ''}.
               </p>
+            </div>
+          )}
+
+          {/* Captain Arrived Announcement Banner */}
+          {(activeRide.status === 'arrived' || captainArrivedNotice) && (
+            <div
+              id="captain-arrived-alert-banner"
+              className={`p-4 rounded-2xl border-2 shadow-xl animate-in zoom-in-95 duration-200 ${
+                isLight
+                  ? 'bg-gradient-to-r from-emerald-50 via-teal-50 to-amber-50 border-emerald-500 text-slate-900'
+                  : 'bg-gradient-to-r from-emerald-950/60 via-teal-950/40 to-slate-900 border-emerald-500 text-slate-100'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-black text-lg flex-shrink-0 shadow-md">
+                    🎉
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                        Captain Has Arrived!
+                      </h3>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    </div>
+                    <p className={`text-xs mt-0.5 leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                      <strong>{activeRide.captain_name || captainArrivedNotice?.captainName || 'Your Captain'}</strong> is waiting at your pickup point. Please board and share your 4-digit PIN <strong>{safetyPin}</strong>.
+                    </p>
+                    <div className="mt-2 flex items-center gap-2 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/20">
+                        📍 At Pickup Spot
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => playCaptainArrivedChime()}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-300 hover:bg-amber-500/30 cursor-pointer"
+                      >
+                        🔔 Replay Alert Sound
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                {captainArrivedNotice && (
+                  <button
+                    type="button"
+                    onClick={() => setCaptainArrivedNotice(null)}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs px-1.5 py-0.5 rounded cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

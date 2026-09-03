@@ -4,18 +4,27 @@ import { PassengerApp } from './components/PassengerApp';
 import { CaptainApp } from './components/CaptainApp';
 import { AdminDashboard } from './components/AdminDashboard';
 import { SqlSetupModal } from './components/SqlSetupModal';
+import { AuthScreen } from './components/AuthScreen';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { PricingProvider } from './context/PricingContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 
 function AppContent() {
   const [activeView, setActiveView] = useState<'passenger' | 'captain' | 'admin'>('passenger');
   const [isSqlModalOpen, setIsSqlModalOpen] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
   const { isLight } = useTheme();
+  const { isAuthenticated, getUserForRole } = useAuth();
 
   const handleRefreshAll = () => {
     setRefreshKey((prev) => prev + 1);
   };
+
+  const passengerUser = getUserForRole('passenger');
+  const captainUser = getUserForRole('captain');
+  const isPassengerAuthed = isAuthenticated('passenger');
+  const isCaptainAuthed = isAuthenticated('captain');
+  const isAdminAuthed = isAuthenticated('admin');
 
   return (
     <div
@@ -33,33 +42,68 @@ function AppContent() {
         onChangeView={setActiveView}
       />
 
-      {/* Main App Container */}
-      <main className="flex-1 w-full" key={refreshKey}>
+      {/* Main App Container - Only Show App Features After Sign In */}
+      <main className="flex-1 w-full flex flex-col justify-center" key={refreshKey}>
+        {/* ================= ADMIN VIEW ================= */}
         {activeView === 'admin' && (
-          <AdminDashboard onOpenSqlModal={() => setIsSqlModalOpen(true)} />
+          !isAdminAuthed ? (
+            <div className="py-8 px-4 my-auto">
+              <AuthScreen
+                role="admin"
+                onOpenSqlModal={() => setIsSqlModalOpen(true)}
+              />
+            </div>
+          ) : (
+            <AdminDashboard onOpenSqlModal={() => setIsSqlModalOpen(true)} />
+          )
         )}
 
+        {/* ================= PASSENGER VIEW ================= */}
         {activeView === 'passenger' && (
-          <div className="py-6 px-4">
-            <PassengerApp onOpenSqlModal={() => setIsSqlModalOpen(true)} />
-          </div>
+          !isPassengerAuthed ? (
+            <div className="py-8 px-4 my-auto">
+              <AuthScreen
+                role="passenger"
+                onOpenSqlModal={() => setIsSqlModalOpen(true)}
+              />
+            </div>
+          ) : (
+            <div className="py-6 px-4">
+              <PassengerApp
+                passengerUser={passengerUser || undefined}
+                onOpenSqlModal={() => setIsSqlModalOpen(true)}
+              />
+            </div>
+          )
         )}
 
+        {/* ================= CAPTAIN VIEW ================= */}
         {activeView === 'captain' && (
-          <div className="py-6 px-4">
-            <CaptainApp
-              captainUser={{
-                id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
-                name: 'Captain Alex Rivera',
-                phone: '+1 (555) 749-3021',
-                role: 'captain',
-                rating: 4.96,
-                vehicle_details: 'Yamaha MT-07 · Stealth Black #7492',
-              }}
-              titleSuffix="Alex"
-              onOpenSqlModal={() => setIsSqlModalOpen(true)}
-            />
-          </div>
+          !isCaptainAuthed ? (
+            <div className="py-8 px-4 my-auto">
+              <AuthScreen
+                role="captain"
+                onOpenSqlModal={() => setIsSqlModalOpen(true)}
+              />
+            </div>
+          ) : (
+            <div className="py-6 px-4">
+              <CaptainApp
+                captainUser={
+                  captainUser || {
+                    id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
+                    name: 'Captain Alex Rivera',
+                    phone: '+1 (555) 749-3021',
+                    role: 'captain',
+                    rating: 4.96,
+                    vehicle_details: 'Yamaha MT-07 · Stealth Black #7492',
+                  }
+                }
+                titleSuffix={captainUser?.name?.split(' ')[1] || 'Alex'}
+                onOpenSqlModal={() => setIsSqlModalOpen(true)}
+              />
+            </div>
+          )
         )}
       </main>
 
@@ -72,7 +116,7 @@ function AppContent() {
         }`}
       >
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-2">
-          <span className="font-medium">MotoRide Real-Time Dispatch System · Supabase Realtime Engine</span>
+          <span className="font-medium">MotoRide Real-Time Dispatch System · Supabase Realtime & Auth Engine</span>
         </div>
       </footer>
 
@@ -89,7 +133,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <PricingProvider>
-        <AppContent />
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
       </PricingProvider>
     </ThemeProvider>
   );

@@ -122,7 +122,8 @@ export interface UserProfile {
   id: string;
   name: string;
   phone: string;
-  role: 'passenger' | 'captain';
+  email?: string;
+  role: 'passenger' | 'captain' | 'admin';
   rating?: number;
   vehicle_details?: string;
   avatar_url?: string;

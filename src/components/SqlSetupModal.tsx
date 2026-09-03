@@ -182,8 +182,333 @@ BEGIN
 END $$;
 `;
 
+export const PASSENGER_PROFILE_SQL_SCRIPT = `-- ========================================================
+-- MOTORIDE PASSENGER & USER PROFILE SQL SCHEMA
+-- Run this in Supabase Dashboard -> SQL Editor
+-- ========================================================
+
+-- 1. Create profiles table linked to Supabase auth.users
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    full_name TEXT NOT NULL DEFAULT 'Passenger User',
+    email TEXT NULL,
+    phone TEXT NULL,
+    role TEXT NOT NULL DEFAULT 'passenger' CHECK (role IN ('passenger', 'captain', 'admin')),
+    avatar_url TEXT NULL,
+    rating NUMERIC(3, 2) DEFAULT 5.00,
+    emergency_contact_name TEXT NULL,
+    emergency_contact_phone TEXT NULL,
+    home_address TEXT NULL,
+    work_address TEXT NULL,
+    preferred_payment_method TEXT DEFAULT 'cash' CHECK (preferred_payment_method IN ('cash', 'card', 'wallet', 'upi')),
+    total_rides INTEGER DEFAULT 0,
+    total_spend NUMERIC(10, 2) DEFAULT 0.00,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Idempotent column additions in case table already existed
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS emergency_contact_name TEXT NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS emergency_contact_phone TEXT NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS home_address TEXT NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS work_address TEXT NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS preferred_payment_method TEXT DEFAULT 'cash';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS total_rides INTEGER DEFAULT 0;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS total_spend NUMERIC(10, 2) DEFAULT 0.00;
+
+-- 2. Helpful indexes
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
+CREATE INDEX IF NOT EXISTS idx_profiles_phone ON public.profiles(phone);
+CREATE INDEX IF NOT EXISTS idx_profiles_created_at ON public.profiles(created_at DESC);
+
+-- 3. Automatic Profile Creation Trigger on Supabase Auth Sign Up
+-- Whenever a user signs up (passenger, captain, or admin), automatically creates profile
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    INSERT INTO public.profiles (
+        id,
+        full_name,
+        email,
+        phone,
+        role,
+        avatar_url,
+        rating,
+        created_at,
+        updated_at
+    )
+    VALUES (
+        NEW.id,
+        COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
+        NEW.email,
+        COALESCE(NEW.raw_user_meta_data->>'phone', ''),
+        COALESCE(NEW.raw_user_meta_data->>'role', 'passenger'),
+        NEW.raw_user_meta_data->>'avatar_url',
+        5.00,
+        NOW(),
+        NOW()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+        full_name = COALESCE(EXCLUDED.full_name, profiles.full_name),
+        email = COALESCE(EXCLUDED.email, profiles.email),
+        phone = COALESCE(EXCLUDED.phone, profiles.phone),
+        updated_at = NOW();
+
+    RETURN NEW;
+END;
+$$;
+
+-- Drop existing trigger if needed and re-create
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_new_user();
+
+-- 4. Enable Row Level Security (RLS)
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Allow authenticated users to view profiles (needed for ride matching and dispatch)
+CREATE POLICY "Public read profiles"
+    ON public.profiles FOR SELECT
+    USING (true);
+
+-- Allow users to insert their own profile
+CREATE POLICY "Users can insert own profile"
+    ON public.profiles FOR INSERT
+    WITH CHECK (auth.uid() = id);
+
+-- Allow users to update only their own profile
+CREATE POLICY "Users can update own profile"
+    ON public.profiles FOR UPDATE
+    USING (auth.uid() = id)
+    WITH CHECK (auth.uid() = id);
+
+-- 5. Enable Realtime for profiles
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'profiles'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+    END IF;
+END
+$$;
+
+ALTER TABLE public.profiles REPLICA IDENTITY FULL;
+
+-- ========================================================
+-- COMMON PASSENGER PROFILE QUERIES FOR YOUR APP
+-- ========================================================
+
+-- A. Fetch Passenger Profile by Auth ID
+-- SELECT * FROM public.profiles WHERE id = auth.uid() AND role = 'passenger';
+
+-- B. Update Passenger Profile (Addresses, Phone, Name)
+-- UPDATE public.profiles
+-- SET full_name = 'Sarah Jenkins',
+--     phone = '+1 (555) 392-1049',
+--     home_address = '452 Elm Street, Downtown',
+--     work_address = 'Tech Hub Plaza, Floor 4',
+--     updated_at = NOW()
+-- WHERE id = auth.uid();
+
+-- C. Passenger Profile with Summary Stats (Ride count & total spend)
+-- SELECT 
+--     p.id,
+--     p.full_name,
+--     p.phone,
+--     p.email,
+--     p.rating,
+--     COUNT(r.id) AS completed_rides,
+--     COALESCE(SUM(r.fare), 0) AS total_fare_spent
+-- FROM public.profiles p
+-- LEFT JOIN public.rides r ON r.passenger_id = p.id AND r.status = 'completed'
+-- WHERE p.id = auth.uid()
+-- GROUP BY p.id;
+`;
+
+export const CAPTAIN_PROFILE_SQL_SCRIPT = `-- ========================================================
+-- MOTORIDE CAPTAIN PARTNER PROFILE & VEHICLE SCHEMA
+-- Run this in Supabase Dashboard -> SQL Editor
+-- ========================================================
+
+-- 1. Create or extend Captain Profiles in public.captain_profiles (or linked to public.profiles)
+CREATE TABLE IF NOT EXISTS public.captain_profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    full_name TEXT NOT NULL DEFAULT 'Captain Partner',
+    email TEXT NULL,
+    phone TEXT NOT NULL DEFAULT '',
+    vehicle_model TEXT NOT NULL DEFAULT 'Yamaha MT-07',
+    vehicle_plate TEXT NOT NULL DEFAULT 'DL-01-AB-7492',
+    vehicle_color TEXT DEFAULT 'Stealth Black',
+    vehicle_type TEXT NOT NULL DEFAULT 'moto' CHECK (vehicle_type IN ('moto', 'scooter', 'moto_premium', 'delivery')),
+    license_number TEXT NULL,
+    is_online BOOLEAN NOT NULL DEFAULT true,
+    is_verified BOOLEAN NOT NULL DEFAULT true,
+    rating NUMERIC(3, 2) NOT NULL DEFAULT 4.96,
+    total_rides INTEGER NOT NULL DEFAULT 0,
+    total_earnings NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    wallet_balance NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    current_lat NUMERIC(9, 6) NULL,
+    current_lng NUMERIC(9, 6) NULL,
+    avatar_url TEXT NULL,
+    last_active_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Idempotent column additions in case table exists
+ALTER TABLE public.captain_profiles ADD COLUMN IF NOT EXISTS vehicle_model TEXT DEFAULT 'Yamaha MT-07';
+ALTER TABLE public.captain_profiles ADD COLUMN IF NOT EXISTS vehicle_plate TEXT DEFAULT 'DL-01-AB-7492';
+ALTER TABLE public.captain_profiles ADD COLUMN IF NOT EXISTS vehicle_color TEXT DEFAULT 'Stealth Black';
+ALTER TABLE public.captain_profiles ADD COLUMN IF NOT EXISTS vehicle_type TEXT DEFAULT 'moto';
+ALTER TABLE public.captain_profiles ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT true;
+ALTER TABLE public.captain_profiles ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT true;
+ALTER TABLE public.captain_profiles ADD COLUMN IF NOT EXISTS wallet_balance NUMERIC(10, 2) DEFAULT 0.00;
+ALTER TABLE public.captain_profiles ADD COLUMN IF NOT EXISTS current_lat NUMERIC(9, 6) NULL;
+ALTER TABLE public.captain_profiles ADD COLUMN IF NOT EXISTS current_lng NUMERIC(9, 6) NULL;
+
+-- 2. Indexes for Geospatial Dispatch & Availability
+CREATE INDEX IF NOT EXISTS idx_captain_is_online ON public.captain_profiles(is_online);
+CREATE INDEX IF NOT EXISTS idx_captain_vehicle_type ON public.captain_profiles(vehicle_type);
+CREATE INDEX IF NOT EXISTS idx_captain_last_active ON public.captain_profiles(last_active_at DESC);
+
+-- 3. Automatic Captain Profile creation / sync trigger
+CREATE OR REPLACE FUNCTION public.handle_new_captain()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+    -- If user signs up as captain, initialize captain profile
+    IF (NEW.raw_user_meta_data->>'role' = 'captain') THEN
+        INSERT INTO public.captain_profiles (
+            id,
+            full_name,
+            email,
+            phone,
+            vehicle_model,
+            vehicle_plate,
+            is_online,
+            is_verified,
+            rating,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            NEW.id,
+            COALESCE(NEW.raw_user_meta_data->>'full_name', 'Captain ' || split_part(NEW.email, '@', 1)),
+            NEW.email,
+            COALESCE(NEW.raw_user_meta_data->>'phone', ''),
+            COALESCE(NEW.raw_user_meta_data->>'vehicle_model', 'Yamaha MT-07 · Black Edition'),
+            COALESCE(NEW.raw_user_meta_data->>'vehicle_plate', 'MOTO-4819'),
+            true,
+            true,
+            4.96,
+            NOW(),
+            NOW()
+        )
+        ON CONFLICT (id) DO UPDATE SET
+            full_name = COALESCE(EXCLUDED.full_name, captain_profiles.full_name),
+            email = COALESCE(EXCLUDED.email, captain_profiles.email),
+            phone = COALESCE(EXCLUDED.phone, captain_profiles.phone),
+            updated_at = NOW();
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_captain_created ON auth.users;
+CREATE TRIGGER on_auth_captain_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_new_captain();
+
+-- 4. Row Level Security (RLS)
+ALTER TABLE public.captain_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Allow public read so passengers and dispatch can see nearby online captains & ratings
+CREATE POLICY "Public read online captains"
+    ON public.captain_profiles FOR SELECT
+    USING (true);
+
+-- Allow captains to update only their own profile & location
+CREATE POLICY "Captains update own profile"
+    ON public.captain_profiles FOR UPDATE
+    USING (auth.uid() = id)
+    WITH CHECK (auth.uid() = id);
+
+-- Allow captains to insert their own profile
+CREATE POLICY "Captains insert own profile"
+    ON public.captain_profiles FOR INSERT
+    WITH CHECK (auth.uid() = id);
+
+-- 5. Enable Realtime for live tracking & online status
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'captain_profiles'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.captain_profiles;
+    END IF;
+END
+$$;
+
+ALTER TABLE public.captain_profiles REPLICA IDENTITY FULL;
+
+-- ========================================================
+-- COMMON CAPTAIN PROFILE QUERIES FOR YOUR APP
+-- ========================================================
+
+-- A. Fetch Captain Profile & Current Stats
+-- SELECT * FROM public.captain_profiles WHERE id = auth.uid();
+
+-- B. Toggle Captain Online / Offline Duty Status
+-- UPDATE public.captain_profiles 
+-- SET is_online = true, last_active_at = NOW() 
+-- WHERE id = auth.uid();
+
+-- C. Live GPS Location Ping from Captain App
+-- UPDATE public.captain_profiles
+-- SET current_lat = 28.6139, 
+--     current_lng = 77.2090, 
+--     last_active_at = NOW()
+-- WHERE id = auth.uid();
+
+-- D. Update Vehicle & License Details
+-- UPDATE public.captain_profiles
+-- SET vehicle_model = 'Honda CB300R',
+--     vehicle_plate = 'DL-04-XY-8821',
+--     vehicle_color = 'Matte Gray',
+--     license_number = 'DL-552021004921',
+--     updated_at = NOW()
+-- WHERE id = auth.uid();
+
+-- E. Captain Performance & Earnings Breakdown
+-- SELECT 
+--     c.id,
+--     c.full_name,
+--     c.rating,
+--     c.vehicle_model,
+--     COUNT(r.id) AS completed_trips,
+--     COALESCE(SUM(r.fare), 0) AS total_trip_revenue,
+--     ROUND(COALESCE(SUM(r.fare) * 0.85, 0), 2) AS net_captain_earnings
+-- FROM public.captain_profiles c
+-- LEFT JOIN public.rides r ON r.captain_id = c.id AND r.status = 'completed'
+-- WHERE c.id = auth.uid()
+-- GROUP BY c.id;
+`;
+
 export const SqlSetupModal: React.FC<SqlSetupModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'full' | 'storage_only'>('full');
+  const [activeTab, setActiveTab] = useState<'full' | 'passenger_profile' | 'captain_profile' | 'storage_only'>('full');
   const [copied, setCopied] = useState(false);
   const [isProvisioning, setIsProvisioning] = useState(false);
   const [provisionResult, setProvisionResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -219,7 +544,14 @@ export const SqlSetupModal: React.FC<SqlSetupModalProps> = ({ isOpen, onClose })
 
   if (!isOpen) return null;
 
-  const currentScript = activeTab === 'full' ? SUPABASE_SQL_SCRIPT : STORAGE_SQL_SCRIPT;
+  const currentScript =
+    activeTab === 'full'
+      ? SUPABASE_SQL_SCRIPT
+      : activeTab === 'passenger_profile'
+      ? PASSENGER_PROFILE_SQL_SCRIPT
+      : activeTab === 'captain_profile'
+      ? CAPTAIN_PROFILE_SQL_SCRIPT
+      : STORAGE_SQL_SCRIPT;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(currentScript);
@@ -259,7 +591,7 @@ export const SqlSetupModal: React.FC<SqlSetupModalProps> = ({ isOpen, onClose })
 
         {/* Tab Selector & Bucket Quick Action Bar */}
         <div className="bg-slate-950 px-5 py-2.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setActiveTab('full')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -268,7 +600,27 @@ export const SqlSetupModal: React.FC<SqlSetupModalProps> = ({ isOpen, onClose })
                   : 'text-slate-400 hover:text-slate-200 bg-slate-900'
               }`}
             >
-              Full Schema (Tables + Realtime + Storage)
+              Full Schema
+            </button>
+            <button
+              onClick={() => setActiveTab('passenger_profile')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'passenger_profile'
+                  ? 'bg-sky-500 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 bg-slate-900'
+              }`}
+            >
+              Passenger Profiles
+            </button>
+            <button
+              onClick={() => setActiveTab('captain_profile')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'captain_profile'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-slate-200 bg-slate-900'
+              }`}
+            >
+              Captain Profiles
             </button>
             <button
               onClick={() => setActiveTab('storage_only')}
@@ -279,7 +631,7 @@ export const SqlSetupModal: React.FC<SqlSetupModalProps> = ({ isOpen, onClose })
               }`}
             >
               <FolderPlus className="w-3.5 h-3.5" />
-              Storage Bucket SQL Only ('avatars')
+              Storage Bucket Only
             </button>
           </div>
 

@@ -193,6 +193,12 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   const currentCaptainRef = useRef<UserProfile>(currentCaptain);
 
   useEffect(() => {
+    if (captainUser) {
+      setCurrentCaptain(captainUser);
+    }
+  }, [captainUser]);
+
+  useEffect(() => {
     currentCaptainRef.current = currentCaptain;
   }, [currentCaptain]);
 
