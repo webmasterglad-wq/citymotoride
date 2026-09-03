@@ -14,7 +14,6 @@ import {
   Moon,
   LogOut,
   UserCheck,
-  Star,
 } from 'lucide-react';
 import {
   getStoredSupabaseConfig,
@@ -261,30 +260,6 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
               </button>
             </>
           )}
-
-          {/* Admin Panel Star Icon Button in far right corner of top bar */}
-          <button
-            type="button"
-            id="admin-panel-star-btn"
-            onClick={() => onChangeView(activeView === 'admin' ? 'passenger' : 'admin')}
-            title="Admin Panel"
-            aria-label="Admin Panel"
-            className={`p-1.5 sm:p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
-              activeView === 'admin'
-                ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-md shadow-amber-400/30 ring-2 ring-amber-400/40'
-                : isLight
-                ? 'bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-800 border-slate-200 hover:border-amber-300'
-                : 'bg-slate-950 hover:bg-amber-950/40 text-slate-300 hover:text-amber-400 border-slate-800 hover:border-amber-700/60'
-            }`}
-          >
-            <Star
-              className={`w-4 h-4 transition-transform ${
-                activeView === 'admin'
-                  ? 'fill-slate-950 text-slate-950 scale-110'
-                  : 'fill-amber-400 text-amber-500 hover:scale-110'
-              }`}
-            />
-          </button>
         </div>
       </div>
 
