@@ -291,10 +291,14 @@ export const fetchRideById = async (
       return { data: null, error: formatSupabaseError(error) };
     }
 
-    if (data && Array.isArray((data as any).captain_offers) && (data as any).captain_offers.length > 0) {
-      try {
-        localStorage.setItem(OFFERS_KEY_PREFIX + data.id, JSON.stringify((data as any).captain_offers));
-      } catch {}
+    if (data) {
+      const extracted = extractOffersFromRide(data);
+      if (extracted.length > 0) {
+        (data as any).captain_offers = extracted;
+        try {
+          localStorage.setItem(OFFERS_KEY_PREFIX + data.id, JSON.stringify(extracted));
+        } catch {}
+      }
     }
 
     return { data: data as Ride | null, error: null };
@@ -321,10 +325,14 @@ export const fetchActiveRideForPassenger = async (
 
     if (error) return { data: null, error: formatSupabaseError(error) };
 
-    if (data && Array.isArray((data as any).captain_offers) && (data as any).captain_offers.length > 0) {
-      try {
-        localStorage.setItem(OFFERS_KEY_PREFIX + data.id, JSON.stringify((data as any).captain_offers));
-      } catch {}
+    if (data) {
+      const extracted = extractOffersFromRide(data);
+      if (extracted.length > 0) {
+        (data as any).captain_offers = extracted;
+        try {
+          localStorage.setItem(OFFERS_KEY_PREFIX + data.id, JSON.stringify(extracted));
+        } catch {}
+      }
     }
 
     return { data: data as Ride | null, error: null };
@@ -483,12 +491,19 @@ export const claimRideAtomic = async (
     if (!rpcError && rpcData) {
       if (rpcData.success) {
         let finalRide = rpcData.ride as Ride;
+        const updates: Record<string, any> = {
+          captain_name: captainName,
+          captain_phone: captainPhone,
+          captain_vehicle: captainVehicle,
+          captain_rating: captainRating,
+        };
         if (agreedFare !== undefined && agreedFare !== null && agreedFare > 0) {
-          try {
-            await supabase.from('rides').update({ fare: agreedFare }).eq('id', rideId);
-            finalRide = { ...finalRide, fare: agreedFare };
-          } catch {}
+          updates.fare = agreedFare;
         }
+        try {
+          await supabase.from('rides').update(updates).eq('id', rideId);
+          finalRide = { ...finalRide, ...updates };
+        } catch {}
         return {
           success: true,
           message: 'Ride claimed successfully!',
@@ -985,6 +1000,62 @@ export const getStoredRideOffers = (rideId: string): CaptainOffer[] => {
 };
 
 /**
+ * Extract captain offers from a ride object, handling:
+ * 1. Native `captain_offers` JSONB column if present in the database
+ * 2. Cross-compatible fallback encoded in `captain_name` (e.g. `OFFER|captain_id|captain_name|vehicle|rating|fare|eta`)
+ * 3. LocalStorage synced cache
+ */
+export const extractOffersFromRide = (ride: any): CaptainOffer[] => {
+  if (!ride) return [];
+
+  // 1. Native JSONB column
+  if (Array.isArray(ride.captain_offers) && ride.captain_offers.length > 0) {
+    return ride.captain_offers;
+  }
+
+  // 2. Encoded fallback offer format
+  if (typeof ride.captain_name === 'string' && ride.captain_name.startsWith('OFFER|')) {
+    try {
+      const parts = ride.captain_name.split('|');
+      const capId = parts[1];
+      const capName = parts[2];
+      const capVehicle = parts[3];
+      const capRating = Number(parts[4]) || 4.92;
+      const capFare = Number(parts[5]) || Number(ride.fare);
+      const capEta = Number(parts[6]) || 3;
+
+      if (capId && capName) {
+        const offer: CaptainOffer = {
+          id: `offer_${ride.id?.slice(0, 8) || 'ride'}_${capId?.slice(0, 8) || 'cap'}_${Date.now()}`,
+          ride_id: ride.id,
+          captain_id: capId,
+          captain_name: capName,
+          captain_phone: ride.captain_phone || '+1 (555) 839-2049',
+          captain_vehicle: capVehicle || ride.captain_vehicle || 'Yamaha MT-07 • Black',
+          captain_rating: capRating,
+          offered_fare: capFare,
+          original_fare: Number(ride.fare) || capFare,
+          eta_minutes: capEta,
+          created_at: new Date().toISOString(),
+          status: 'pending',
+        };
+        return [offer];
+      }
+    } catch (e) {
+      console.warn('[Motoride] Error parsing encoded offer from ride:', e);
+    }
+  }
+
+  // 3. Fallback to localStorage if ride.id available
+  if (ride.id) {
+    const local = getStoredRideOffers(ride.id);
+    if (local.length > 0) return local;
+  }
+
+  return [];
+};
+
+/**
  * Broadcast an offer update across Supabase Realtime WebSocket channels
  */
 export const broadcastOffersUpdate = (rideId: string, offers: CaptainOffer[], offer?: CaptainOffer) => {
@@ -1048,16 +1119,51 @@ export const broadcastMutualAcceptance = (
 };
 
 /**
- * Persist captain offers in the Supabase rides table (graceful if column not yet added)
+ * Persist captain offers in the Supabase rides table with dual-mode reliability:
+ * 1. Writes to `captain_offers` JSONB column if provisioned
+ * 2. Also updates `captain_name` (encoded as `OFFER|...`), `captain_phone`, `captain_vehicle`, and `fare`
+ *    while ride status is 'requested'. This ensures that Supabase Realtime 'postgres_changes' fires
+ *    and the offer propagates to ANY dashboard even if the custom column isn't in their database yet!
  */
 export const persistOffersToDatabase = async (rideId: string, offers: CaptainOffer[]) => {
   const supabase = getSupabaseClient();
   if (!supabase || !rideId) return;
 
+  const latestPending = offers.find((o) => o.status === 'pending');
+
   try {
+    // 1. Try to update captain_offers column
     await supabase.from('rides').update({ captain_offers: offers }).eq('id', rideId);
   } catch (err) {
-    // Non-blocking fallback if column doesn't exist yet
+    // Graceful if column doesn't exist
+  }
+
+  try {
+    // 2. High-reliability fallback persistence on standard columns
+    if (latestPending) {
+      const encoded = `OFFER|${latestPending.captain_id}|${latestPending.captain_name}|${latestPending.captain_vehicle}|${latestPending.captain_rating}|${latestPending.offered_fare}|${latestPending.eta_minutes}`;
+      await supabase
+        .from('rides')
+        .update({
+          captain_name: encoded,
+          captain_phone: latestPending.captain_phone,
+          captain_vehicle: latestPending.captain_vehicle,
+          fare: latestPending.offered_fare,
+        })
+        .eq('id', rideId)
+        .eq('status', 'requested');
+    } else {
+      // If offer cancelled or none pending, clear OFFER prefix
+      await supabase
+        .from('rides')
+        .update({
+          captain_name: null,
+        })
+        .eq('id', rideId)
+        .eq('status', 'requested');
+    }
+  } catch (fallbackErr) {
+    console.warn('[Motoride] Fallback persistence error:', fallbackErr);
   }
 };
 
@@ -1260,15 +1366,17 @@ export const subscribeToRideOffers = (
     Promise.resolve(
       supabase
         .from('rides')
-        .select('captain_offers')
+        .select('*')
         .eq('id', rideId)
         .maybeSingle()
     )
       .then(({ data }) => {
-        if (data && Array.isArray((data as any).captain_offers) && (data as any).captain_offers.length > 0) {
-          const dbOffers = (data as any).captain_offers as CaptainOffer[];
-          saveStoredRideOffers(rideId, dbOffers, true);
-          callback(dbOffers);
+        if (data) {
+          const offers = extractOffersFromRide(data);
+          if (offers.length > 0) {
+            saveStoredRideOffers(rideId, offers, true);
+            callback(offers);
+          }
         }
       })
       .catch(() => {});
@@ -1326,6 +1434,34 @@ export const subscribeToRideOffers = (
       });
   }
 
+  // Also listen for postgres_changes on the rides table for this ride ID
+  let dbChannel: any = null;
+  if (supabase) {
+    try {
+      dbChannel = supabase
+        .channel(`ride_db_offers_${rideId}_${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'rides',
+            filter: `id=eq.${rideId}`,
+          },
+          (payload) => {
+            if (payload.new) {
+              const offers = extractOffersFromRide(payload.new);
+              if (offers.length > 0) {
+                saveStoredRideOffers(rideId, offers, true);
+                callback(offers);
+              }
+            }
+          }
+        )
+        .subscribe();
+    } catch {}
+  }
+
   const handleCustomEvent = (e: Event) => {
     const detail = (e as CustomEvent).detail;
     if (detail && detail.rideId === rideId) {
@@ -1369,6 +1505,9 @@ export const subscribeToRideOffers = (
     }
     if (realtimeChannel && supabase) {
       supabase.removeChannel(realtimeChannel);
+    }
+    if (dbChannel && supabase) {
+      supabase.removeChannel(dbChannel);
     }
   };
 };

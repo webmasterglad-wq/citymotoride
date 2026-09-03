@@ -54,6 +54,7 @@ import {
   submitCaptainOffer,
   cancelCaptainOffer,
   getStoredRideOffers,
+  persistOffersToDatabase,
   recordCaptainSkippedRide,
   getCaptainSkippedRideIds,
   unskipCaptainRide,
@@ -524,7 +525,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   }, [currentCaptain.id]);
 
   // Handle Captain Sending Fare Offer (Awaiting Passenger Acceptance)
-  const handleSendCaptainOffer = (ride: Ride, fareOffer: number) => {
+  const handleSendCaptainOffer = async (ride: Ride, fareOffer: number) => {
     setIsClaimingId(ride.id);
     setConcurrencyAlert(null);
 
@@ -542,6 +543,14 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     });
 
     setMyOffers((prev) => ({ ...prev, [ride.id]: offer }));
+
+    try {
+      await persistOffersToDatabase(ride.id, [
+        offer,
+        ...getStoredRideOffers(ride.id).filter((o) => o.captain_id !== currentCaptain.id),
+      ]);
+    } catch {}
+
     setIsClaimingId(null);
 
     setConcurrencyAlert({

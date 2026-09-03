@@ -75,9 +75,9 @@ BEGIN
         captain_id = p_captain_id,
         status = 'accepted',
         accepted_at = NOW(),
-        captain_name = COALESCE(captain_name, p_captain_name),
-        captain_phone = COALESCE(captain_phone, p_captain_phone),
-        captain_vehicle = COALESCE(captain_vehicle, p_captain_vehicle)
+        captain_name = p_captain_name,
+        captain_phone = p_captain_phone,
+        captain_vehicle = p_captain_vehicle
     WHERE id = p_ride_id AND status = 'requested'
     RETURNING * INTO v_ride;
 

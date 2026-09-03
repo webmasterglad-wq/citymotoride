@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
+  playSweetAlertTune,
   playCaptainArrivedChime,
   subscribeToCaptainArrivedBroadcasts,
 } from '../utils/audioAlert';
@@ -56,6 +57,7 @@ import {
   unsubscribeChannel,
   subscribeToRideOffers,
   getStoredRideOffers,
+  extractOffersFromRide,
   acceptCaptainOffer,
   declineCaptainOffer,
   subscribeToCaptainSkipEvents,
@@ -317,6 +319,12 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       onUpdate: (updatedRide) => {
         setActiveRide(updatedRide);
 
+        // Realtime detection of incoming captain offers
+        const incomingOffers = extractOffersFromRide(updatedRide);
+        if (incomingOffers.length > 0) {
+          setCaptainOffers(incomingOffers);
+        }
+
         if (updatedRide.status === 'accepted' && activeRide.status === 'requested') {
           try {
             confetti({ particleCount: 45, spread: 60, origin: { y: 0.6 } });
@@ -361,9 +369,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
           }
         }
 
-        // Also sync captain offers if available in DB or localStorage
-        if (Array.isArray((data as any).captain_offers) && (data as any).captain_offers.length > 0) {
-          setCaptainOffers((data as any).captain_offers);
+        // Also sync captain offers using extractOffersFromRide
+        const offers = extractOffersFromRide(data);
+        if (offers.length > 0) {
+          setCaptainOffers(offers);
         } else {
           const stored = getStoredRideOffers(currentActiveRideId);
           if (stored.length > 0) {
@@ -382,14 +391,24 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     };
   }, [activeRide?.id, activeRide?.status, passengerUser?.id]);
 
+  const prevOffersCountRef = useRef(0);
+
   // Subscribe to Captain Offers when activeRide is requested (Mutual Acceptance Flow)
   useEffect(() => {
     if (!activeRide?.id || activeRide.status !== 'requested') {
       setCaptainOffers([]);
+      prevOffersCountRef.current = 0;
       return;
     }
 
     const unsubscribe = subscribeToRideOffers(activeRide.id, (offers) => {
+      const pendingCount = offers.filter((o) => o.status === 'pending').length;
+      if (pendingCount > prevOffersCountRef.current) {
+        try {
+          playSweetAlertTune();
+        } catch {}
+      }
+      prevOffersCountRef.current = pendingCount;
       setCaptainOffers(offers);
     });
 
