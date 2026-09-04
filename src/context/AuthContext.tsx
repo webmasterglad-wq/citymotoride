@@ -37,6 +37,9 @@ interface AuthContextType {
   signOut: (role?: AppRole) => Promise<void>;
   quickDemoLogin: (role: AppRole) => Promise<AuthUser>;
 
+  // Profile updates
+  updateUser: (role: AppRole, updates: Partial<AuthUser>) => void;
+
   // Loading state
   isLoading: boolean;
   authError: string | null;
@@ -98,8 +101,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: session.user.created_at,
         };
 
+        const oppositeRole = role === 'passenger' ? 'captain' : role === 'captain' ? 'passenger' : null;
         setRoleUsers((prev) => {
           const updated = { ...prev, [role]: userObj };
+          if (oppositeRole) {
+            updated[oppositeRole] = null;
+            localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
+          }
           localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(userObj));
           return updated;
         });
@@ -214,9 +222,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const emailConfirmationRequired = Boolean(data.user && !data.session);
 
+        const oppositeRole = role === 'passenger' ? 'captain' : role === 'captain' ? 'passenger' : null;
+
         // Save in state & localStorage
         setRoleUsers((prev) => {
           const updated = { ...prev, [role]: createdUser };
+          if (oppositeRole) {
+            updated[oppositeRole] = null;
+            localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
+          }
           localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(createdUser));
           return updated;
         });
@@ -236,8 +250,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString(),
         };
 
+        const oppositeRole = role === 'passenger' ? 'captain' : role === 'captain' ? 'passenger' : null;
         setRoleUsers((prev) => {
           const updated = { ...prev, [role]: createdUser };
+          if (oppositeRole) {
+            updated[oppositeRole] = null;
+            localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
+          }
           localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(createdUser));
           return updated;
         });
@@ -308,8 +327,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: user.created_at,
         };
 
+        const oppositeRole = assignedRole === 'passenger' ? 'captain' : assignedRole === 'captain' ? 'passenger' : null;
+
         setRoleUsers((prev) => {
           const updated = { ...prev, [assignedRole]: authUser };
+          if (oppositeRole) {
+            updated[oppositeRole] = null;
+            localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
+          }
           localStorage.setItem(`${STORAGE_PREFIX}${assignedRole}`, JSON.stringify(authUser));
           return updated;
         });
@@ -317,11 +342,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: true, user: authUser };
       } else {
         // Local fallback when Supabase is not connected
+        const oppositeRole = role === 'passenger' ? 'captain' : role === 'captain' ? 'passenger' : null;
         const cached = localStorage.getItem(`${STORAGE_PREFIX}${role}`);
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed.email === cleanEmail) {
-            setRoleUsers((prev) => ({ ...prev, [role]: parsed }));
+            setRoleUsers((prev) => {
+              const updated = { ...prev, [role]: parsed };
+              if (oppositeRole) {
+                updated[oppositeRole] = null;
+                localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
+              }
+              return updated;
+            });
             return { success: true, user: parsed };
           }
         }
@@ -339,6 +372,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         setRoleUsers((prev) => {
           const updated = { ...prev, [role]: fallbackUser };
+          if (oppositeRole) {
+            updated[oppositeRole] = null;
+            localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
+          }
           localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(fallbackUser));
           return updated;
         });
@@ -412,13 +449,92 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       createdAt: new Date().toISOString(),
     };
 
+    const oppositeRole = role === 'passenger' ? 'captain' : role === 'captain' ? 'passenger' : null;
     setRoleUsers((prev) => {
       const updated = { ...prev, [role]: demoUser };
+      if (oppositeRole) {
+        updated[oppositeRole] = null;
+        localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
+      }
       localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(demoUser));
       return updated;
     });
 
     return demoUser;
+  };
+
+  const updateUser = (role: AppRole, updates: Partial<AuthUser>) => {
+    let targetUserId = '';
+    setRoleUsers((prev) => {
+      const current = prev[role];
+      const base: AuthUser = current || {
+        id:
+          role === 'captain'
+            ? 'b82ac71b-39dd-4172-b567-0e02b2c3d981'
+            : role === 'passenger'
+            ? 'a71bc92e-50bb-4389-9812-3a87c1d3e890'
+            : 'admin-master-id',
+        name: role === 'captain' ? 'Captain Alex Rivera' : role === 'passenger' ? 'Sarah Jenkins' : 'Dispatch Admin',
+        email:
+          role === 'captain'
+            ? 'alex.rivera.driver@motoride.com'
+            : role === 'passenger'
+            ? 'sarah.jenkins@example.com'
+            : 'admin@motoride.com',
+        phone: role === 'captain' ? '+1 (555) 749-3021' : '+1 (555) 234-5678',
+        role,
+        rating: role === 'captain' ? 4.96 : 4.94,
+        vehicle_details: role === 'captain' ? 'Yamaha MT-07 · Stealth Black #7492' : undefined,
+      };
+
+      const updatedUser: AuthUser = { ...base, ...updates };
+      targetUserId = updatedUser.id;
+      try {
+        localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(updatedUser));
+      } catch (e) {
+        console.warn('[Motoride Auth] Failed to save updated user in storage:', e);
+      }
+      return { ...prev, [role]: updatedUser };
+    });
+
+    // If Supabase is connected, update remotely in background
+    const client = getSupabaseClient();
+    if (client) {
+      (async () => {
+        try {
+          if (role === 'captain') {
+            const vehicleModel = updates.vehicle_details ? updates.vehicle_details.split('·')[0].trim() : undefined;
+            const vehiclePlate =
+              updates.vehicle_details && updates.vehicle_details.includes('#')
+                ? updates.vehicle_details.split('#')[1].trim()
+                : undefined;
+
+            await client
+              .from('captain_profiles')
+              .update({
+                ...(updates.name ? { full_name: updates.name } : {}),
+                ...(updates.email ? { email: updates.email } : {}),
+                ...(updates.phone ? { phone: updates.phone } : {}),
+                ...(updates.vehicle_details ? { vehicle_details: updates.vehicle_details } : {}),
+                ...(vehicleModel ? { vehicle_model: vehicleModel } : {}),
+                ...(vehiclePlate ? { vehicle_plate: vehiclePlate } : {}),
+              })
+              .eq('id', targetUserId || roleUsers.captain?.id || 'b82ac71b-39dd-4172-b567-0e02b2c3d981');
+          } else if (role === 'passenger') {
+            await client
+              .from('profiles')
+              .update({
+                ...(updates.name ? { full_name: updates.name } : {}),
+                ...(updates.email ? { email: updates.email } : {}),
+                ...(updates.phone ? { phone: updates.phone } : {}),
+              })
+              .eq('id', targetUserId || roleUsers.passenger?.id || 'a71bc92e-50bb-4389-9812-3a87c1d3e890');
+          }
+        } catch (err) {
+          console.warn('[Motoride Auth] Remote profile update failed:', err);
+        }
+      })();
+    }
   };
 
   return (
@@ -432,6 +548,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signIn,
         signOut,
         quickDemoLogin,
+        updateUser,
         isLoading,
         authError,
         clearAuthError,

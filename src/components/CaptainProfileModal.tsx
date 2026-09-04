@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   User,
   Bike,
@@ -55,6 +55,7 @@ interface CaptainProfileModalProps {
   todayIncome?: number;
   totalEarnings?: number;
   todayRides?: Ride[];
+  initialTab?: 'profile' | 'vehicle' | 'earnings' | 'preferences' | 'checklist';
 }
 
 export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
@@ -67,20 +68,75 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
   todayIncome,
   totalEarnings = 0,
   todayRides = [],
+  initialTab,
 }) => {
   const currentTodayIncome = todayIncome !== undefined ? todayIncome : todayEarnings;
   const currentCompletedCount = completedCount;
   const { isLight, toggleTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState<'profile' | 'vehicle' | 'earnings' | 'preferences' | 'checklist'>('profile');
-  const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(captain.name);
-  const [phone, setPhone] = useState(captain.phone);
-  const [email, setEmail] = useState('alex.rivera.driver@motoride.com');
-  const [vehicleDetails, setVehicleDetails] = useState(
-    captain.vehicle_details || 'Yamaha MT-07 · Black #4920'
+  const [activeTab, setActiveTab] = useState<'profile' | 'vehicle' | 'earnings' | 'preferences' | 'checklist'>(
+    initialTab || 'profile'
   );
-  const [licensePlate, setLicensePlate] = useState('CA 92K49');
+  const [isEditing, setIsEditing] = useState(false);
+  const [name, setName] = useState(captain.name || '');
+  const [phone, setPhone] = useState(captain.phone || '');
+  const [email, setEmail] = useState(captain.email || 'alex.rivera.driver@motoride.com');
+  const [vehicleDetails, setVehicleDetails] = useState(
+    captain.vehicle_details || 'Yamaha MT-07 · Stealth Black #DL-01-AB-7492'
+  );
+  const [licensePlate, setLicensePlate] = useState('DL-01-AB-7492');
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [savedSuccessMessage, setSavedSuccessMessage] = useState('Profile changes saved successfully');
+
+  // Dedicated Registered Bike Editing State
+  const [isEditingBike, setIsEditingBike] = useState(false);
+  const [bikeModel, setBikeModel] = useState('Yamaha MT-07');
+  const [bikeColor, setBikeColor] = useState('Stealth Black');
+  const [bikePlateInput, setBikePlateInput] = useState('DL-01-AB-7492');
+
+  const syncVehicleFields = (vehStr: string) => {
+    const safeStr = vehStr || '';
+    setVehicleDetails(safeStr);
+    if (safeStr.includes('#')) {
+      const parts = safeStr.split('#');
+      const plate = parts[1]?.trim() || '';
+      setLicensePlate(plate);
+      setBikePlateInput(plate);
+      if (parts[0].includes('·')) {
+        const sub = parts[0].split('·');
+        setBikeModel(sub[0]?.trim() || '');
+        setBikeColor(sub[1]?.trim() || '');
+      } else {
+        setBikeModel(parts[0]?.trim() || '');
+      }
+    } else if (safeStr.includes('·')) {
+      const sub = safeStr.split('·');
+      setBikeModel(sub[0]?.trim() || '');
+      setBikeColor(sub[1]?.trim() || '');
+    } else {
+      setBikeModel(safeStr.trim());
+    }
+  };
+
+  // Switch tab if initialTab provided on open
+  useEffect(() => {
+    if (initialTab && isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
+
+  // Synchronize state whenever captain prop updates (e.g. login, profile changes)
+  useEffect(() => {
+    if (captain) {
+      setName(captain.name || '');
+      setPhone(captain.phone || '');
+      if (captain.email) {
+        setEmail(captain.email);
+      }
+      if (captain.vehicle_details) {
+        syncVehicleFields(captain.vehicle_details);
+      }
+    }
+  }, [captain]);
 
   // Captain Preferences
   const [autoAccept, setAutoAccept] = useState(false);
@@ -147,11 +203,11 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
   });
 
   const [editableRcFields, setEditableRcFields] = useState({
-    rcNumber: rcDoc.rcNumber,
-    ownerName: rcDoc.ownerName,
-    chassisNumber: rcDoc.chassisNumber,
-    engineNumber: rcDoc.engineNumber,
-    expiryDate: rcDoc.expiryDate,
+    rcNumber: rcDoc?.rcNumber || '',
+    ownerName: rcDoc?.ownerName || '',
+    chassisNumber: rcDoc?.chassisNumber || '',
+    engineNumber: rcDoc?.engineNumber || '',
+    expiryDate: rcDoc?.expiryDate || '',
   });
 
   // Save RC to localStorage whenever updated
@@ -245,12 +301,41 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
+    const finalVehicle = vehicleDetails.trim();
     onUpdateCaptain({
-      name,
-      phone,
-      vehicle_details: vehicleDetails,
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      vehicle_details: finalVehicle,
     });
+    syncVehicleFields(finalVehicle);
     setIsEditing(false);
+    setSavedSuccessMessage('Captain profile and registered bike updated successfully!');
+    setSavedSuccess(true);
+    setTimeout(() => setSavedSuccess(false), 2500);
+  };
+
+  const handleSaveBike = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const finalModel = bikeModel.trim() || 'Yamaha MT-07';
+    const finalColor = bikeColor.trim() || 'Stealth Black';
+    const finalPlate = (bikePlateInput.trim() || licensePlate || 'DL-01-AB-7492').toUpperCase();
+    const newVehicleDetails = `${finalModel} · ${finalColor} #${finalPlate}`;
+
+    setVehicleDetails(newVehicleDetails);
+    setLicensePlate(finalPlate);
+    setRcDoc((prev) => ({
+      ...prev,
+      rcNumber: finalPlate,
+      updatedAt: new Date().toISOString(),
+    }));
+
+    onUpdateCaptain({
+      vehicle_details: newVehicleDetails,
+    });
+
+    setIsEditingBike(false);
+    setSavedSuccessMessage(`Registered bike updated to ${finalModel}!`);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
   };
@@ -407,7 +492,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                 isLight ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
               }`}>
                 <Check className="w-4 h-4 text-emerald-500" />
-                <span className="font-semibold">Captain profile & settings updated successfully!</span>
+                <span className="font-semibold">{savedSuccessMessage}</span>
               </div>
             )}
 
@@ -467,7 +552,19 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                       </div>
                       <div className={`flex items-center justify-between border-b pb-2 ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
                         <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>Registered Bike</span>
-                        <span className="font-bold text-amber-500">{vehicleDetails}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-amber-500">{vehicleDetails}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab('vehicle');
+                              setIsEditingBike(true);
+                            }}
+                            className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 cursor-pointer"
+                          >
+                            Change Bike →
+                          </button>
+                        </div>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>License Plate #</span>
@@ -493,7 +590,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                       <input
                         type="text"
                         required
-                        value={name}
+                        value={name || ''}
                         onChange={(e) => setName(e.target.value)}
                         className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-amber-500 ${
                           isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -506,7 +603,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                       <input
                         type="text"
                         required
-                        value={phone}
+                        value={phone || ''}
                         onChange={(e) => setPhone(e.target.value)}
                         className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-amber-500 ${
                           isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -515,16 +612,56 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                     </div>
 
                     <div className="space-y-1">
-                      <label className={`text-[11px] font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Vehicle Name & Model</label>
+                      <label className={`text-[11px] font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Driver Email ID</label>
                       <input
-                        type="text"
+                        type="email"
                         required
-                        value={vehicleDetails}
-                        onChange={(e) => setVehicleDetails(e.target.value)}
+                        value={email || ''}
+                        onChange={(e) => setEmail(e.target.value)}
                         className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-amber-500 ${
                           isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
                         }`}
                       />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className={`text-[11px] font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                        Registered Bike Details
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={vehicleDetails || ''}
+                        onChange={(e) => setVehicleDetails(e.target.value)}
+                        placeholder="e.g. Yamaha MT-07 · Stealth Black #DL-01-AB-7492"
+                        className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-amber-500 ${
+                          isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
+                        }`}
+                      />
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {[
+                          'Yamaha MT-07 · Stealth Black',
+                          'Royal Enfield Classic 350',
+                          'KTM 390 Duke · Orange',
+                          'Honda CB300R · Gray',
+                          'Ather 450X EV Moto',
+                        ].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setVehicleDetails(`${preset} #${licensePlate}`)}
+                            className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                              vehicleDetails.startsWith(preset)
+                                ? 'bg-amber-500/20 text-amber-600 border-amber-500/40 font-bold'
+                                : isLight
+                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700'
+                            }`}
+                          >
+                            + {preset}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="flex gap-2 pt-2">
@@ -552,11 +689,11 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
             {/* ================= TAB 2: VEHICLE & DOCUMENTS ================= */}
             {activeTab === 'vehicle' && (
               <div className="space-y-4">
-                {/* Bike Summary Card */}
+                {/* Bike Summary Card with Inline Change Bike capability */}
                 <div className={`border rounded-2xl p-3.5 space-y-3 ${
                   isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900/80 border-slate-800 text-slate-200'
                 }`}>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
                         <Bike className="w-4 h-4" />
@@ -566,10 +703,136 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                         <span className={`text-[11px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Plate: {licensePlate}</span>
                       </div>
                     </div>
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-500 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> Certified Fleet
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-500 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Certified Fleet
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingBike(!isEditingBike)}
+                        className={`text-xs px-2.5 py-1 rounded-lg font-bold border transition-colors cursor-pointer ${
+                          isLight
+                            ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300'
+                            : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/40'
+                        }`}
+                      >
+                        {isEditingBike ? 'Close' : 'Change Bike'}
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Inline Bike Editor */}
+                  {isEditingBike && (
+                    <form onSubmit={handleSaveBike} className="mt-3 pt-3 border-t border-dashed border-slate-300 dark:border-slate-800 space-y-3 animate-in fade-in duration-150">
+                      <div className="text-xs font-bold text-amber-600 dark:text-amber-400">
+                        Update Registered Bike Details
+                      </div>
+
+                      {/* Quick Presets */}
+                      <div>
+                        <label className={`text-[10px] font-bold block mb-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                          Quick Fleet Presets:
+                        </label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { m: 'Yamaha MT-07', c: 'Stealth Black', p: 'DL-01-AB-7492' },
+                            { m: 'Royal Enfield Classic 350', c: 'Gunmetal Grey', p: 'MH-02-CD-1902' },
+                            { m: 'KTM 390 Duke', c: 'Electric Orange', p: 'KA-05-KT-3900' },
+                            { m: 'Honda CB300R', c: 'Matte Axis Gray', p: 'DL-04-XY-8821' },
+                            { m: 'Kawasaki Ninja 400', c: 'Lime Green', p: 'TN-09-NJ-4004' },
+                            { m: 'Ather 450X EV Moto', c: 'Space Grey', p: 'KA-01-EV-2024' },
+                          ].map((preset) => (
+                            <button
+                              key={preset.m}
+                              type="button"
+                              onClick={() => {
+                                setBikeModel(preset.m);
+                                setBikeColor(preset.c);
+                                setBikePlateInput(preset.p);
+                              }}
+                              className={`text-[10px] px-2 py-1 rounded-md border font-semibold transition-colors cursor-pointer ${
+                                bikeModel === preset.m
+                                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
+                                  : isLight
+                                  ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                              }`}
+                            >
+                              {preset.m}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <div className="space-y-1">
+                          <label className={`text-[11px] font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                            Make & Model
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={bikeModel || ''}
+                            onChange={(e) => setBikeModel(e.target.value)}
+                            placeholder="e.g. Yamaha MT-07"
+                            className={`w-full p-2 border rounded-xl focus:outline-none focus:border-amber-500 ${
+                              isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className={`text-[11px] font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                            Color / Variant
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={bikeColor || ''}
+                            onChange={(e) => setBikeColor(e.target.value)}
+                            placeholder="e.g. Stealth Black"
+                            className={`w-full p-2 border rounded-xl focus:outline-none focus:border-amber-500 ${
+                              isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className={`text-[11px] font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                          License Plate Number
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={bikePlateInput || ''}
+                          onChange={(e) => setBikePlateInput(e.target.value.toUpperCase())}
+                          placeholder="e.g. DL-01-AB-7492"
+                          className={`w-full p-2 font-mono font-bold uppercase border rounded-xl focus:outline-none focus:border-amber-500 ${
+                            isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingBike(false)}
+                          className={`flex-1 py-2 font-bold rounded-xl border text-xs ${
+                            isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                          }`}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" /> Save Registered Bike
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
 
                 {/* ================= RC UPLOAD HERO SECTION ================= */}
@@ -825,7 +1088,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                             <label className={`text-[10px] font-bold block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>RC Number</label>
                             <input
                               type="text"
-                              value={editableRcFields.rcNumber}
+                              value={editableRcFields.rcNumber || ''}
                               onChange={(e) => setEditableRcFields({ ...editableRcFields, rcNumber: e.target.value })}
                               className={`w-full p-2 text-xs border rounded-lg ${
                                 isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -836,7 +1099,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                             <label className={`text-[10px] font-bold block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Owner Name</label>
                             <input
                               type="text"
-                              value={editableRcFields.ownerName}
+                              value={editableRcFields.ownerName || ''}
                               onChange={(e) => setEditableRcFields({ ...editableRcFields, ownerName: e.target.value })}
                               className={`w-full p-2 text-xs border rounded-lg ${
                                 isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -847,7 +1110,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                             <label className={`text-[10px] font-bold block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Chassis Number</label>
                             <input
                               type="text"
-                              value={editableRcFields.chassisNumber}
+                              value={editableRcFields.chassisNumber || ''}
                               onChange={(e) => setEditableRcFields({ ...editableRcFields, chassisNumber: e.target.value })}
                               className={`w-full p-2 text-xs border rounded-lg ${
                                 isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -858,7 +1121,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                             <label className={`text-[10px] font-bold block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Fitness Expiry</label>
                             <input
                               type="text"
-                              value={editableRcFields.expiryDate}
+                              value={editableRcFields.expiryDate || ''}
                               onChange={(e) => setEditableRcFields({ ...editableRcFields, expiryDate: e.target.value })}
                               className={`w-full p-2 text-xs border rounded-lg ${
                                 isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -1265,8 +1528,8 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                       type="range"
                       min="3"
                       max="30"
-                      value={maxRadiusKm}
-                      onChange={(e) => setMaxRadiusKm(Number(e.target.value))}
+                      value={maxRadiusKm ?? 10}
+                      onChange={(e) => setMaxRadiusKm(Number(e.target.value) || 10)}
                       className="w-full accent-amber-500"
                     />
                   </div>

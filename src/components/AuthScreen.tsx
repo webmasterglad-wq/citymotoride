@@ -290,7 +290,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
                         ? 'e.g. Admin Dispatcher'
                         : 'e.g. Sarah Jenkins'
                     }
-                    value={fullName}
+                    value={fullName || ''}
                     onChange={(e) => setFullName(e.target.value)}
                     className={`w-full rounded-xl px-3.5 py-2.5 text-xs border focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all ${
                       isLight
@@ -321,7 +321,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
                     type="email"
                     required
                     placeholder="e.g. user@example.com"
-                    value={email}
+                    value={email || ''}
                     onChange={(e) => setEmail(e.target.value)}
                     className={`w-full rounded-xl px-3.5 py-2.5 text-xs border focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all ${
                       isLight
@@ -352,7 +352,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
                     type="tel"
                     required
                     placeholder="e.g. +1 (555) 749-3021"
-                    value={phone}
+                    value={phone || ''}
                     onChange={(e) => setPhone(e.target.value)}
                     className={`w-full rounded-xl px-3.5 py-2.5 text-xs border focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all ${
                       isLight
@@ -384,7 +384,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
                     required
                     minLength={6}
                     placeholder="Create a secure password"
-                    value={password}
+                    value={password || ''}
                     onChange={(e) => setPassword(e.target.value)}
                     className={`w-full rounded-xl pl-3.5 pr-10 py-2.5 text-xs border focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all ${
                       isLight
@@ -433,7 +433,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
                         ? 'admin.ops@motoride.demo'
                         : 'passenger.sarah@motoride.demo'
                     }
-                    value={email}
+                    value={email || ''}
                     onChange={(e) => setEmail(e.target.value)}
                     className={`w-full rounded-xl px-3.5 py-2.5 text-xs border focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all ${
                       isLight
@@ -464,7 +464,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
                     type={showPassword ? 'text' : 'password'}
                     required
                     placeholder="Enter your password"
-                    value={password}
+                    value={password || ''}
                     onChange={(e) => setPassword(e.target.value)}
                     className={`w-full rounded-xl pl-3.5 pr-10 py-2.5 text-xs border focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all ${
                       isLight

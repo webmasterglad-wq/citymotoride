@@ -323,8 +323,8 @@ export const FareCalculatorModal: React.FC<FareCalculatorModalProps> = ({
                 min="0.5"
                 max="35"
                 step="0.5"
-                value={testDistance}
-                onChange={(e) => setTestDistance(parseFloat(e.target.value))}
+                value={testDistance ?? 5}
+                onChange={(e) => setTestDistance(parseFloat(e.target.value) || 5)}
                 className="w-full h-1.5 bg-slate-300 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
               />
               <div className="flex justify-between text-[9px] text-slate-400 font-mono">

@@ -72,6 +72,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { SERVICE_ZONES, ServiceZone, detectZoneForLocation, resolveLocationCoords, LatLng } from '../utils/geoUtils';
 import { useTheme } from '../context/ThemeContext';
 import { usePricing } from '../context/PricingContext';
+import { useAuth } from '../context/AuthContext';
 import { GoogleLocationSearchInput } from './GoogleLocationSearchInput';
 
 interface PassengerAppProps {
@@ -170,18 +171,23 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [realtimeStatus, setRealtimeStatus] = useState<string>('idle');
   const [captainArrivedNotice, setCaptainArrivedNotice] = useState<{ captainName: string; time: string } | null>(null);
 
+  const { isLight } = useTheme();
+  const { pricing, calculateFare } = usePricing();
+  const { updateUser } = useAuth();
+
   useEffect(() => {
     if (passengerUser) {
-      setCurrentUser(passengerUser);
+      setCurrentUser((prev) => ({
+        ...prev,
+        ...passengerUser,
+        email: passengerUser.email || prev.email,
+      }));
     }
   }, [passengerUser]);
 
   // Captain Offers State for Mutual Bidding Acceptance
   const [captainOffers, setCaptainOffers] = useState<CaptainOffer[]>([]);
   const [isAcceptingOfferId, setIsAcceptingOfferId] = useState<string | null>(null);
-
-  const { isLight } = useTheme();
-  const { pricing, calculateFare } = usePricing();
 
   // Modals & Post-Ride Feedback
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -716,7 +722,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                   <div className="flex-1">
                     <GoogleLocationSearchInput
                       type="pickup"
-                      value={pickup}
+                      value={pickup || ''}
                       placeholder="Search Google Maps for Pickup location..."
                       required
                       referenceCoords={pickupCoords}
@@ -767,7 +773,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                   <div className="flex-1">
                     <GoogleLocationSearchInput
                       type="dropoff"
-                      value={dropoff}
+                      value={dropoff || ''}
                       placeholder="Search Google Maps for Destination..."
                       required
                       referenceCoords={pickupCoords}
@@ -1308,7 +1314,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 <input
                   type="text"
                   placeholder="Leave a note for the captain (optional)..."
-                  value={feedbackComment}
+                  value={feedbackComment || ''}
                   onChange={(e) => setFeedbackComment(e.target.value)}
                   className={`w-full px-3.5 py-2.5 text-xs rounded-xl border focus:outline-none focus:border-emerald-500 ${
                     isLight
@@ -1740,7 +1746,14 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
         user={currentUser}
-        onUpdateUser={(updated) => setCurrentUser((prev) => ({ ...prev, ...updated }))}
+        onUpdateUser={(updated) => {
+          setCurrentUser((prev) => ({ ...prev, ...updated }));
+          updateUser('passenger', {
+            name: updated.name,
+            email: updated.email,
+            phone: updated.phone,
+          });
+        }}
       />
 
       {/* Fare Calculator & Distance Analysis Modal */}

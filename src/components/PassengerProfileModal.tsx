@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User,
   Phone,
@@ -52,12 +52,21 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
   const { isLight, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'wallet' | 'history' | 'saved' | 'safety'>('profile');
   const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(user.name);
-  const [phone, setPhone] = useState(user.phone);
-  const [email, setEmail] = useState('sarah.jenkins@example.com');
+  const [name, setName] = useState(user?.name || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [email, setEmail] = useState(user?.email || 'sarah.jenkins@example.com');
   const [emergencyContact, setEmergencyContact] = useState('+1 (555) 902-8812 (Mom)');
   const [pickupNotes, setPickupNotes] = useState('Please wait near the main lobby entrance');
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Sync state with user prop updates
+  useEffect(() => {
+    if (user) {
+      setName(user.name || '');
+      setPhone(user.phone || '');
+      if (user.email) setEmail(user.email);
+    }
+  }, [user]);
 
   // Wallet state
   const [walletBalance, setWalletBalance] = useState(84.5);
@@ -80,6 +89,7 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
     onUpdateUser({
       name,
       phone,
+      email: email.trim(),
     });
     setIsEditing(false);
     setSavedSuccess(true);
@@ -379,7 +389,7 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
                     <input
                       type="text"
                       required
-                      value={name}
+                      value={name || ''}
                       onChange={(e) => setName(e.target.value)}
                       className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-emerald-500 ${
                         isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -392,7 +402,7 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
                     <input
                       type="text"
                       required
-                      value={phone}
+                      value={phone || ''}
                       onChange={(e) => setPhone(e.target.value)}
                       className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-emerald-500 ${
                         isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -405,7 +415,7 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
                     <input
                       type="email"
                       required
-                      value={email}
+                      value={email || ''}
                       onChange={(e) => setEmail(e.target.value)}
                       className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-emerald-500 ${
                         isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -417,7 +427,7 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
                     <label className={`text-[11px] font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Emergency Contact</label>
                     <input
                       type="text"
-                      value={emergencyContact}
+                      value={emergencyContact || ''}
                       onChange={(e) => setEmergencyContact(e.target.value)}
                       className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-emerald-500 ${
                         isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -429,7 +439,7 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
                     <label className={`text-[11px] font-bold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Default Pickup Notes for Captain</label>
                     <textarea
                       rows={2}
-                      value={pickupNotes}
+                      value={pickupNotes || ''}
                       onChange={(e) => setPickupNotes(e.target.value)}
                       className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-emerald-500 ${
                         isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'

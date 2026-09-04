@@ -966,7 +966,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                value={searchQuery}
+                value={searchQuery || ''}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search rides by ID, passenger, captain, or location..."
                 className={`w-full border rounded-xl pl-9 pr-4 py-2 text-xs focus:outline-none focus:border-emerald-500 ${isLight ? 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400' : 'bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-500'}`}
@@ -1276,7 +1276,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                value={passengerSearchQuery}
+                value={passengerSearchQuery || ''}
                 onChange={(e) => setPassengerSearchQuery(e.target.value)}
                 placeholder="Search passengers by name, phone, email, or ID..."
                 className={`w-full border rounded-xl pl-9 pr-4 py-2 text-xs focus:outline-none focus:border-sky-500 ${
@@ -1324,7 +1324,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
             <div className="flex items-center gap-1.5 text-xs">
               <span className={`font-semibold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Sort by:</span>
               <select
-                value={passengerSortBy}
+                value={passengerSortBy || 'spend'}
                 onChange={(e) => setPassengerSortBy(e.target.value as any)}
                 className={`border rounded-xl px-2.5 py-1.5 text-xs font-bold focus:outline-none cursor-pointer ${
                   isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900 border-slate-800 text-slate-200'
@@ -2281,7 +2281,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                     <label className="text-[10px] font-bold uppercase text-slate-400 block">Button Display Label</label>
                     <input
                       type="text"
-                      value={settings.biddingConfig.tier1Label}
+                      value={settings.biddingConfig?.tier1Label ?? ''}
                       onChange={(e) => {
                         setSettings({
                           ...settings,
@@ -2346,7 +2346,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                     <label className="text-[10px] font-bold uppercase text-slate-400 block">Button Display Label</label>
                     <input
                       type="text"
-                      value={settings.biddingConfig.tier2Label}
+                      value={settings.biddingConfig?.tier2Label ?? ''}
                       onChange={(e) => {
                         setSettings({
                           ...settings,
@@ -2446,7 +2446,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                     <label className="text-[10px] font-bold uppercase text-slate-400 block">Button Display Label</label>
                     <input
                       type="text"
-                      value={settings.biddingConfig.tier3Label}
+                      value={settings.biddingConfig?.tier3Label ?? ''}
                       onChange={(e) => {
                         setSettings({
                           ...settings,
@@ -3220,7 +3220,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                         type="number"
                         min="1"
                         step="10"
-                        value={creditAdjustmentAmount}
+                        value={creditAdjustmentAmount ?? 0}
                         onChange={(e) => setCreditAdjustmentAmount(parseFloat(e.target.value) || 0)}
                         placeholder="Custom Amount"
                         className={`border rounded-xl px-3 py-1.5 text-xs font-bold w-32 focus:outline-none focus:border-emerald-500 ${
@@ -3248,7 +3248,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
 
                   <textarea
                     rows={4}
-                    value={passengerNoteDraft}
+                    value={passengerNoteDraft || ''}
                     onChange={(e) => setPassengerNoteDraft(e.target.value)}
                     placeholder="Add operational notes, customer incident logs, or VIP handling instructions..."
                     className={`w-full border rounded-2xl p-3.5 text-xs focus:outline-none focus:border-sky-500 resize-none ${

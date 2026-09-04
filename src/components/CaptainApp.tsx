@@ -18,6 +18,7 @@ import {
   Loader2,
   Check,
   Award,
+  Bike,
   ChevronRight,
   TrendingUp,
   SlidersHorizontal,
@@ -65,6 +66,7 @@ import { CaptainProfileModal } from './CaptainProfileModal';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useTheme } from '../context/ThemeContext';
 import { usePricing, DEFAULT_PLATFORM_PRICING } from '../context/PricingContext';
+import { useAuth } from '../context/AuthContext';
 import {
   playSweetAlertTune,
   subscribeToIncomingRideBroadcasts,
@@ -88,6 +90,7 @@ export const DEMO_CAPTAINS: UserProfile[] = [
   {
     id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
     name: 'Captain Alex Rivera',
+    email: 'alex.rivera.driver@motoride.com',
     phone: '+1 (555) 749-3021',
     role: 'captain',
     rating: 4.96,
@@ -98,6 +101,7 @@ export const DEMO_CAPTAINS: UserProfile[] = [
   {
     id: 'c93bd82c-40ee-5283-c678-1f13c3d4e092',
     name: 'Captain Marcus Chen',
+    email: 'marcus.chen.driver@motoride.com',
     phone: '+1 (555) 882-1944',
     role: 'captain',
     rating: 4.92,
@@ -108,6 +112,7 @@ export const DEMO_CAPTAINS: UserProfile[] = [
   {
     id: 'd04ce93d-51ff-6394-d789-2024d4e5f103',
     name: 'Captain Sara Vance',
+    email: 'sara.vance.driver@motoride.com',
     phone: '+1 (555) 304-9182',
     role: 'captain',
     rating: 4.98,
@@ -132,14 +137,27 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   onOpenSqlModal,
 }) => {
   const { pricing } = usePricing();
+  const { updateUser } = useAuth();
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [requestedRides, setRequestedRides] = useState<Ride[]>([]);
   const [declinedRides, setDeclinedRides] = useState<DeclinedRideItem[]>([]);
   const [requestTab, setRequestTab] = useState<'incoming' | 'declined'>('incoming');
 
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
-  const [currentCaptain, setCurrentCaptain] = useState<UserProfile>(captainUser);
+  const [currentCaptain, setCurrentCaptain] = useState<UserProfile>(() => {
+    try {
+      const stored = localStorage.getItem('motoride_active_captain_profile');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && (parsed.vehicle_details || parsed.name)) {
+          return { ...captainUser, ...parsed };
+        }
+      }
+    } catch (_) {}
+    return captainUser;
+  });
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
+  const [profileModalTab, setProfileModalTab] = useState<'profile' | 'vehicle' | 'earnings' | 'preferences' | 'checklist'>('profile');
   const [onlineMinutes, setOnlineMinutes] = useState<number>(185);
 
   // Database-driven Earnings Summary strictly from completed rides
@@ -195,12 +213,20 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
   useEffect(() => {
     if (captainUser) {
-      setCurrentCaptain(captainUser);
+      setCurrentCaptain((prev) => ({
+        ...prev,
+        ...captainUser,
+        vehicle_details: captainUser.vehicle_details || prev.vehicle_details,
+        email: captainUser.email || prev.email,
+      }));
     }
   }, [captainUser]);
 
   useEffect(() => {
     currentCaptainRef.current = currentCaptain;
+    try {
+      localStorage.setItem('motoride_active_captain_profile', JSON.stringify(currentCaptain));
+    } catch (_) {}
   }, [currentCaptain]);
 
   useEffect(() => {
@@ -926,15 +952,39 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               </span>
               {titleSuffix && <span className="text-amber-500 font-bold text-xs">({titleSuffix})</span>}
             </div>
-            <p className={`text-[11px] flex items-center gap-1.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+            <div className={`text-[11px] flex items-center gap-1.5 flex-wrap ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               <span className="text-amber-500 dark:text-amber-300 font-bold flex items-center">
                 ★ {currentCaptain.rating || 4.96}
               </span>
               <span>·</span>
-              <span className={isLight ? 'text-slate-700' : 'text-slate-300'}>
-                {currentCaptain.vehicle_details?.split('·')[0] || 'Yamaha MT-07'}
-              </span>
-            </p>
+              <button
+                type="button"
+                id="captain-dashboard-header-vehicle"
+                onClick={() => {
+                  setProfileModalTab('vehicle');
+                  setIsProfileOpen(true);
+                }}
+                title="Registered Bike: click to view RC or change"
+                className={`font-bold hover:underline flex items-center gap-1 cursor-pointer transition-colors max-w-[200px] truncate ${
+                  isLight ? 'text-slate-700 hover:text-amber-600' : 'text-slate-300 hover:text-amber-400'
+                }`}
+              >
+                <Bike className="w-3 h-3 text-amber-500 shrink-0" />
+                <span className="truncate">{currentCaptain.vehicle_details || 'Yamaha MT-07 · Black'}</span>
+              </button>
+              {currentCaptain.email && (
+                <>
+                  <span>·</span>
+                  <span
+                    id="captain-dashboard-header-email"
+                    title={`Captain Account Email: ${currentCaptain.email}`}
+                    className="font-mono text-[10px] text-slate-500 dark:text-slate-400 max-w-[210px] truncate"
+                  >
+                    {currentCaptain.email}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -955,49 +1005,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             <Power className="w-3.5 h-3.5" />
             {isOnline ? 'ONLINE' : 'GO ONLINE'}
           </button>
-        </div>
-      </div>
-
-      {/* Online Captain Switcher Bar (Allows testing passing skipped ride to next online captain) */}
-      <div
-        className={`px-3.5 py-2 border-b flex items-center justify-between text-xs transition-colors ${
-          isLight ? 'bg-slate-100/90 border-slate-200' : 'bg-[#090d17] border-slate-800'
-        }`}
-      >
-        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
-          <span>Active Driver:</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {DEMO_CAPTAINS.map((cap) => {
-            const isCurrent = cap.id === currentCaptain.id;
-            return (
-              <button
-                key={cap.id}
-                type="button"
-                id={`switch-captain-btn-${cap.id.slice(0, 5)}`}
-                onClick={() => {
-                  setCurrentCaptain(cap);
-                  setActiveRide(null);
-                  setDeclinedRides([]);
-                  setRequestTab('incoming');
-                  setConcurrencyAlert({
-                    type: 'success',
-                    message: `Switched dashboard to ${cap.name}.`,
-                  });
-                }}
-                className={`px-2.5 py-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer ${
-                  isCurrent
-                    ? 'bg-amber-500 text-slate-950 shadow-sm font-black ring-1 ring-amber-400'
-                    : isLight
-                    ? 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'
-                    : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700'
-                }`}
-              >
-                {cap.name.replace('Captain ', '')}
-              </button>
-            );
-          })}
         </div>
       </div>
 
@@ -1100,6 +1107,49 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               ₹{earningsSummary.totalEarnings.toFixed(2)}
             </span>
           </div>
+        </div>
+
+        {/* Active Registered Bike Status Banner */}
+        <div
+          id="captain-registered-bike-banner"
+          className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-2 text-xs transition-all ${
+            isLight
+              ? 'bg-amber-50/80 border-amber-200 text-slate-800 shadow-xs'
+              : 'bg-amber-500/10 border-amber-500/20 text-slate-200 shadow-sm'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+              <Bike className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                  Registered Bike
+                </span>
+                <span className="text-[9px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-bold">
+                  Certified
+                </span>
+              </div>
+              <span className="font-bold text-xs block truncate text-slate-900 dark:text-white">
+                {currentCaptain.vehicle_details || 'Yamaha MT-07 · Black #DL-01-AB-7492'}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setProfileModalTab('vehicle');
+              setIsProfileOpen(true);
+            }}
+            className={`shrink-0 text-[11px] px-2.5 py-1 rounded-lg font-bold border transition-colors cursor-pointer ${
+              isLight
+                ? 'bg-white hover:bg-amber-100 text-slate-800 border-amber-300 shadow-xs'
+                : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border-slate-700'
+            }`}
+          >
+            Change Bike
+          </button>
         </div>
 
         {/* Daily Quest Goal Bar */}
@@ -2266,7 +2316,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               <input
                 id="captain-passenger-notes"
                 type="text"
-                value={passengerRatingNotes}
+                value={passengerRatingNotes || ''}
                 onChange={(e) => setPassengerRatingNotes(e.target.value)}
                 placeholder="e.g. Excellent passenger, prompt pickup"
                 className={`w-full px-3 py-2 text-xs rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
@@ -2331,7 +2381,23 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         isOpen={isProfileOpen}
         onClose={() => setIsProfileOpen(false)}
         captain={currentCaptain}
-        onUpdateCaptain={(updated) => setCurrentCaptain((prev) => ({ ...prev, ...updated }))}
+        initialTab={profileModalTab}
+        onUpdateCaptain={(updated) => {
+          setCurrentCaptain((prev) => {
+            const next = { ...prev, ...updated };
+            try {
+              localStorage.setItem('motoride_active_captain_profile', JSON.stringify(next));
+            } catch (_) {}
+            return next;
+          });
+          updateUser('captain', {
+            name: updated.name,
+            email: updated.email,
+            phone: updated.phone,
+            vehicle_details: updated.vehicle_details,
+            avatar_url: updated.avatar_url,
+          });
+        }}
         todayIncome={earningsSummary.todayIncome}
         todayEarnings={earningsSummary.todayIncome}
         totalEarnings={earningsSummary.totalEarnings}

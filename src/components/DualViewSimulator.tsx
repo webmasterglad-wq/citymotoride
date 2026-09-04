@@ -3,6 +3,7 @@ import { PassengerApp } from './PassengerApp';
 import { CaptainApp } from './CaptainApp';
 import { Smartphone, Monitor, ShieldCheck, Zap, SplitSquareVertical, Users } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 
 interface DualViewSimulatorProps {
   onOpenSqlModal: () => void;
@@ -10,6 +11,9 @@ interface DualViewSimulatorProps {
 
 export const DualViewSimulator: React.FC<DualViewSimulatorProps> = ({ onOpenSqlModal }) => {
   const { isLight } = useTheme();
+  const { getUserForRole } = useAuth();
+  const captainUser = getUserForRole('captain');
+  const passengerUser = getUserForRole('passenger');
   const [captain2Enabled, setCaptain2Enabled] = useState(false);
 
   return (
@@ -82,7 +86,22 @@ export const DualViewSimulator: React.FC<DualViewSimulatorProps> = ({ onOpenSqlM
               isLight ? 'border-sky-300/70 bg-slate-50/50 shadow-slate-200/50' : 'border-sky-500/30 bg-slate-950/80 shadow-2xl backdrop-blur-sm'
             }`}
           >
-            <PassengerApp onOpenSqlModal={onOpenSqlModal} />
+            <PassengerApp
+              passengerUser={
+                passengerUser
+                  ? {
+                      id: passengerUser.id,
+                      name: passengerUser.name,
+                      email: passengerUser.email,
+                      phone: passengerUser.phone,
+                      role: 'passenger',
+                      rating: passengerUser.rating || 4.94,
+                      avatar_url: passengerUser.avatar_url,
+                    }
+                  : undefined
+              }
+              onOpenSqlModal={onOpenSqlModal}
+            />
           </div>
         </div>
 
@@ -102,14 +121,28 @@ export const DualViewSimulator: React.FC<DualViewSimulatorProps> = ({ onOpenSqlM
             }`}
           >
             <CaptainApp
-              captainUser={{
-                id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
-                name: 'Captain Alex Rivera',
-                phone: '+1 (555) 749-3021',
-                role: 'captain',
-                rating: 4.96,
-                vehicle_details: 'Yamaha MT-07 · Stealth Black #7492',
-              }}
+              captainUser={
+                captainUser
+                  ? {
+                      id: captainUser.id,
+                      name: captainUser.name,
+                      email: captainUser.email,
+                      phone: captainUser.phone,
+                      role: 'captain',
+                      rating: captainUser.rating || 4.96,
+                      vehicle_details: captainUser.vehicle_details || 'Yamaha MT-07 · Stealth Black #7492',
+                      avatar_url: captainUser.avatar_url,
+                    }
+                  : {
+                      id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
+                      name: 'Captain Alex Rivera',
+                      email: 'alex.rivera.driver@motoride.com',
+                      phone: '+1 (555) 749-3021',
+                      role: 'captain',
+                      rating: 4.96,
+                      vehicle_details: 'Yamaha MT-07 · Stealth Black #7492',
+                    }
+              }
               titleSuffix="Alex"
               onOpenSqlModal={onOpenSqlModal}
             />

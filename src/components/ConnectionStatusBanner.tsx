@@ -41,7 +41,9 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
   onChangeView,
 }) => {
   const { theme, isLight, toggleTheme } = useTheme();
-  const { getUserForRole, signOut } = useAuth();
+  const { getUserForRole, signOut, isAuthenticated } = useAuth();
+  const isPassengerAuthed = isAuthenticated('passenger');
+  const isCaptainAuthed = isAuthenticated('captain');
   const [isOpenConfig, setIsOpenConfig] = useState(false);
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [supabaseKey, setSupabaseKey] = useState('');
@@ -165,38 +167,45 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
           </span>
         </div>
 
-        {/* Center/Right: View Switcher */}
+        {/* Center/Right: View Switcher - Only shows available app role based on auth */}
         <div
           className={`flex items-center gap-1.5 p-1 rounded-xl border text-xs ${
             isLight ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-slate-950 border-slate-800 text-slate-300'
           }`}
         >
-          <button
-            id="view-passenger-btn"
-            onClick={() => onChangeView('passenger')}
-            className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
-              activeView === 'passenger'
-                ? 'bg-sky-500 text-white font-bold shadow'
-                : isLight
-                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Passenger App
-          </button>
-          <button
-            id="view-captain-btn"
-            onClick={() => onChangeView('captain')}
-            className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
-              activeView === 'captain'
-                ? 'bg-emerald-500 text-slate-950 font-bold shadow'
-                : isLight
-                ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Captain App
-          </button>
+          {/* Show Passenger App button only if captain is not signed in */}
+          {!isCaptainAuthed && (
+            <button
+              id="view-passenger-btn"
+              onClick={() => onChangeView('passenger')}
+              className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                activeView === 'passenger'
+                  ? 'bg-sky-500 text-white font-bold shadow'
+                  : isLight
+                  ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Passenger App
+            </button>
+          )}
+
+          {/* Show Captain App button only if passenger is not signed in */}
+          {!isPassengerAuthed && (
+            <button
+              id="view-captain-btn"
+              onClick={() => onChangeView('captain')}
+              className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                activeView === 'captain'
+                  ? 'bg-emerald-500 text-slate-950 font-bold shadow'
+                  : isLight
+                  ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Captain App
+            </button>
+          )}
         </div>
 
         {/* Action buttons & Auth Session */}
@@ -290,7 +299,7 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
                   id="input-supabase-url"
                   type="text"
                   placeholder="https://xyzcompany.supabase.co"
-                  value={supabaseUrl}
+                  value={supabaseUrl || ''}
                   onChange={(e) => setSupabaseUrl(e.target.value)}
                   className={`w-full rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500 font-mono border ${
                     isLight
@@ -316,7 +325,7 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
                   id="input-supabase-key"
                   type="password"
                   placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  value={supabaseKey}
+                  value={supabaseKey || ''}
                   onChange={(e) => setSupabaseKey(e.target.value)}
                   className={`w-full rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500 font-mono border ${
                     isLight

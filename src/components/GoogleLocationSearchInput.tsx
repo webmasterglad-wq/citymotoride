@@ -361,7 +361,7 @@ export const GoogleLocationSearchInput: React.FC<GoogleLocationSearchInputProps>
   required = false,
 }) => {
   const { isLight } = useTheme();
-  const [query, setQuery] = useState(value);
+  const [query, setQuery] = useState(value || '');
   const [isOpen, setIsOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [isLocating, setIsLocating] = useState(false);
@@ -372,7 +372,7 @@ export const GoogleLocationSearchInput: React.FC<GoogleLocationSearchInputProps>
 
   // Sync internal state when external value changes
   useEffect(() => {
-    setQuery(value);
+    setQuery(value || '');
   }, [value]);
 
   // Close dropdown on click outside
@@ -532,7 +532,7 @@ export const GoogleLocationSearchInput: React.FC<GoogleLocationSearchInputProps>
           ref={inputRef}
           type="text"
           required={required}
-          value={query}
+          value={query || ''}
           onFocus={() => setIsOpen(true)}
           onChange={(e) => {
             setQuery(e.target.value);

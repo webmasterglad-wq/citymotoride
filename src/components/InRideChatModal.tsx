@@ -193,7 +193,7 @@ export const InRideChatModal: React.FC<InRideChatModalProps> = ({
         >
           <input
             type="text"
-            value={inputMsg}
+            value={inputMsg || ''}
             onChange={(e) => setInputMsg(e.target.value)}
             placeholder={`Message ${otherPartyName}...`}
             className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-400"

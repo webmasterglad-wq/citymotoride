@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ConnectionStatusBanner } from './components/ConnectionStatusBanner';
 import { PassengerApp } from './components/PassengerApp';
 import { CaptainApp } from './components/CaptainApp';
@@ -25,6 +25,17 @@ function AppContent() {
   const isPassengerAuthed = isAuthenticated('passenger');
   const isCaptainAuthed = isAuthenticated('captain');
   const isAdminAuthed = isAuthenticated('admin');
+
+  // Automatically keep view synced with authenticated role:
+  // When passenger signs in, ensure view is not captain.
+  // When captain signs in, ensure view is not passenger.
+  useEffect(() => {
+    if (isPassengerAuthed && activeView === 'captain') {
+      setActiveView('passenger');
+    } else if (isCaptainAuthed && activeView === 'passenger') {
+      setActiveView('captain');
+    }
+  }, [isPassengerAuthed, isCaptainAuthed, activeView]);
 
   return (
     <div
@@ -58,8 +69,8 @@ function AppContent() {
           )
         )}
 
-        {/* ================= PASSENGER VIEW ================= */}
-        {activeView === 'passenger' && (
+        {/* ================= PASSENGER VIEW (Hidden if captain is signed in) ================= */}
+        {activeView === 'passenger' && !isCaptainAuthed && (
           !isPassengerAuthed ? (
             <div className="py-8 px-4 my-auto">
               <AuthScreen
@@ -70,15 +81,27 @@ function AppContent() {
           ) : (
             <div className="py-6 px-4">
               <PassengerApp
-                passengerUser={passengerUser || undefined}
+                passengerUser={
+                  passengerUser
+                    ? {
+                        id: passengerUser.id,
+                        name: passengerUser.name,
+                        email: passengerUser.email,
+                        phone: passengerUser.phone,
+                        role: 'passenger',
+                        rating: passengerUser.rating || 4.94,
+                        avatar_url: passengerUser.avatar_url,
+                      }
+                    : undefined
+                }
                 onOpenSqlModal={() => setIsSqlModalOpen(true)}
               />
             </div>
           )
         )}
 
-        {/* ================= CAPTAIN VIEW ================= */}
-        {activeView === 'captain' && (
+        {/* ================= CAPTAIN VIEW (Hidden if passenger is signed in) ================= */}
+        {activeView === 'captain' && !isPassengerAuthed && (
           !isCaptainAuthed ? (
             <div className="py-8 px-4 my-auto">
               <AuthScreen
@@ -90,14 +113,26 @@ function AppContent() {
             <div className="py-6 px-4">
               <CaptainApp
                 captainUser={
-                  captainUser || {
-                    id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
-                    name: 'Captain Alex Rivera',
-                    phone: '+1 (555) 749-3021',
-                    role: 'captain',
-                    rating: 4.96,
-                    vehicle_details: 'Yamaha MT-07 · Stealth Black #7492',
-                  }
+                  captainUser
+                    ? {
+                        id: captainUser.id,
+                        name: captainUser.name,
+                        email: captainUser.email,
+                        phone: captainUser.phone,
+                        role: 'captain',
+                        rating: captainUser.rating || 4.96,
+                        vehicle_details: captainUser.vehicle_details || 'Yamaha MT-07 · Stealth Black #7492',
+                        avatar_url: captainUser.avatar_url,
+                      }
+                    : {
+                        id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
+                        name: 'Captain Alex Rivera',
+                        email: 'alex.rivera.driver@motoride.com',
+                        phone: '+1 (555) 749-3021',
+                        role: 'captain',
+                        rating: 4.96,
+                        vehicle_details: 'Yamaha MT-07 · Stealth Black #7492',
+                      }
                 }
                 titleSuffix={captainUser?.name?.split(' ')[1] || 'Alex'}
                 onOpenSqlModal={() => setIsSqlModalOpen(true)}
@@ -107,33 +142,35 @@ function AppContent() {
         )}
       </main>
 
-      {/* Footer */}
-      <footer
-        className={`border-t py-4 px-6 text-center text-xs transition-colors duration-200 ${
-          isLight
-            ? 'border-slate-200 bg-slate-50/90 text-slate-600'
-            : 'border-slate-900 bg-slate-950/80 text-slate-500'
-        }`}
-      >
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-1.5">
-          <span className="font-medium">MotoRide Real-Time Dispatch System · Supabase Realtime &amp;</span>
-          <button
-            type="button"
-            id="admin-dashboard-auth-engine-link"
-            onClick={() => setActiveView('admin')}
-            title="Open Admin Dashboard"
-            className={`font-semibold underline underline-offset-4 decoration-amber-500/60 hover:decoration-amber-500 transition-colors cursor-pointer inline-flex items-center gap-1 ${
-              activeView === 'admin'
-                ? 'text-amber-500 font-bold decoration-amber-500'
-                : isLight
-                ? 'text-slate-700 hover:text-amber-600'
-                : 'text-slate-400 hover:text-amber-400'
-            }`}
-          >
-            Auth Engine
-          </button>
-        </div>
-      </footer>
+      {/* Footer System Status - Only shown on main page when both passenger and captain account are signed out */}
+      {!isPassengerAuthed && !isCaptainAuthed && (
+        <footer
+          className={`border-t py-4 px-6 text-center text-xs transition-colors duration-200 ${
+            isLight
+              ? 'border-slate-200 bg-slate-50/90 text-slate-600'
+              : 'border-slate-900 bg-slate-950/80 text-slate-500'
+          }`}
+        >
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center gap-1.5">
+            <span className="font-medium">MotoRide Real-Time Dispatch System · Supabase Realtime &amp;</span>
+            <button
+              type="button"
+              id="admin-dashboard-auth-engine-link"
+              onClick={() => setActiveView('admin')}
+              title="Open Admin Dashboard"
+              className={`font-semibold underline underline-offset-4 decoration-amber-500/60 hover:decoration-amber-500 transition-colors cursor-pointer inline-flex items-center gap-1 ${
+                activeView === 'admin'
+                  ? 'text-amber-500 font-bold decoration-amber-500'
+                  : isLight
+                  ? 'text-slate-700 hover:text-amber-600'
+                  : 'text-slate-400 hover:text-amber-400'
+              }`}
+            >
+              Auth Engine
+            </button>
+          </div>
+        </footer>
+      )}
 
       {/* SQL Setup Modal */}
       <SqlSetupModal
