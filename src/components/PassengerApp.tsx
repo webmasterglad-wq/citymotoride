@@ -62,6 +62,8 @@ import {
   declineCaptainOffer,
   subscribeToCaptainSkipEvents,
 } from '../services/rideService';
+import { subscribeToUnreadCount, markMessagesAsRead } from '../services/chatService';
+import { ChatMessage } from '../types/ride';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { InRideChatModal } from './InRideChatModal';
 import { SafetyToolkitModal } from './SafetyToolkitModal';
@@ -192,6 +194,28 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   // Modals & Post-Ride Feedback
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [latestCaptainMsg, setLatestCaptainMsg] = useState<ChatMessage | null>(null);
+
+  // Subscribe to real-time chat updates & unread alerts for active ride
+  useEffect(() => {
+    if (!activeRide?.id) {
+      setUnreadChatCount(0);
+      setLatestCaptainMsg(null);
+      return;
+    }
+
+    const unsubscribe = subscribeToUnreadCount(activeRide.id, 'passenger', (count, latest) => {
+      setUnreadChatCount(count);
+      if (latest) {
+        setLatestCaptainMsg(latest);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [activeRide?.id]);
   const [isSafetyOpen, setIsSafetyOpen] = useState(false);
   const [ratingStars, setRatingStars] = useState<number>(5);
   const [tipAmount, setTipAmount] = useState<number>(2);
@@ -1466,7 +1490,12 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setIsChatOpen(true)}
+                  id="passenger-in-ride-chat-btn"
+                  onClick={() => {
+                    setIsChatOpen(true);
+                    setUnreadChatCount(0);
+                    if (activeRide) markMessagesAsRead(activeRide.id, 'passenger');
+                  }}
                   className={`py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors relative cursor-pointer ${
                     isLight
                       ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200'
@@ -1475,7 +1504,13 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 >
                   <MessageSquare className="w-3.5 h-3.5 text-sky-500" />
                   Chat
-                  <span className="w-2 h-2 rounded-full bg-sky-500 absolute top-1.5 right-2" />
+                  {unreadChatCount > 0 ? (
+                    <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black absolute -top-1.5 -right-1 flex items-center justify-center animate-bounce shadow">
+                      {unreadChatCount}
+                    </span>
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-sky-500 absolute top-1.5 right-2" />
+                  )}
                 </button>
 
                 <button
@@ -1491,6 +1526,50 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                   Safety
                 </button>
               </div>
+
+              {/* Passenger Dashboard Message Board */}
+              {latestCaptainMsg && (
+                <div
+                  id="passenger-in-ride-message-board"
+                  onClick={() => {
+                    setIsChatOpen(true);
+                    setUnreadChatCount(0);
+                    if (activeRide) markMessagesAsRead(activeRide.id, 'passenger');
+                  }}
+                  className={`p-3 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-between gap-3 ${
+                    unreadChatCount > 0
+                      ? 'bg-sky-500/15 border-sky-500/50 shadow-md shadow-sky-500/10 animate-pulse'
+                      : isLight
+                      ? 'bg-sky-50/70 border-sky-200/80 hover:bg-sky-100/70'
+                      : 'bg-sky-950/40 border-sky-800/60 hover:bg-sky-900/40'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-sky-500 text-slate-950 flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">
+                      <MessageSquare className="w-4 h-4 fill-slate-950" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[11px] font-black uppercase tracking-wide ${unreadChatCount > 0 ? 'text-sky-400' : isLight ? 'text-sky-800' : 'text-sky-300'}`}>
+                          Message Board · {activeRide.captain_name || 'Captain'}
+                        </span>
+                        {unreadChatCount > 0 && (
+                          <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-black uppercase">
+                            {unreadChatCount} new
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-400 ml-auto font-mono">{latestCaptainMsg.timestamp}</span>
+                      </div>
+                      <p className={`text-xs font-semibold truncate ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                        "{latestCaptainMsg.text}"
+                      </p>
+                    </div>
+                  </div>
+                  <span className="shrink-0 px-2.5 py-1 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-black shadow-sm">
+                    Open Chat
+                  </span>
+                </div>
+              )}
             </div>
           ) : (() => {
             const pendingOffers = captainOffers.filter((o) => o.status === 'pending');

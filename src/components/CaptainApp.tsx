@@ -60,6 +60,8 @@ import {
   getCaptainSkippedRideIds,
   unskipCaptainRide,
 } from '../services/rideService';
+import { subscribeToUnreadCount, markMessagesAsRead } from '../services/chatService';
+import { ChatMessage } from '../types/ride';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { InRideChatModal } from './InRideChatModal';
 import { CaptainProfileModal } from './CaptainProfileModal';
@@ -179,8 +181,30 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   const [tableMissingNotice, setTableMissingNotice] = useState<boolean>(false);
   const [realtimeState, setRealtimeState] = useState<string>('connecting');
 
-  // Chat Modal
+  // Chat Modal & Real-Time Sync
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [latestPassengerMsg, setLatestPassengerMsg] = useState<ChatMessage | null>(null);
+
+  // Subscribe to real-time chat updates & unread alerts for active ride
+  useEffect(() => {
+    if (!activeRide?.id) {
+      setUnreadChatCount(0);
+      setLatestPassengerMsg(null);
+      return;
+    }
+
+    const unsubscribe = subscribeToUnreadCount(activeRide.id, 'captain', (count, latest) => {
+      setUnreadChatCount(count);
+      if (latest) {
+        setLatestPassengerMsg(latest);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [activeRide?.id]);
 
   // Ride PIN Verification State for starting trip
   const [enteredPin, setEnteredPin] = useState('');
@@ -1274,19 +1298,92 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
               <button
                 type="button"
-                onClick={() => setIsChatOpen(true)}
-                className={`p-2.5 rounded-xl border transition-colors relative ${
+                id="captain-in-ride-chat-btn"
+                onClick={() => {
+                  setIsChatOpen(true);
+                  setUnreadChatCount(0);
+                  if (activeRide) markMessagesAsRead(activeRide.id, 'captain');
+                }}
+                className={`p-2.5 rounded-xl border transition-colors relative cursor-pointer ${
                   isLight
                     ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
                     : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
                 }`}
-                title="In-App Chat"
+                title="In-App Chat with Passenger"
               >
                 <MessageSquare className="w-4 h-4 text-sky-500" />
-                <span className="w-2 h-2 rounded-full bg-sky-400 absolute top-1 right-1" />
+                {unreadChatCount > 0 ? (
+                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black absolute -top-1.5 -right-1.5 flex items-center justify-center animate-bounce shadow">
+                    {unreadChatCount}
+                  </span>
+                ) : (
+                  <span className="w-2 h-2 rounded-full bg-sky-400 absolute top-1 right-1" />
+                )}
               </button>
             </div>
           </div>
+
+          {/* Captain Live In-Ride Message Board */}
+          {latestPassengerMsg ? (
+            <div
+              id="captain-in-ride-message-board"
+              onClick={() => {
+                setIsChatOpen(true);
+                setUnreadChatCount(0);
+                if (activeRide) markMessagesAsRead(activeRide.id, 'captain');
+              }}
+              className={`p-3 rounded-2xl border cursor-pointer transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-between gap-3 ${
+                unreadChatCount > 0
+                  ? 'bg-sky-500/15 border-sky-500/50 shadow-md shadow-sky-500/10 animate-pulse'
+                  : isLight
+                  ? 'bg-sky-50/70 border-sky-200/80 hover:bg-sky-100/70'
+                  : 'bg-sky-950/40 border-sky-800/60 hover:bg-sky-900/40'
+              }`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-sky-500 text-slate-950 flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">
+                  <MessageSquare className="w-4 h-4 fill-slate-950" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[11px] font-black uppercase tracking-wide ${unreadChatCount > 0 ? 'text-sky-400' : isLight ? 'text-sky-800' : 'text-sky-300'}`}>
+                      Message Board · {activeRide.passenger_name || 'Passenger'}
+                    </span>
+                    {unreadChatCount > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-black uppercase">
+                        {unreadChatCount} new
+                      </span>
+                    )}
+                    <span className="text-[10px] text-slate-400 ml-auto font-mono">{latestPassengerMsg.timestamp}</span>
+                  </div>
+                  <p className={`text-xs font-semibold truncate ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                    "{latestPassengerMsg.text}"
+                  </p>
+                </div>
+              </div>
+              <span className="shrink-0 px-2.5 py-1 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-black shadow-sm">
+                Open Chat
+              </span>
+            </div>
+          ) : (
+            <div
+              id="captain-in-ride-message-board-empty"
+              onClick={() => {
+                setIsChatOpen(true);
+                setUnreadChatCount(0);
+                if (activeRide) markMessagesAsRead(activeRide.id, 'captain');
+              }}
+              className={`p-2.5 rounded-2xl border border-dashed flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                isLight ? 'border-slate-300 hover:bg-slate-100/70 text-slate-600' : 'border-slate-800 hover:bg-slate-900/50 text-slate-400'
+              }`}
+            >
+              <div className="flex items-center gap-2 text-xs">
+                <MessageSquare className="w-3.5 h-3.5 text-sky-500" />
+                <span className="text-[11px]">Chat with {activeRide.passenger_name || 'Passenger'} (tap to message)</span>
+              </div>
+              <span className="text-[10px] font-bold text-sky-500">Send message →</span>
+            </div>
+          )}
 
           {/* Trip Addresses */}
           <div

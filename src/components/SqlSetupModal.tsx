@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS public.rides (
     service_type TEXT DEFAULT 'moto_comfort',
     tier_name TEXT DEFAULT 'Comfort Moto',
     captain_offers JSONB DEFAULT '[]'::jsonb,
+    chat_messages JSONB DEFAULT '[]'::jsonb,
     status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'accepted', 'arrived', 'started', 'completed', 'cancelled')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     accepted_at TIMESTAMPTZ NULL,
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS public.rides (
 ALTER TABLE public.rides ADD COLUMN IF NOT EXISTS service_type TEXT DEFAULT 'moto_comfort';
 ALTER TABLE public.rides ADD COLUMN IF NOT EXISTS tier_name TEXT DEFAULT 'Comfort Moto';
 ALTER TABLE public.rides ADD COLUMN IF NOT EXISTS captain_offers JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.rides ADD COLUMN IF NOT EXISTS chat_messages JSONB DEFAULT '[]'::jsonb;
 
 -- 2. Create helpful indexes for performance
 CREATE INDEX IF NOT EXISTS idx_rides_status ON public.rides (status);

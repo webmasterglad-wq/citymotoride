@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, X, Shield, Phone, MessageSquare, Check, User } from 'lucide-react';
+import { Send, X, Shield, Phone, MessageSquare, Check, User, CheckCheck } from 'lucide-react';
 import { ChatMessage } from '../types/ride';
+import {
+  getStoredChatMessages,
+  sendChatMessage,
+  subscribeToRideChat,
+  markMessagesAsRead,
+  syncChatMessagesFromDatabase,
+} from '../services/chatService';
 
 interface InRideChatModalProps {
   isOpen: boolean;
@@ -40,50 +47,70 @@ export const InRideChatModal: React.FC<InRideChatModalProps> = ({
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMsg, setInputMsg] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Storage key per ride
-  const storageKey = `motoride_chat_${rideId}`;
-
-  // Load chat from localStorage or seed initial welcome message
+  // Load chat and sync with Supabase
   useEffect(() => {
-    if (!isOpen) return;
-    const stored = localStorage.getItem(storageKey);
-    if (stored) {
-      try {
-        setMessages(JSON.parse(stored));
-      } catch (e) {
-        setMessages([]);
-      }
-    } else {
-      setMessages([]);
-    }
-  }, [isOpen, rideId, storageKey, currentUserRole, currentUserName, otherPartyName]);
+    if (!isOpen || !rideId) return;
 
-  // Auto scroll
+    // 1. Initial local load
+    const local = getStoredChatMessages(rideId);
+    setMessages(local);
+    markMessagesAsRead(rideId, currentUserRole);
+
+    // 2. Database background sync
+    syncChatMessagesFromDatabase(rideId).then((synced) => {
+      if (synced && synced.length > 0) {
+        setMessages(synced);
+      }
+    });
+
+    // 3. Real-time subscription across tabs & devices
+    const unsubscribe = subscribeToRideChat(rideId, (newMsg) => {
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === newMsg.id)) return prev;
+        return [...prev, newMsg];
+      });
+      // Mark as read immediately since user has modal open
+      markMessagesAsRead(rideId, currentUserRole);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isOpen, rideId, currentUserRole]);
+
+  // Auto scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   if (!isOpen) return null;
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputMsg).trim();
-    if (!text) return;
+    if (!text || isSending) return;
 
-    const newMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      rideId,
-      sender: currentUserRole,
-      senderName: currentUserName,
-      text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
+    setIsSending(true);
+    try {
+      const sentMsg = await sendChatMessage(
+        rideId,
+        currentUserRole,
+        currentUserName,
+        text
+      );
 
-    const updated = [...messages, newMsg];
-    setMessages(updated);
-    localStorage.setItem(storageKey, JSON.stringify(updated));
-    setInputMsg('');
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === sentMsg.id)) return prev;
+        return [...prev, sentMsg];
+      });
+      setInputMsg('');
+    } catch (err) {
+      console.error('[InRideChatModal] Error sending message:', err);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -144,18 +171,22 @@ export const InRideChatModal: React.FC<InRideChatModalProps> = ({
                   key={msg.id}
                   className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                 >
+                  <span className="text-[10px] text-slate-400 font-semibold mb-1 px-1">
+                    {isMe ? 'You' : msg.senderName || otherPartyName}
+                  </span>
                   <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-xs shadow-md ${
+                    className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-xs shadow-md break-words ${
                       isMe
                         ? 'bg-emerald-500 text-slate-950 font-medium rounded-tr-none'
                         : 'bg-slate-800 text-slate-100 rounded-tl-none border border-slate-700'
                     }`}
                   >
-                    <p>{msg.text}</p>
+                    <p className="leading-relaxed">{msg.text}</p>
                   </div>
-                  <span className="text-[9px] text-slate-500 mt-1 px-1 font-mono">
-                    {msg.timestamp}
-                  </span>
+                  <div className="flex items-center gap-1 text-[9px] text-slate-500 mt-1 px-1 font-mono">
+                    <span>{msg.timestamp}</span>
+                    {isMe && <CheckCheck className="w-3 h-3 text-emerald-400 inline" />}
+                  </div>
                 </div>
               );
             })

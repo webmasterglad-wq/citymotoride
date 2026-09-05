@@ -393,6 +393,51 @@ export const playCaptainArrivedChime = async (): Promise<boolean> => {
 };
 
 /**
+ * Play a friendly, distinct two-tone chime when a new chat message arrives
+ */
+export const playMessageReceivedChime = async (): Promise<boolean> => {
+  try {
+    const ctx = getAudioContext();
+    if (ctx) {
+      if (ctx.state === 'suspended') {
+        await ctx.resume().catch(() => {});
+      }
+      if (ctx.state === 'running') {
+        const now = ctx.currentTime + 0.01;
+        // Two-tone bright notification ping: E5 (659Hz) -> A5 (880Hz)
+        const notes = [
+          { freq: 659.25, time: 0.00, dur: 0.12, gain: 0.25 },
+          { freq: 880.00, time: 0.10, dur: 0.25, gain: 0.30 },
+        ];
+
+        notes.forEach((n) => {
+          const startTime = now + n.time;
+          const stopTime = startTime + n.dur;
+
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(n.freq, startTime);
+
+          gain.gain.setValueAtTime(0.001, startTime);
+          gain.gain.linearRampToValueAtTime(n.gain, startTime + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.0001, stopTime);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(startTime);
+          osc.stop(stopTime);
+        });
+        return true;
+      }
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+};
+
+/**
  * Broadcast when captain clicks "I have arrived at pickup spot"
  */
 export const notifyCaptainArrived = (ride: any) => {
