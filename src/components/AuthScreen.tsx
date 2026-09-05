@@ -169,9 +169,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
     <div className="w-full max-w-md mx-auto py-8 px-4">
       {/* Brand Header */}
       <div className="text-center mb-6">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 font-black text-2xl tracking-tight shadow-xl shadow-amber-500/20 mb-3">
-          MR
-        </div>
         <h1 className={`text-2xl font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-50'}`}>
           Moto<span className="text-amber-500">Ride</span>
         </h1>
