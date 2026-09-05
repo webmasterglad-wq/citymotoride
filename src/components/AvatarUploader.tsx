@@ -40,7 +40,7 @@ const CAPTAIN_PRESETS = [
     url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=250&auto=format&fit=crop&q=80',
   },
   {
-    label: 'Captain Alex',
+    label: 'Fleet Captain',
     url: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=250&auto=format&fit=crop&q=80',
   },
   {

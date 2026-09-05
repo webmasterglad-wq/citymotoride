@@ -160,8 +160,8 @@ export const createRideBooking = async (
   try {
     const payload: any = {
       passenger_id: params.passenger_id,
-      passenger_name: params.passenger_name || 'Passenger User',
-      passenger_phone: params.passenger_phone || '+1 (555) 019-2834',
+      passenger_name: params.passenger_name || 'Passenger',
+      passenger_phone: params.passenger_phone || '',
       captain_id: null,
       pickup_location: params.pickup_location.trim(),
       dropoff_location: params.dropoff_location.trim(),
@@ -473,10 +473,10 @@ export const claimRideAtomic = async (
     return { success: false, message: 'Supabase is not connected' };
   }
 
-  const captainName = captainInfo?.name || 'Captain ' + captainId.slice(0, 5);
-  const captainPhone = captainInfo?.phone || '+1 (555) 839-2049';
-  const captainVehicle = captainInfo?.vehicle || 'Yamaha MT-07 • Black #7492';
-  const captainRating = captainInfo?.rating || 4.92;
+  const captainName = captainInfo?.name || 'Captain';
+  const captainPhone = captainInfo?.phone || '';
+  const captainVehicle = captainInfo?.vehicle || '';
+  const captainRating = captainInfo?.rating || 5.0;
 
   // Attempt 1: Call RPC 'claim_ride' if provisioned
   try {
@@ -850,50 +850,6 @@ export const purgeOldRidesAdmin = async (): Promise<{ count: number; error: stri
   }
 };
 
-export const createMockRideAdmin = async (): Promise<{ data: Ride | null; error: string | null }> => {
-  const samplePassengers = [
-    { name: 'Elena Rostova', phone: '+1 (555) 492-1084' },
-    { name: 'David Kim', phone: '+1 (555) 238-9912' },
-    { name: 'Aisha Patel', phone: '+1 (555) 871-3349' },
-    { name: 'Lucas Vance', phone: '+1 (555) 604-7721' },
-    { name: 'Zoe Martinez', phone: '+1 (555) 319-4820' },
-  ];
-
-  const samplePickups = [
-    'Montgomery St Financial District',
-    'Chinatown Gate, Grant Ave',
-    'Powell St Cable Car Turnaround',
-    'Hayes Valley Pavilion, Octavia St',
-    'SoMa Tech Incubator, Howard St',
-  ];
-
-  const sampleDropoffs = [
-    'Salesforce Transit Center, Mission St',
-    'Embarcadero Ferry Building Pier 1',
-    'Oracle Park Gate, King St',
-    'Presidio Main Post Lawn',
-    'Mission Dolores Park, Dolores St',
-  ];
-
-  const p = samplePassengers[Math.floor(Math.random() * samplePassengers.length)];
-  const pick = samplePickups[Math.floor(Math.random() * samplePickups.length)];
-  const drop = sampleDropoffs[Math.floor(Math.random() * sampleDropoffs.length)];
-  const dist = Number((2.5 + Math.random() * 5).toFixed(1));
-  const mins = Math.round(dist * 2.8 + 3);
-  const fare = Number((5.5 + dist * 2.2).toFixed(2));
-
-  return createRideBooking({
-    passenger_id: crypto.randomUUID ? crypto.randomUUID() : 'gen-pass-' + Date.now(),
-    passenger_name: p.name,
-    passenger_phone: p.phone,
-    pickup_location: pick,
-    dropoff_location: drop,
-    fare,
-    distance_km: dist,
-    estimated_mins: mins,
-  });
-};
-
 /**
  * Realtime Subscription for Admin Dashboard (all INSERT, UPDATE, DELETE)
  */
@@ -1030,8 +986,8 @@ export const extractOffersFromRide = (ride: any): CaptainOffer[] => {
           ride_id: ride.id,
           captain_id: capId,
           captain_name: capName,
-          captain_phone: ride.captain_phone || '+1 (555) 839-2049',
-          captain_vehicle: capVehicle || ride.captain_vehicle || 'Yamaha MT-07 • Black',
+          captain_phone: ride.captain_phone || '',
+          captain_vehicle: capVehicle || ride.captain_vehicle || '',
           captain_rating: capRating,
           offered_fare: capFare,
           original_fare: Number(ride.fare) || capFare,

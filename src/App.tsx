@@ -89,7 +89,7 @@ function AppContent() {
                         email: passengerUser.email,
                         phone: passengerUser.phone,
                         role: 'passenger',
-                        rating: passengerUser.rating || 4.94,
+                        rating: passengerUser.rating || 5.0,
                         avatar_url: passengerUser.avatar_url,
                       }
                     : undefined
@@ -120,21 +120,13 @@ function AppContent() {
                         email: captainUser.email,
                         phone: captainUser.phone,
                         role: 'captain',
-                        rating: captainUser.rating || 4.96,
-                        vehicle_details: captainUser.vehicle_details || 'Yamaha MT-07 · Stealth Black #7492',
+                        rating: captainUser.rating || 5.0,
+                        vehicle_details: captainUser.vehicle_details || '',
                         avatar_url: captainUser.avatar_url,
                       }
-                    : {
-                        id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
-                        name: 'Captain Alex Rivera',
-                        email: 'alex.rivera.driver@motoride.com',
-                        phone: '+1 (555) 749-3021',
-                        role: 'captain',
-                        rating: 4.96,
-                        vehicle_details: 'Yamaha MT-07 · Stealth Black #7492',
-                      }
+                    : undefined
                 }
-                titleSuffix={captainUser?.name?.split(' ')[1] || 'Alex'}
+                titleSuffix={captainUser?.name ? captainUser.name.split(' ')[0] : ''}
                 onOpenSqlModal={() => setIsSqlModalOpen(true)}
               />
             </div>

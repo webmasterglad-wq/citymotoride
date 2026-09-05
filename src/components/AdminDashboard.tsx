@@ -57,7 +57,6 @@ import {
   deleteRideAdmin,
   adminOverrideRide,
   purgeOldRidesAdmin,
-  createMockRideAdmin,
   subscribeToAdminRealtime,
   unsubscribeChannel,
 } from '../services/rideService';
@@ -70,64 +69,7 @@ interface AdminDashboardProps {
   onOpenSqlModal?: () => void;
 }
 
-const INITIAL_CAPTAINS: FleetCaptain[] = [
-  {
-    id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
-    name: 'Captain Alex Rivera',
-    phone: '+1 (555) 749-3021',
-    vehicle: 'Yamaha MT-07',
-    plate: 'CH 01 AB 7492',
-    rating: 4.96,
-    totalTrips: 1420,
-    isOnline: true,
-    status: 'available',
-    todayEarnings: 780.0,
-    joinedDate: 'Jan 2024',
-    avatar: '🏍️',
-  },
-  {
-    id: 'c93bd82c-40ee-4283-a678-1f13c3d4ea92',
-    name: 'Captain Vikram Chen',
-    phone: '+1 (555) 882-9014',
-    vehicle: 'Hero Splendor Plus',
-    plate: 'PB 65 AC 3021',
-    rating: 4.89,
-    totalTrips: 890,
-    isOnline: true,
-    status: 'available',
-    todayEarnings: 620.0,
-    joinedDate: 'Mar 2024',
-    avatar: '🛵',
-  },
-  {
-    id: 'd04ce93d-51ff-5394-b789-2g24d4e5fb03',
-    name: 'Captain Sofia Sharma',
-    phone: '+1 (555) 412-6830',
-    vehicle: 'Honda Activa 6G',
-    plate: 'HR 70 D 9841',
-    rating: 4.98,
-    totalTrips: 2150,
-    isOnline: true,
-    status: 'in_ride',
-    todayEarnings: 940.0,
-    joinedDate: 'Nov 2023',
-    avatar: '🏍️',
-  },
-  {
-    id: 'e15df04e-62aa-6405-c890-3h35e5f6gc14',
-    name: 'Captain Tariq Singh',
-    phone: '+1 (555) 903-5127',
-    vehicle: 'KTM Duke 250',
-    plate: 'CH 01 AE 5512',
-    rating: 4.85,
-    totalTrips: 640,
-    isOnline: false,
-    status: 'offline',
-    todayEarnings: 350.0,
-    joinedDate: 'May 2024',
-    avatar: '🛵',
-  },
-];
+const INITIAL_CAPTAINS: FleetCaptain[] = [];
 
 export interface AdminPassenger {
   id: string;
@@ -155,151 +97,7 @@ export interface AdminPassenger {
   notes?: string;
 }
 
-const INITIAL_PASSENGERS: AdminPassenger[] = [
-  {
-    id: 'pass-sarah-jenkins-01',
-    name: 'Sarah Jenkins',
-    phone: '+1 (555) 392-1049',
-    email: 'sarah.jenkins@example.com',
-    avatar_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-    rating: 4.94,
-    totalTrips: 42,
-    completedTrips: 40,
-    totalSpend: 5840.0,
-    walletBalance: 184.5,
-    status: 'vip',
-    joinedDate: 'Jan 2024',
-    lastActive: '10 mins ago',
-    emergencyContact: '+1 (555) 902-8812 (Mom)',
-    savedPlaces: [
-      { name: 'Home', address: '240 Elm St, Sector 17, City Core', icon: '🏠' },
-      { name: 'Work', address: 'Cyber Tech Park Tower 4, Suite 800', icon: '💼' },
-      { name: 'Fitness Gym', address: 'Gold Horizon Fitness & Spa, Sector 22', icon: '🏋️' },
-    ],
-    preferences: {
-      helmetSize: 'M',
-      quietRide: false,
-      requirePin: true,
-      shareLiveStatus: true,
-      weatherGear: true,
-    },
-    notes: 'Premium daily commuter. Prefers Yamaha MT-07 or KTM Duke for express morning routes.',
-  },
-  {
-    id: 'pass-david-kumar-02',
-    name: 'David Kumar',
-    phone: '+1 (555) 782-9014',
-    email: 'david.kumar@gmail.com',
-    avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-    rating: 4.88,
-    totalTrips: 19,
-    completedTrips: 18,
-    totalSpend: 2430.0,
-    walletBalance: 45.0,
-    status: 'active',
-    joinedDate: 'Mar 2024',
-    lastActive: '1 hour ago',
-    emergencyContact: '+1 (555) 481-9920 (Brother)',
-    savedPlaces: [
-      { name: 'Home', address: '482 Maple Ave, Greenfield', icon: '🏠' },
-      { name: 'University Campus', address: 'Metro Institute of Tech, Block B', icon: '🎓' },
-    ],
-    preferences: {
-      helmetSize: 'L',
-      quietRide: true,
-      requirePin: true,
-      shareLiveStatus: false,
-      weatherGear: true,
-    },
-    notes: 'Regular student commuter. Prefers quiet rides with UPI auto-pay.',
-  },
-  {
-    id: 'pass-elena-rostova-03',
-    name: 'Elena Rostova',
-    phone: '+1 (555) 721-4490',
-    email: 'elena.r@corporate.org',
-    avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    rating: 4.99,
-    totalTrips: 76,
-    completedTrips: 75,
-    totalSpend: 11450.0,
-    walletBalance: 520.0,
-    status: 'vip',
-    joinedDate: 'Oct 2023',
-    lastActive: 'Yesterday',
-    emergencyContact: '+1 (555) 303-9182 (Spouse)',
-    savedPlaces: [
-      { name: 'Penthouse Residence', address: '77 Skyview Terrace, Central Heights', icon: '🏢' },
-      { name: 'Corporate HQ', address: 'Financial District Plaza, Tower A', icon: '💼' },
-      { name: 'Intl Airport', address: 'Terminal 2 Drop-off Gate 4', icon: '✈️' },
-    ],
-    preferences: {
-      helmetSize: 'M',
-      quietRide: true,
-      requirePin: true,
-      shareLiveStatus: true,
-      weatherGear: true,
-    },
-    notes: 'Executive Corporate Rider. Platinum member with high surge tolerance and direct wallet settlement.',
-  },
-  {
-    id: 'pass-arjun-patel-04',
-    name: 'Arjun Patel',
-    phone: '+1 (555) 604-1928',
-    email: 'arjun.patel@techhub.io',
-    avatar_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
-    rating: 4.91,
-    totalTrips: 28,
-    completedTrips: 27,
-    totalSpend: 3820.0,
-    walletBalance: 90.0,
-    status: 'active',
-    joinedDate: 'Feb 2024',
-    lastActive: '3 hours ago',
-    emergencyContact: '+1 (555) 712-4091 (Sister)',
-    savedPlaces: [
-      { name: 'Apartment', address: 'Flat 304, Palm Grove Residency', icon: '🏠' },
-      { name: 'Co-Working Studio', address: 'Innov8 Hub, 5th Floor, Sector 34', icon: '💼' },
-    ],
-    preferences: {
-      helmetSize: 'XL',
-      quietRide: false,
-      requirePin: false,
-      shareLiveStatus: true,
-      weatherGear: false,
-    },
-    notes: 'Software engineer at Innov8. Regularly books morning slots between 8:30 AM and 9:15 AM.',
-  },
-  {
-    id: 'pass-priya-nair-05',
-    name: 'Priya Nair',
-    phone: '+1 (555) 839-2041',
-    email: 'priya.nair@designworks.com',
-    avatar_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
-    rating: 4.97,
-    totalTrips: 53,
-    completedTrips: 51,
-    totalSpend: 7190.0,
-    walletBalance: 310.0,
-    status: 'vip',
-    joinedDate: 'Nov 2023',
-    lastActive: '2 days ago',
-    emergencyContact: '+1 (555) 919-4820 (Father)',
-    savedPlaces: [
-      { name: 'Design Studio', address: 'The Loft, 12 Art District Ave', icon: '🎨' },
-      { name: 'Home Villa', address: '22 Blossom Gardens, North Enclave', icon: '🏡' },
-      { name: 'Organic Bistro', address: 'Green Leaf Cafe, High Street', icon: '☕' },
-    ],
-    preferences: {
-      helmetSize: 'M',
-      quietRide: false,
-      requirePin: true,
-      shareLiveStatus: true,
-      weatherGear: true,
-    },
-    notes: 'Creative Director. Always rates captains 5-stars for prompt helmet provision and safe speed.',
-  },
-];
+const INITIAL_PASSENGERS: AdminPassenger[] = [];
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }) => {
   const { isLight } = useTheme();
@@ -311,7 +109,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
-  const [isGeneratingMock, setIsGeneratingMock] = useState<boolean>(false);
   const [actionNotice, setActionNotice] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Platform Settings State (Synced from PricingContext)
@@ -481,24 +278,106 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
     });
   }, [rides, statusFilter, searchQuery]);
 
-  // Admin Actions
-  const handleGenerateTestRide = async () => {
-    setIsGeneratingMock(true);
-    const { data, error } = await createMockRideAdmin();
-    setIsGeneratingMock(false);
+  // Dynamically aggregate captains from registered list and live/historical rides
+  const allCaptains = useMemo(() => {
+    const captainMap = new Map<string, FleetCaptain>();
+    captains.forEach((c) => {
+      captainMap.set(c.id, { ...c });
+    });
 
-    if (error) {
-      setActionNotice({ type: 'error', message: `Generation failed: ${error}` });
-    } else if (data) {
-      setActionNotice({
-        type: 'success',
-        message: `New test ride created for ${data.passenger_name || 'Passenger'} ($${data.fare?.toFixed(2)})!`,
-      });
-      try {
-        confetti({ particleCount: 35, spread: 60, origin: { y: 0.6 } });
-      } catch (e) {}
-    }
-  };
+    rides.forEach((r) => {
+      if (r.captain_id) {
+        const cid = r.captain_id;
+        const cname = r.captain_name || 'Fleet Captain';
+        const cphone = r.captain_phone || '';
+        const cvehicle = r.captain_vehicle || 'Motorcycle';
+
+        let existing = captainMap.get(cid);
+        if (!existing) {
+          const newCap: FleetCaptain = {
+            id: cid,
+            name: cname,
+            phone: cphone,
+            vehicle: cvehicle,
+            plate: 'Active Fleet',
+            rating: 5.0,
+            totalTrips: r.status === 'completed' ? 1 : 0,
+            isOnline: true,
+            status: r.status === 'started' || r.status === 'arrived' ? 'in_ride' : 'available',
+            todayEarnings: r.status === 'completed' ? (Number(r.fare) || 0) : 0,
+            joinedDate: 'Active',
+            avatar: '🏍️',
+          };
+          captainMap.set(cid, newCap);
+        } else {
+          if (r.status === 'completed') {
+            existing.totalTrips += 1;
+            existing.todayEarnings += Number(r.fare) || 0;
+          }
+        }
+      }
+    });
+
+    return Array.from(captainMap.values());
+  }, [captains, rides]);
+
+  // Dynamically aggregate and update passengers with real live rides
+  const allPassengers = useMemo(() => {
+    const passengerMap = new Map<string, AdminPassenger>();
+    passengersList.forEach((p) => {
+      passengerMap.set(p.id, { ...p });
+    });
+
+    // Process rides to dynamically attach or count rides from Supabase
+    rides.forEach((r) => {
+      const pid = r.passenger_id || 'pass-rider';
+      const pname = r.passenger_name || 'Passenger';
+      const pphone = r.passenger_phone || '';
+
+      let existing = passengerMap.get(pid);
+      if (!existing) {
+        for (const p of passengerMap.values()) {
+          if (p.name.toLowerCase() === pname.toLowerCase() || (pphone && p.phone === pphone)) {
+            existing = p;
+            break;
+          }
+        }
+      }
+
+      if (!existing) {
+        const newPass: AdminPassenger = {
+          id: pid,
+          name: pname,
+          phone: pphone,
+          email: `${pname.toLowerCase().replace(/\s+/g, '.')}@example.com`,
+          rating: 5.0,
+          totalTrips: 1,
+          completedTrips: r.status === 'completed' ? 1 : 0,
+          totalSpend: r.fare ? Number(r.fare) : 0,
+          walletBalance: 0,
+          status: 'new',
+          joinedDate: 'Recent',
+          lastActive: 'Just now',
+          emergencyContact: '',
+          savedPlaces: [
+            { name: 'Pickup Point', address: r.pickup_location, icon: '📍' },
+            { name: 'Destination', address: r.dropoff_location, icon: '🏁' },
+          ],
+          preferences: {
+            helmetSize: 'M',
+            quietRide: false,
+            requirePin: true,
+            shareLiveStatus: true,
+            weatherGear: true,
+          },
+          notes: 'Passenger from fleet booking.',
+        };
+        passengerMap.set(pid, newPass);
+      }
+    });
+
+    return Array.from(passengerMap.values());
+  }, [passengersList, rides]);
 
   const handlePurgeOldRides = async () => {
     if (!window.confirm('Are you sure you want to purge all completed and cancelled rides?')) {
@@ -554,64 +433,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
       })
     );
   };
-
-  // Dynamically aggregate and update passengers with real live rides
-  const allPassengers = useMemo(() => {
-    const passengerMap = new Map<string, AdminPassenger>();
-    passengersList.forEach((p) => {
-      passengerMap.set(p.id, { ...p });
-    });
-
-    // Also process rides to dynamically attach or count rides from Supabase
-    rides.forEach((r) => {
-      const pid = r.passenger_id || 'pass-anon';
-      const pname = r.passenger_name || 'Passenger Rider';
-      const pphone = r.passenger_phone || '+1 (555) 000-0000';
-
-      let existing = passengerMap.get(pid);
-      if (!existing) {
-        for (const p of passengerMap.values()) {
-          if (p.name.toLowerCase() === pname.toLowerCase() || p.phone === pphone) {
-            existing = p;
-            break;
-          }
-        }
-      }
-
-      if (!existing) {
-        const newPass: AdminPassenger = {
-          id: pid,
-          name: pname,
-          phone: pphone,
-          email: `${pname.toLowerCase().replace(/\s+/g, '.')}@example.com`,
-          rating: 4.9,
-          totalTrips: 1,
-          completedTrips: r.status === 'completed' ? 1 : 0,
-          totalSpend: r.fare ? Number(r.fare) : 120.0,
-          walletBalance: 100.0,
-          status: 'new',
-          joinedDate: 'Recent',
-          lastActive: 'Just now',
-          emergencyContact: '+1 (555) 911-0000',
-          savedPlaces: [
-            { name: 'Pickup Point', address: r.pickup_location, icon: '📍' },
-            { name: 'Destination', address: r.dropoff_location, icon: '🏁' },
-          ],
-          preferences: {
-            helmetSize: 'M',
-            quietRide: false,
-            requirePin: true,
-            shareLiveStatus: true,
-            weatherGear: true,
-          },
-          notes: 'Auto-registered passenger from Live Fleet Booking.',
-        };
-        passengerMap.set(pid, newPass);
-      }
-    });
-
-    return Array.from(passengerMap.values());
-  }, [passengersList, rides]);
 
   // Filtered and Sorted Passengers List
   const filteredPassengers = useMemo(() => {
@@ -748,23 +569,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
         {/* Header Action Tools */}
         <div className="flex flex-wrap items-center gap-2.5">
           <button
-            id="admin-spawn-test-ride-btn"
-            onClick={handleGenerateTestRide}
-            disabled={isGeneratingMock}
-            className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 rounded-xl text-xs font-black shadow-lg shadow-amber-500/20 transition-all active:scale-95 cursor-pointer"
-          >
-            {isGeneratingMock ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Plus className="w-3.5 h-3.5 stroke-[3]" />
-            )}
-            Simulate Ride Broadcast
-          </button>
-
-          <button
             onClick={handlePurgeOldRides}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer border ${isLight ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300 shadow-sm' : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'}`}
-            title="Purge completed & cancelled rides to keep demo database pristine"
+            title="Purge completed & cancelled rides to keep database clean"
           >
             <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
             Clear Completed
@@ -1027,14 +834,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                     <tr>
                       <td colSpan={7} className="py-12 text-center text-slate-400">
                         <div className="space-y-2">
-                          <Activity className="w-8 h-8 mx-auto text-slate-400 animate-pulse" />
+                          <Activity className="w-8 h-8 mx-auto text-slate-400 opacity-60" />
                           <p className="text-sm font-semibold">No rides found matching this filter.</p>
-                          <button
-                            onClick={handleGenerateTestRide}
-                            className="text-xs text-amber-500 hover:underline font-bold cursor-pointer"
-                          >
-                            + Click to create a test simulated ride
-                          </button>
+                          <p className="text-xs text-slate-400">Rides will appear here automatically when booked by passengers.</p>
                         </div>
                       </td>
                     </tr>
@@ -1074,14 +876,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                           >
                             <div className="flex items-center gap-1.5 group/p">
                               <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-[10px] font-black shrink-0 group-hover/p:scale-110 transition-transform">
-                                {(ride.passenger_name || 'Sarah').charAt(0)}
+                                {(ride.passenger_name || 'P').charAt(0)}
                               </div>
                               <div>
                                 <div className={`font-bold hover:text-emerald-500 flex items-center gap-1 cursor-pointer ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                                  <span>{ride.passenger_name || 'Sarah Jenkins'}</span>
+                                  <span>{ride.passenger_name || 'Passenger'}</span>
                                   <User className="w-3 h-3 text-slate-400 group-hover/p:text-emerald-500 transition-colors" />
                                 </div>
-                                <div className="text-[10px] text-slate-400">{ride.passenger_phone || '+1 (555) 392-1049'}</div>
+                                <div className="text-[10px] text-slate-400">{ride.passenger_phone || '—'}</div>
                               </div>
                             </div>
                           </td>
@@ -1094,7 +896,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                                   🏍️ {ride.captain_name}
                                 </span>
                                 <span className="text-[10px] text-slate-400">
-                                  {ride.captain_vehicle || 'Yamaha MT-07'}
+                                  {ride.captain_vehicle || '—'}
                                 </span>
                               </div>
                             ) : (
@@ -1199,70 +1001,78 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
           <div className="flex items-center justify-between">
             <h3 className={`text-sm font-bold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>Registered Motorcycle Fleet Captains</h3>
             <span className="text-xs text-slate-400">
-              {captains.filter((c) => c.isOnline).length} Active Online
+              {allCaptains.filter((c) => c.isOnline).length} Active Online
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {captains.map((captain) => (
-              <div
-                key={captain.id}
-                className={`border rounded-2xl p-4 space-y-3.5 shadow-md flex flex-col justify-between ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'}`}
-              >
-                <div>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-black text-2xl shadow-md">
-                        {captain.avatar}
+          {allCaptains.length === 0 ? (
+            <div className={`p-12 text-center rounded-3xl border ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'}`}>
+              <Bike className="w-10 h-10 mx-auto text-slate-400 mb-2 opacity-60" />
+              <p className="text-sm font-bold text-slate-400">No fleet captains registered yet.</p>
+              <p className="text-xs text-slate-500 mt-1">Captains will appear here in real-time as they sign in or accept rides.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {allCaptains.map((captain) => (
+                <div
+                  key={captain.id}
+                  className={`border rounded-2xl p-4 space-y-3.5 shadow-md flex flex-col justify-between ${isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'}`}
+                >
+                  <div>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-black text-2xl shadow-md">
+                          {captain.avatar}
+                        </div>
+                        <div>
+                          <h4 className={`text-xs font-black ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{captain.name}</h4>
+                          <p className="text-[10px] text-slate-400">{captain.phone}</p>
+                          <span className="text-[10px] font-bold text-amber-500">
+                            ★ {captain.rating} ({captain.totalTrips} rides)
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className={`text-xs font-black ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{captain.name}</h4>
-                        <p className="text-[10px] text-slate-400">{captain.phone}</p>
-                        <span className="text-[10px] font-bold text-amber-500">
-                          ★ {captain.rating} ({captain.totalTrips} rides)
-                        </span>
-                      </div>
+
+                      <span
+                        className={`w-2.5 h-2.5 rounded-full ${
+                          captain.isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'
+                        }`}
+                      />
                     </div>
 
-                    <span
-                      className={`w-2.5 h-2.5 rounded-full ${
-                        captain.isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'
+                    <div className={`p-2.5 rounded-xl border mt-3 space-y-1 text-[11px] ${isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-950/80 border-slate-800/80 text-slate-300'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Vehicle:</span>
+                        <span className="font-semibold">{captain.vehicle}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">License Plate:</span>
+                        <span className="font-mono font-bold text-amber-600 dark:text-amber-300">{captain.plate}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Today's Income:</span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400">₹{captain.todayEarnings.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`pt-2 border-t flex items-center justify-between gap-2 ${isLight ? 'border-slate-100' : 'border-slate-800/80'}`}>
+                    <span className="text-[10px] text-slate-400 font-mono">ID: {captain.id.slice(0, 8)}...</span>
+                    <button
+                      onClick={() => toggleCaptainStatus(captain.id)}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                        captain.isOnline
+                          ? isLight ? 'bg-rose-50 hover:bg-rose-100 text-rose-600' : 'bg-slate-800 hover:bg-slate-700 text-rose-400'
+                          : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
                       }`}
-                    />
-                  </div>
-
-                  <div className={`p-2.5 rounded-xl border mt-3 space-y-1 text-[11px] ${isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-950/80 border-slate-800/80 text-slate-300'}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Vehicle:</span>
-                      <span className="font-semibold">{captain.vehicle}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">License Plate:</span>
-                      <span className="font-mono font-bold text-amber-600 dark:text-amber-300">{captain.plate}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Today's Income:</span>
-                      <span className="font-bold text-emerald-600 dark:text-emerald-400">₹{captain.todayEarnings.toFixed(2)}</span>
-                    </div>
+                    >
+                      {captain.isOnline ? 'Set Offline' : 'Set Online'}
+                    </button>
                   </div>
                 </div>
-
-                <div className={`pt-2 border-t flex items-center justify-between gap-2 ${isLight ? 'border-slate-100' : 'border-slate-800/80'}`}>
-                  <span className="text-[10px] text-slate-400 font-mono">ID: {captain.id.slice(0, 8)}...</span>
-                  <button
-                    onClick={() => toggleCaptainStatus(captain.id)}
-                    className={`px-3 py-1 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                      captain.isOnline
-                        ? isLight ? 'bg-rose-50 hover:bg-rose-100 text-rose-600' : 'bg-slate-800 hover:bg-slate-700 text-rose-400'
-                        : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
-                    }`}
-                  >
-                    {captain.isOnline ? 'Set Offline' : 'Set Online'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -2807,8 +2617,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                       <User className="w-3 h-3" /> View Profile
                     </button>
                   </div>
-                  <p className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{selectedRide.passenger_name || 'Sarah Jenkins'}</p>
-                  <p className="text-slate-400">{selectedRide.passenger_phone || '+1 (555) 392-1049'}</p>
+                  <p className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{selectedRide.passenger_name || 'Passenger'}</p>
+                  <p className="text-slate-400">{selectedRide.passenger_phone || '—'}</p>
                   <p className="text-[10px] text-slate-400 font-mono">ID: {selectedRide.passenger_id.slice(0, 12)}...</p>
                 </div>
 
@@ -3104,14 +2914,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
 
                   {passengerRides.length === 0 ? (
                     <div className={`p-8 text-center rounded-2xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
-                      <Navigation className="w-8 h-8 mx-auto text-slate-400 mb-2" />
-                      <p className="text-xs font-semibold text-slate-400">No live or recorded trips found in the active session for this passenger ID.</p>
-                      <button
-                        onClick={handleGenerateTestRide}
-                        className="mt-3 px-3 py-1.5 bg-amber-500 text-slate-950 rounded-xl text-xs font-bold cursor-pointer"
-                      >
-                        Simulate Test Booking
-                      </button>
+                      <Navigation className="w-8 h-8 mx-auto text-slate-400 mb-2 opacity-60" />
+                      <p className="text-xs font-semibold text-slate-400">No live or recorded trips found for this passenger profile.</p>
                     </div>
                   ) : (
                     <div className="space-y-2">

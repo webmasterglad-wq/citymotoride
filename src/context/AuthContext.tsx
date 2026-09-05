@@ -319,10 +319,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: user.id,
           name: metadata.full_name || user.email?.split('@')[0] || (assignedRole === 'captain' ? 'Captain' : 'User'),
           email: user.email || cleanEmail,
-          phone: metadata.phone || '+1 (555) 000-0000',
+          phone: metadata.phone || '',
           role: assignedRole,
-          rating: assignedRole === 'captain' ? 4.96 : 4.92,
-          vehicle_details: metadata.vehicle_details || (assignedRole === 'captain' ? 'Yamaha MT-07 · Black Edition' : undefined),
+          rating: 5.0,
+          vehicle_details: metadata.vehicle_details || (assignedRole === 'captain' ? '' : undefined),
           avatar_url: metadata.avatar_url,
           createdAt: user.created_at,
         };
@@ -359,14 +359,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
 
-        // Demo fallback user
+        // Fallback user
         const fallbackUser: AuthUser = {
           id: crypto.randomUUID ? crypto.randomUUID() : `usr_${Date.now()}`,
           name: cleanEmail.split('@')[0],
           email: cleanEmail,
-          phone: '+1 (555) 749-3021',
+          phone: '',
           role,
-          rating: role === 'captain' ? 4.96 : 4.9,
+          rating: 5.0,
           createdAt: new Date().toISOString(),
         };
 
@@ -411,56 +411,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   /**
-   * Quick 1-click Demo Login for fast testing/evaluation
+   * Quick role session initialization
    */
   const quickDemoLogin = async (role: AppRole): Promise<AuthUser> => {
-    const demoConfigs: Record<AppRole, { name: string; email: string; phone: string; vehicle?: string }> = {
-      passenger: {
-        name: 'Sarah Jenkins',
-        email: 'passenger.sarah@motoride.demo',
-        phone: '+1 (555) 392-1049',
-      },
-      captain: {
-        name: 'Captain Alex Rivera',
-        email: 'captain.alex@motoride.demo',
-        phone: '+1 (555) 749-3021',
-        vehicle: 'Yamaha MT-07 · Stealth Black #7492',
-      },
-      admin: {
-        name: 'Operations Dispatcher',
-        email: 'admin.ops@motoride.demo',
-        phone: '+1 (555) 992-8000',
-      },
-    };
-
-    const config = demoConfigs[role];
-    const demoUser: AuthUser = {
-      id: role === 'passenger'
-        ? 'f47ac10b-58cc-4372-a567-0e02b2c3d479'
-        : role === 'captain'
-        ? 'b82ac71b-39dd-4172-b567-0e02b2c3d981'
-        : 'a11bd90c-28cc-4172-b567-0e02b2c3d999',
-      name: config.name,
-      email: config.email,
-      phone: config.phone,
+    const cleanUser: AuthUser = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `usr_${Date.now()}`,
+      name: role === 'captain' ? 'Captain' : role === 'passenger' ? 'Rider' : 'Admin',
+      email: `${role}@motoride.com`,
+      phone: '',
       role,
-      rating: role === 'captain' ? 4.96 : 4.94,
-      vehicle_details: config.vehicle,
+      rating: 5.0,
+      vehicle_details: role === 'captain' ? '' : undefined,
       createdAt: new Date().toISOString(),
     };
 
     const oppositeRole = role === 'passenger' ? 'captain' : role === 'captain' ? 'passenger' : null;
     setRoleUsers((prev) => {
-      const updated = { ...prev, [role]: demoUser };
+      const updated = { ...prev, [role]: cleanUser };
       if (oppositeRole) {
         updated[oppositeRole] = null;
         localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
       }
-      localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(demoUser));
+      localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(cleanUser));
       return updated;
     });
 
-    return demoUser;
+    return cleanUser;
   };
 
   const updateUser = (role: AppRole, updates: Partial<AuthUser>) => {
@@ -468,23 +444,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRoleUsers((prev) => {
       const current = prev[role];
       const base: AuthUser = current || {
-        id:
-          role === 'captain'
-            ? 'b82ac71b-39dd-4172-b567-0e02b2c3d981'
-            : role === 'passenger'
-            ? 'a71bc92e-50bb-4389-9812-3a87c1d3e890'
-            : 'admin-master-id',
-        name: role === 'captain' ? 'Captain Alex Rivera' : role === 'passenger' ? 'Sarah Jenkins' : 'Dispatch Admin',
-        email:
-          role === 'captain'
-            ? 'alex.rivera.driver@motoride.com'
-            : role === 'passenger'
-            ? 'sarah.jenkins@example.com'
-            : 'admin@motoride.com',
-        phone: role === 'captain' ? '+1 (555) 749-3021' : '+1 (555) 234-5678',
+        id: crypto.randomUUID ? crypto.randomUUID() : `usr_${Date.now()}`,
+        name: role === 'captain' ? 'Captain' : role === 'passenger' ? 'Rider' : 'Admin',
+        email: `${role}@motoride.com`,
+        phone: '',
         role,
-        rating: role === 'captain' ? 4.96 : 4.94,
-        vehicle_details: role === 'captain' ? 'Yamaha MT-07 · Stealth Black #7492' : undefined,
+        rating: 5.0,
+        vehicle_details: role === 'captain' ? '' : undefined,
       };
 
       const updatedUser: AuthUser = { ...base, ...updates };

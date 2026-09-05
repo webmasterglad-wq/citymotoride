@@ -497,25 +497,8 @@ export function interpolateCoords(from: LatLng, to: LatLng, fraction: number): L
 /**
  * Generates sample nearby idle moto drivers around a center point in the Tricity.
  */
-export function generateNearbyBikes(center: LatLng, count = 5): Array<{ id: string; name: string; position: LatLng; heading: number }> {
-  const names = ['Vikram R. (Splendor+)', 'Alex M. (Pulsar 150)', 'Gurpreet S. (Apache RTR)', 'Rahul K. (Activa 6G)', 'Carlos S. (FZ-S)'];
-  const offsets = [
-    { dLat: 0.0035, dLng: 0.0042, heading: 45 },
-    { dLat: -0.0041, dLng: 0.0028, heading: 135 },
-    { dLat: 0.0022, dLng: -0.0051, heading: 280 },
-    { dLat: -0.0038, dLng: -0.0034, heading: 210 },
-    { dLat: 0.0045, dLng: -0.0018, heading: 330 },
-  ];
-
-  return Array.from({ length: Math.min(count, offsets.length) }, (_, i) => ({
-    id: `moto-tricity-${i + 1}`,
-    name: names[i] || `Captain #${i + 1}`,
-    position: {
-      lat: center.lat + offsets[i].dLat,
-      lng: center.lng + offsets[i].dLng,
-    },
-    heading: offsets[i].heading,
-  }));
+export function generateNearbyBikes(_center: LatLng, _count = 5): Array<{ id: string; name: string; position: LatLng; heading: number }> {
+  return [];
 }
 
 /**

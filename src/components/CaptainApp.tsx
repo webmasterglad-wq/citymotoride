@@ -88,44 +88,44 @@ interface DeclinedRideItem {
 
 export const DEMO_CAPTAINS: UserProfile[] = [
   {
-    id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
-    name: 'Captain Alex Rivera',
-    email: 'alex.rivera.driver@motoride.com',
-    phone: '+1 (555) 749-3021',
+    id: 'captain-primary-01',
+    name: 'Captain 1',
+    email: 'captain1@motoride.com',
+    phone: '',
     role: 'captain',
-    rating: 4.96,
-    vehicle_details: 'Yamaha MT-07 · Stealth Black #7492',
-    acceptance_rate: 98,
-    total_trips: 1420,
+    rating: 5.0,
+    vehicle_details: '',
+    acceptance_rate: 100,
+    total_trips: 0,
   },
   {
-    id: 'c93bd82c-40ee-5283-c678-1f13c3d4e092',
-    name: 'Captain Marcus Chen',
-    email: 'marcus.chen.driver@motoride.com',
-    phone: '+1 (555) 882-1944',
+    id: 'captain-primary-02',
+    name: 'Captain 2',
+    email: 'captain2@motoride.com',
+    phone: '',
     role: 'captain',
-    rating: 4.92,
-    vehicle_details: 'Honda CBR650R · Grand Prix Red #3821',
-    acceptance_rate: 96,
-    total_trips: 890,
+    rating: 5.0,
+    vehicle_details: '',
+    acceptance_rate: 100,
+    total_trips: 0,
   },
   {
-    id: 'd04ce93d-51ff-6394-d789-2024d4e5f103',
-    name: 'Captain Sara Vance',
-    email: 'sara.vance.driver@motoride.com',
-    phone: '+1 (555) 304-9182',
+    id: 'captain-primary-03',
+    name: 'Captain 3',
+    email: 'captain3@motoride.com',
+    phone: '',
     role: 'captain',
-    rating: 4.98,
-    vehicle_details: 'KTM 390 Duke · Electric Orange #5103',
-    acceptance_rate: 99,
-    total_trips: 1640,
+    rating: 5.0,
+    vehicle_details: '',
+    acceptance_rate: 100,
+    total_trips: 0,
   },
 ];
 
 const getStoredCaptainId = (key = 'motoride_captain_uuid') => {
   let id = localStorage.getItem(key);
   if (!id) {
-    id = crypto.randomUUID ? crypto.randomUUID() : 'b82ac71b-39dd-4172-b567-0e02b2c3d981';
+    id = crypto.randomUUID ? crypto.randomUUID() : 'cap-' + Date.now();
     localStorage.setItem(key, id);
   }
   return id;
@@ -158,7 +158,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   });
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [profileModalTab, setProfileModalTab] = useState<'profile' | 'vehicle' | 'earnings' | 'preferences' | 'checklist'>('profile');
-  const [onlineMinutes, setOnlineMinutes] = useState<number>(185);
+  const [onlineMinutes, setOnlineMinutes] = useState<number>(0);
 
   // Database-driven Earnings Summary strictly from completed rides
   const [earningsSummary, setEarningsSummary] = useState<CaptainEarningsSummary>({
@@ -1248,26 +1248,29 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               <div>
                 <h4 className={`text-xs font-black flex items-center gap-1.5 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
                   {activeRide.passenger_name || 'Passenger'}
-                  <span className="text-[10px] text-amber-500 font-semibold">★ 4.94</span>
                 </h4>
-                <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  {activeRide.passenger_phone || '+1 (555) 392-1049'}
-                </p>
+                {activeRide.passenger_phone ? (
+                  <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {activeRide.passenger_phone}
+                  </p>
+                ) : null}
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <a
-                href={`tel:${activeRide.passenger_phone || '+15553921049'}`}
-                className={`p-2.5 rounded-xl border transition-colors ${
-                  isLight
-                    ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                }`}
-                title="Call Passenger"
-              >
-                <Phone className="w-4 h-4 text-emerald-500" />
-              </a>
+              {activeRide.passenger_phone ? (
+                <a
+                  href={`tel:${activeRide.passenger_phone}`}
+                  className={`p-2.5 rounded-xl border transition-colors ${
+                    isLight
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                  }`}
+                  title="Call Passenger"
+                >
+                  <Phone className="w-4 h-4 text-emerald-500" />
+                </a>
+              ) : null}
 
               <button
                 type="button"
@@ -2214,13 +2217,15 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                 </div>
                 <div className="min-w-0">
                   <span className="text-xs font-black truncate block">
-                    {activeRide.passenger_name || 'Passenger Rider'}
+                    {activeRide.passenger_name || 'Passenger'}
                   </span>
-                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate">
-                    {activeRide.passenger_phone || '+1 (555) 019-2834'}
-                  </span>
+                  {activeRide.passenger_phone ? (
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate">
+                      {activeRide.passenger_phone}
+                    </span>
+                  ) : null}
                   <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block mt-0.5">
-                    {activeRide.distance_km || 4.8} km trip completed
+                    {activeRide.distance_km || 0} km trip completed
                   </span>
                 </div>
               </div>
@@ -2228,7 +2233,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               <div className="text-right shrink-0">
                 <span className="text-[9px] uppercase font-bold text-slate-400 block">Collect Fare</span>
                 <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
-                  ₹{activeRide.fare ? Number(activeRide.fare).toFixed(2) : '14.50'}
+                  ₹{activeRide.fare ? Number(activeRide.fare).toFixed(2) : '0.00'}
                 </span>
               </div>
             </div>

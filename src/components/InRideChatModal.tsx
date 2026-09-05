@@ -56,20 +56,7 @@ export const InRideChatModal: React.FC<InRideChatModalProps> = ({
         setMessages([]);
       }
     } else {
-      const initial: ChatMessage[] = [
-        {
-          id: 'sys-1',
-          rideId,
-          sender: currentUserRole === 'passenger' ? 'captain' : 'passenger',
-          senderName: otherPartyName,
-          text: currentUserRole === 'passenger'
-            ? `Hi ${currentUserName}! I'm on my way to pick you up.`
-            : `Hi ${otherPartyName}! I'm waiting at the pickup spot.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-      ];
-      setMessages(initial);
-      localStorage.setItem(storageKey, JSON.stringify(initial));
+      setMessages([]);
     }
   }, [isOpen, rideId, storageKey, currentUserRole, currentUserName, otherPartyName]);
 
@@ -144,28 +131,35 @@ export const InRideChatModal: React.FC<InRideChatModalProps> = ({
             </span>
           </div>
 
-          {messages.map((msg) => {
-            const isMe = msg.sender === currentUserRole;
-            return (
-              <div
-                key={msg.id}
-                className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
-              >
+          {messages.length === 0 ? (
+            <div className="py-12 text-center text-slate-500">
+              <p className="text-xs font-semibold">No messages yet</p>
+              <p className="text-[11px] text-slate-500 mt-1">Send a message to coordinate pickup or ride details.</p>
+            </div>
+          ) : (
+            messages.map((msg) => {
+              const isMe = msg.sender === currentUserRole;
+              return (
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-xs shadow-md ${
-                    isMe
-                      ? 'bg-emerald-500 text-slate-950 font-medium rounded-tr-none'
-                      : 'bg-slate-800 text-slate-100 rounded-tl-none border border-slate-700'
-                  }`}
+                  key={msg.id}
+                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                 >
-                  <p>{msg.text}</p>
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-xs shadow-md ${
+                      isMe
+                        ? 'bg-emerald-500 text-slate-950 font-medium rounded-tr-none'
+                        : 'bg-slate-800 text-slate-100 rounded-tl-none border border-slate-700'
+                    }`}
+                  >
+                    <p>{msg.text}</p>
+                  </div>
+                  <span className="text-[9px] text-slate-500 mt-1 px-1 font-mono">
+                    {msg.timestamp}
+                  </span>
                 </div>
-                <span className="text-[9px] text-slate-500 mt-1 px-1 font-mono">
-                  {msg.timestamp}
-                </span>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
           <div ref={messagesEndRef} />
         </div>
 

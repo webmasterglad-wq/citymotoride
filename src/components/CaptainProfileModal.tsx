@@ -186,19 +186,19 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
       } catch (e) {}
     }
     return {
-      rcNumber: 'CA 92K49-RC2024',
-      ownerName: captain.name || 'Alex Rivera',
-      chassisNumber: 'ME1RG122*N004920',
-      engineNumber: 'G3J4E*009124',
-      issueDate: '15 Mar 2022',
-      expiryDate: '14 Mar 2037',
-      fileName: 'vehicle_rc_yamaha_mt07.pdf',
-      fileSize: '1.4 MB',
+      rcNumber: '',
+      ownerName: captain.name || '',
+      chassisNumber: '',
+      engineNumber: '',
+      issueDate: '',
+      expiryDate: '',
+      fileName: '',
+      fileSize: '',
       fileUrl: null,
-      fileType: 'pdf',
-      status: 'verified',
-      uploadedAt: '2026-08-10',
-      notes: 'Smart OCR Match: Registration details match plate CA 92K49',
+      fileType: 'none' as const,
+      status: 'pending' as const,
+      uploadedAt: '',
+      notes: '',
     };
   });
 
@@ -514,22 +514,22 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                     isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/90 border-slate-800'
                   }`}>
                     <span className={`text-[10px] font-bold block uppercase ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Rating</span>
-                    <span className="text-lg font-black text-amber-500 block">★ {captain.rating || 4.96}</span>
-                    <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>280 ratings</span>
+                    <span className="text-lg font-black text-amber-500 block">★ {captain.rating || 5.0}</span>
+                    <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>{currentCompletedCount} trips</span>
                   </div>
                   <div className={`border p-3 rounded-2xl ${
                     isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/90 border-slate-800'
                   }`}>
                     <span className={`text-[10px] font-bold block uppercase ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Acceptance</span>
-                    <span className="text-lg font-black text-emerald-500 block">98.4%</span>
-                    <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>Tier 1 status</span>
+                    <span className="text-lg font-black text-emerald-500 block">100%</span>
+                    <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>Active Fleet</span>
                   </div>
                   <div className={`border p-3 rounded-2xl ${
                     isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/90 border-slate-800'
                   }`}>
                     <span className={`text-[10px] font-bold block uppercase ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Cancel Rate</span>
-                    <span className="text-lg font-black text-sky-500 block">0.8%</span>
-                    <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>Low & healthy</span>
+                    <span className="text-lg font-black text-sky-500 block">0%</span>
+                    <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>Healthy</span>
                   </div>
                 </div>
 

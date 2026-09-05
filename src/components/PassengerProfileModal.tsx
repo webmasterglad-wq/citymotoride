@@ -54,9 +54,9 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [phone, setPhone] = useState(user?.phone || '');
-  const [email, setEmail] = useState(user?.email || 'sarah.jenkins@example.com');
-  const [emergencyContact, setEmergencyContact] = useState('+1 (555) 902-8812 (Mom)');
-  const [pickupNotes, setPickupNotes] = useState('Please wait near the main lobby entrance');
+  const [email, setEmail] = useState(user?.email || '');
+  const [emergencyContact, setEmergencyContact] = useState('');
+  const [pickupNotes, setPickupNotes] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   // Sync state with user prop updates
@@ -69,7 +69,7 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
   }, [user]);
 
   // Wallet state
-  const [walletBalance, setWalletBalance] = useState(84.5);
+  const [walletBalance, setWalletBalance] = useState(0);
 
   // Ride Preferences state
   const [helmetSize, setHelmetSize] = useState<'M' | 'L' | 'XL'>('M');
@@ -102,47 +102,19 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
     setTimeout(() => setSavedSuccess(false), 2500);
   };
 
-  const PAST_TRIPS = [
-    {
-      id: 'trip-902',
-      date: 'Today, 2:15 PM',
-      pickup: 'Downtown Metro Station',
-      dropoff: 'Mission Bay Tech Center',
-      fare: 14.5,
-      driver: 'Captain Alex Rivera',
-      rating: 5,
-      vehicle: 'Yamaha MT-07 · Black',
-      status: 'Completed',
-    },
-    {
-      id: 'trip-841',
-      date: 'Yesterday, 6:40 PM',
-      pickup: 'Union Square District',
-      dropoff: 'Marina Green Promenade',
-      fare: 18.2,
-      driver: 'Captain David Miller',
-      rating: 5,
-      vehicle: 'Honda CB500X · Red',
-      status: 'Completed',
-    },
-    {
-      id: 'trip-792',
-      date: 'Aug 24, 9:10 AM',
-      pickup: 'Civic Center Plaza',
-      dropoff: 'Financial District · California St',
-      fare: 11.0,
-      driver: 'Captain Marcus Chen',
-      rating: 5,
-      vehicle: 'Kawasaki Ninja · Lime',
-      status: 'Completed',
-    },
-  ];
+  const PAST_TRIPS: Array<{
+    id: string;
+    date: string;
+    pickup: string;
+    dropoff: string;
+    fare: number;
+    driver: string;
+    rating: number;
+    vehicle: string;
+    status: string;
+  }> = [];
 
-  const SAVED_PLACES = [
-    { label: 'Home', address: '742 Evergreen Terrace, Mission District', icon: '🏠' },
-    { label: 'Work', address: 'Tech Plaza Tower 4, SOMA 2nd St', icon: '💼' },
-    { label: 'Gym', address: 'Equinox Sports Club, Market St', icon: '🏋️' },
-  ];
+  const SAVED_PLACES: Array<{ label: string; address: string; icon: string }> = [];
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden animate-in fade-in duration-200">
@@ -679,41 +651,49 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
               <span className={`text-[11px] font-bold uppercase tracking-wider block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                 Recent Completed Trips ({PAST_TRIPS.length})
               </span>
-              {PAST_TRIPS.map((trip) => (
-                <div
-                  key={trip.id}
-                  className={`p-3.5 border rounded-2xl space-y-2 transition-colors ${
-                    isLight ? 'bg-slate-50 border-slate-200 hover:border-slate-300' : 'bg-slate-900 border-slate-800 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className={`text-[11px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>{trip.date}</span>
-                    <span className={`text-sm font-black ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>₹{trip.fare.toFixed(2)}</span>
-                  </div>
-
-                  <div className={`space-y-1 p-2.5 rounded-xl border ${
-                    isLight ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800/80'
-                  }`}>
-                    <div className={`flex items-center gap-1.5 truncate ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                      <span className="truncate">{trip.pickup}</span>
-                    </div>
-                    <div className={`flex items-center gap-1.5 truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                      <span className="w-2 h-2 rounded-sm bg-rose-500 shrink-0" />
-                      <span className="truncate">{trip.dropoff}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] pt-1">
-                    <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>
-                      {trip.driver} · {trip.vehicle}
-                    </span>
-                    <span className="text-amber-500 font-bold flex items-center">
-                      ★ {trip.rating}.0
-                    </span>
-                  </div>
+              {PAST_TRIPS.length === 0 ? (
+                <div className={`p-8 text-center rounded-2xl border ${isLight ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-slate-900/60 border-slate-800 text-slate-400'}`}>
+                  <Clock className="w-8 h-8 mx-auto text-slate-400 mb-2 opacity-60" />
+                  <p className="text-xs font-semibold">No completed trips yet</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Book and complete your first ride to view your trip receipts and details here.</p>
                 </div>
-              ))}
+              ) : (
+                PAST_TRIPS.map((trip) => (
+                  <div
+                    key={trip.id}
+                    className={`p-3.5 border rounded-2xl space-y-2 transition-colors ${
+                      isLight ? 'bg-slate-50 border-slate-200 hover:border-slate-300' : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[11px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>{trip.date}</span>
+                      <span className={`text-sm font-black ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>₹{trip.fare.toFixed(2)}</span>
+                    </div>
+
+                    <div className={`space-y-1 p-2.5 rounded-xl border ${
+                      isLight ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800/80'
+                    }`}>
+                      <div className={`flex items-center gap-1.5 truncate ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        <span className="truncate">{trip.pickup}</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                        <span className="w-2 h-2 rounded-sm bg-rose-500 shrink-0" />
+                        <span className="truncate">{trip.dropoff}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] pt-1">
+                      <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>
+                        {trip.driver} · {trip.vehicle}
+                      </span>
+                      <span className="text-amber-500 font-bold flex items-center">
+                        ★ {trip.rating}.0
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           )}
 
@@ -723,27 +703,35 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
               <span className={`text-[11px] font-bold uppercase tracking-wider block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                 Favorite & Frequent Destinations
               </span>
-              {SAVED_PLACES.map((place) => (
-                <div
-                  key={place.label}
-                  className={`p-3 border rounded-2xl flex items-center justify-between ${
-                    isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{place.icon}</span>
-                    <div>
-                      <span className={`font-bold block ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{place.label}</span>
-                      <span className={`text-[11px] truncate max-w-[220px] block ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                        {place.address}
-                      </span>
-                    </div>
-                  </div>
-                  <button className="text-[11px] font-bold text-emerald-500 hover:underline cursor-pointer">
-                    Edit
-                  </button>
+              {SAVED_PLACES.length === 0 ? (
+                <div className={`p-8 text-center rounded-2xl border ${isLight ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-slate-900/60 border-slate-800 text-slate-400'}`}>
+                  <MapPin className="w-8 h-8 mx-auto text-slate-400 mb-2 opacity-60" />
+                  <p className="text-xs font-semibold">No saved places yet</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Your frequently used locations will be saved here for quick one-tap booking.</p>
                 </div>
-              ))}
+              ) : (
+                SAVED_PLACES.map((place) => (
+                  <div
+                    key={place.label}
+                    className={`p-3 border rounded-2xl flex items-center justify-between ${
+                      isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{place.icon}</span>
+                      <div>
+                        <span className={`font-bold block ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>{place.label}</span>
+                        <span className={`text-[11px] truncate max-w-[220px] block ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {place.address}
+                        </span>
+                      </div>
+                    </div>
+                    <button className="text-[11px] font-bold text-emerald-500 hover:underline cursor-pointer">
+                      Edit
+                    </button>
+                  </div>
+                ))
+              )}
               <button className={`w-full py-2.5 border border-dashed font-bold rounded-2xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                 isLight ? 'bg-slate-50 hover:bg-slate-100 border-slate-300 text-slate-700' : 'bg-slate-900 hover:border-emerald-500 border-slate-700 text-slate-300'
               }`}>

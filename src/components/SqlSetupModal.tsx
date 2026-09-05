@@ -18,12 +18,12 @@ CREATE TABLE IF NOT EXISTS public.rides (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     passenger_id UUID NOT NULL,
     captain_id UUID NULL,
-    passenger_name TEXT DEFAULT 'Passenger User',
-    passenger_phone TEXT DEFAULT '+1 (555) 019-2834',
+    passenger_name TEXT DEFAULT 'Passenger',
+    passenger_phone TEXT NULL,
     captain_name TEXT NULL,
     captain_phone TEXT NULL,
     captain_vehicle TEXT NULL,
-    captain_rating NUMERIC DEFAULT 4.92,
+    captain_rating NUMERIC DEFAULT 5.0,
     pickup_location TEXT NOT NULL,
     dropoff_location TEXT NOT NULL,
     pickup_lat DOUBLE PRECISION NULL,
@@ -58,9 +58,9 @@ CREATE INDEX IF NOT EXISTS idx_rides_created_at ON public.rides (created_at DESC
 CREATE OR REPLACE FUNCTION public.claim_ride(
     p_ride_id UUID,
     p_captain_id UUID,
-    p_captain_name TEXT DEFAULT 'Captain Rider',
-    p_captain_phone TEXT DEFAULT '+1 (555) 234-5678',
-    p_captain_vehicle TEXT DEFAULT 'Yamaha MT-07 • Black'
+    p_captain_name TEXT DEFAULT 'Captain',
+    p_captain_phone TEXT DEFAULT '',
+    p_captain_vehicle TEXT DEFAULT 'Motorcycle'
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -313,8 +313,8 @@ ALTER TABLE public.profiles REPLICA IDENTITY FULL;
 
 -- B. Update Passenger Profile (Addresses, Phone, Name)
 -- UPDATE public.profiles
--- SET full_name = 'Sarah Jenkins',
---     phone = '+1 (555) 392-1049',
+-- SET full_name = 'Passenger Name',
+--     phone = '+91 98765 43210',
 --     home_address = '452 Elm Street, Downtown',
 --     work_address = 'Tech Hub Plaza, Floor 4',
 --     updated_at = NOW()
@@ -409,11 +409,11 @@ BEGIN
             COALESCE(NEW.raw_user_meta_data->>'full_name', 'Captain ' || split_part(NEW.email, '@', 1)),
             NEW.email,
             COALESCE(NEW.raw_user_meta_data->>'phone', ''),
-            COALESCE(NEW.raw_user_meta_data->>'vehicle_model', 'Yamaha MT-07 · Black Edition'),
-            COALESCE(NEW.raw_user_meta_data->>'vehicle_plate', 'MOTO-4819'),
+            COALESCE(NEW.raw_user_meta_data->>'vehicle_model', ''),
+            COALESCE(NEW.raw_user_meta_data->>'vehicle_plate', ''),
             true,
             true,
-            4.96,
+            5.0,
             NOW(),
             NOW()
         )

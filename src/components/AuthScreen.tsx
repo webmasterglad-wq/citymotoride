@@ -285,10 +285,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
                     required
                     placeholder={
                       role === 'captain'
-                        ? 'e.g. Captain Alex Rivera'
+                        ? 'e.g. Captain Name'
                         : role === 'admin'
                         ? 'e.g. Admin Dispatcher'
-                        : 'e.g. Sarah Jenkins'
+                        : 'e.g. Passenger Name'
                     }
                     value={fullName || ''}
                     onChange={(e) => setFullName(e.target.value)}
@@ -351,7 +351,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
                     id="signup-phone"
                     type="tel"
                     required
-                    placeholder="e.g. +1 (555) 749-3021"
+                    placeholder="e.g. +91 98765 43210"
                     value={phone || ''}
                     onChange={(e) => setPhone(e.target.value)}
                     className={`w-full rounded-xl px-3.5 py-2.5 text-xs border focus:outline-none focus:ring-2 focus:ring-amber-500/30 transition-all ${
@@ -428,10 +428,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ role, onSuccess, onOpenS
                     required
                     placeholder={
                       role === 'captain'
-                        ? 'captain.alex@motoride.demo'
+                        ? 'captain@example.com'
                         : role === 'admin'
-                        ? 'admin.ops@motoride.demo'
-                        : 'passenger.sarah@motoride.demo'
+                        ? 'admin@example.com'
+                        : 'passenger@example.com'
                     }
                     value={email || ''}
                     onChange={(e) => setEmail(e.target.value)}

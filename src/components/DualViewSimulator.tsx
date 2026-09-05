@@ -110,7 +110,7 @@ export const DualViewSimulator: React.FC<DualViewSimulatorProps> = ({ onOpenSqlM
           <div className="flex items-center justify-between px-2 text-xs font-bold text-emerald-600">
             <span className="flex items-center gap-1.5">
               <Smartphone className="w-4 h-4" />
-              Device B: Captain App (Alex)
+              Device B: Captain App 1
             </span>
             <span className={`text-[11px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>motoride-captain.vercel.app</span>
           </div>
@@ -129,21 +129,21 @@ export const DualViewSimulator: React.FC<DualViewSimulatorProps> = ({ onOpenSqlM
                       email: captainUser.email,
                       phone: captainUser.phone,
                       role: 'captain',
-                      rating: captainUser.rating || 4.96,
-                      vehicle_details: captainUser.vehicle_details || 'Yamaha MT-07 · Stealth Black #7492',
+                      rating: captainUser.rating || 5.0,
+                      vehicle_details: captainUser.vehicle_details || '',
                       avatar_url: captainUser.avatar_url,
                     }
                   : {
-                      id: 'b82ac71b-39dd-4172-b567-0e02b2c3d981',
-                      name: 'Captain Alex Rivera',
-                      email: 'alex.rivera.driver@motoride.com',
-                      phone: '+1 (555) 749-3021',
+                      id: 'captain-sim-01',
+                      name: 'Captain 1',
+                      email: 'captain1@motoride.com',
+                      phone: '',
                       role: 'captain',
-                      rating: 4.96,
-                      vehicle_details: 'Yamaha MT-07 · Stealth Black #7492',
+                      rating: 5.0,
+                      vehicle_details: '',
                     }
               }
-              titleSuffix="Alex"
+              titleSuffix="1"
               onOpenSqlModal={onOpenSqlModal}
             />
           </div>
@@ -155,7 +155,7 @@ export const DualViewSimulator: React.FC<DualViewSimulatorProps> = ({ onOpenSqlM
             <div className="flex items-center justify-between px-2 text-xs font-bold text-purple-600">
               <span className="flex items-center gap-1.5">
                 <Smartphone className="w-4 h-4" />
-                Device C: Captain App 2 (Marcus)
+                Device C: Captain App 2
               </span>
               <span className="text-[11px] text-purple-600 font-bold">Concurrency Test</span>
             </div>
@@ -167,14 +167,14 @@ export const DualViewSimulator: React.FC<DualViewSimulatorProps> = ({ onOpenSqlM
             >
               <CaptainApp
                 captainUser={{
-                  id: 'c93bd82c-40ee-4283-a678-1f13c3d4ea92',
-                  name: 'Captain Marcus Chen',
-                  phone: '+1 (555) 882-9014',
+                  id: 'captain-sim-02',
+                  name: 'Captain 2',
+                  phone: '',
                   role: 'captain',
-                  rating: 4.89,
-                  vehicle_details: 'Kawasaki Ninja 400 · Lime/Black #3021',
+                  rating: 5.0,
+                  vehicle_details: '',
                 }}
-                titleSuffix="Marcus"
+                titleSuffix="2"
                 onOpenSqlModal={onOpenSqlModal}
               />
             </div>

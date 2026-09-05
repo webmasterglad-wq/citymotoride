@@ -83,7 +83,7 @@ interface PassengerAppProps {
 const getStoredPassengerId = () => {
   let id = localStorage.getItem('motoride_passenger_uuid');
   if (!id) {
-    id = crypto.randomUUID ? crypto.randomUUID() : 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
+    id = crypto.randomUUID ? crypto.randomUUID() : 'pass-' + Date.now();
     localStorage.setItem('motoride_passenger_uuid', id);
   }
   return id;
@@ -130,10 +130,10 @@ const RIDE_TIERS: RideTier[] = [
 export const PassengerApp: React.FC<PassengerAppProps> = ({
   passengerUser = {
     id: getStoredPassengerId(),
-    name: 'Sarah Jenkins',
-    phone: '+1 (555) 392-1049',
+    name: 'Rider',
+    phone: '',
     role: 'passenger',
-    rating: 4.94,
+    rating: 5.0,
   },
   onOpenSqlModal,
 }) => {
