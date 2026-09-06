@@ -123,7 +123,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
   }, [pricing]);
 
   const handleSavePricing = () => {
-    updatePricing(settings);
+    updatePricing({
+      ...settings,
+      isAdminConfigured: true,
+      updatedBy: 'Admin Panel',
+    });
     setActionNotice({
       type: 'success',
       message: 'Fare calculation rules successfully deployed to all live passenger booking apps in real-time.',
@@ -1523,11 +1527,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                   </div>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
                     step="0.5"
                     value={settings.tierPricing.moto_comfort.perKmRate}
                     onChange={(e) => {
-                      const val = Math.max(1, parseFloat(e.target.value) || 1);
+                      const val = Math.max(0, parseFloat(e.target.value) || 0);
                       setSettings({
                         ...settings,
                         perKmRate: val,
@@ -1696,11 +1700,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                   </div>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
                     step="0.5"
                     value={settings.tierPricing.moto_delivery.perKmRate}
                     onChange={(e) => {
-                      const val = Math.max(1, parseFloat(e.target.value) || 1);
+                      const val = Math.max(0, parseFloat(e.target.value) || 0);
                       setSettings({
                         ...settings,
                         tierPricing: {

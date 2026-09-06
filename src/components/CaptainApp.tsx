@@ -628,7 +628,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     setIsClaimingId(ride.id);
     setConcurrencyAlert(null);
 
-    const agreedFare = customFareOffer && customFareOffer > 0 ? customFareOffer : (ride.fare || 25);
+    const agreedFare = customFareOffer && customFareOffer > 0 ? customFareOffer : Number(ride.fare || 0);
 
     const result = await claimRideAtomic(
       ride.id,
@@ -2148,7 +2148,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                     }
 
                     const bidding = pricing?.biddingConfig || DEFAULT_PLATFORM_PRICING.biddingConfig;
-                    const baseFare = Number(ride.fare || 25.0);
+                    const baseFare = Number(ride.fare || 0.0);
                     
                     // Option 1: Base Fare
                     const t1Percent = bidding.tier1Percent ?? 0;

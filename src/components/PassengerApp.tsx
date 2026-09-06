@@ -112,7 +112,7 @@ const DEFAULT_DROPOFFS = [
 const RIDE_TIERS: RideTier[] = [
   {
     id: 'moto_comfort',
-    name: 'Comfort Moto',
+    name: 'Comfort Moto Ride',
     tagline: 'Comfort bike • Clean helmet included',
     multiplier: 1.0,
     icon: '🛵',
@@ -122,8 +122,8 @@ const RIDE_TIERS: RideTier[] = [
   {
     id: 'moto_delivery',
     name: 'Moto Courier',
-    tagline: 'Package & parcel courier delivery',
-    multiplier: 0.85,
+    tagline: 'Package & parcel courier',
+    multiplier: 1.0,
     icon: '📦',
     etaMinsBonus: 1,
   },
@@ -176,6 +176,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const { isLight } = useTheme();
   const { pricing, calculateFare } = usePricing();
   const { updateUser } = useAuth();
+  const activeTierConfig = selectedTier === 'moto_delivery' ? pricing.tierPricing.moto_delivery : pricing.tierPricing.moto_comfort;
 
   useEffect(() => {
     if (passengerUser) {
@@ -943,7 +944,9 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                           {tierConfig.name}
                         </span>
                         <span className={`text-xs font-black mt-0.5 block ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
-                          {hasRoute ? `₹${tierFareObj.totalFare.toFixed(2)}` : `From ₹${tierConfig.baseFare.toFixed(2)}`}
+                          {hasRoute && tierFareObj.totalFare > 0
+                            ? `₹${tierFareObj.totalFare.toFixed(2)}`
+                            : `From ₹${tierConfig.baseFare.toFixed(2)}`}
                         </span>
                         <span className={`text-[10px] block mt-0.5 truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                           {tierConfig.tagline || tier.tagline}
@@ -990,7 +993,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 <button
                   type="button"
                   disabled={!pickup.trim() || !dropoff.trim()}
-                  onClick={() => setCustomBidFare((prev) => Math.max(25.0, Number((prev - 5.0).toFixed(2))))}
+                  onClick={() => setCustomBidFare((prev) => Math.max(activeTierConfig.minimumFare || 0, Number((prev - 5.0).toFixed(2))))}
                   className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                     isLight
                       ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'

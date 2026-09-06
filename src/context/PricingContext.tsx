@@ -1,100 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { PlatformSettings } from '../types/ride';
 import { FareBreakdown, calculateMotoFare } from '../utils/fareCalculator';
+import {
+  ExtendedPlatformPricing,
+  DEFAULT_PLATFORM_PRICING,
+  TierPricingConfig,
+  OfferBiddingConfig,
+} from '../types/pricing';
+import {
+  loadLocalPricing,
+  saveRemotePlatformPricing,
+  subscribeToPricingUpdates,
+  normalizePlatformPricing,
+} from '../services/pricingService';
 
-export interface TierPricingConfig {
-  id: string;
-  name: string;
-  tagline: string;
-  icon: string;
-  baseFare: number;
-  baseIncludedKm: number;
-  perKmRate: number;
-  perMinuteRate: number;
-  minimumFare: number;
-}
-
-export interface OfferBiddingConfig {
-  enabled: boolean;
-  tier1Percent: number; // default 0% (Accept Passenger Offer)
-  tier2Percent: number; // default 10% (+10% Increase)
-  tier3Percent: number; // default 15% (+15% Increase)
-  roundToWholeRupee: boolean; // default true
-  tier1Label?: string;
-  tier2Label?: string;
-  tier3Label?: string;
-}
-
-export interface ExtendedPlatformPricing extends PlatformSettings {
-  baseIncludedKm: number;
-  perMinuteRate: number;
-  minimumFare: number;
-  tierMultipliers: Record<string, number>;
-  tierPricing: {
-    moto_comfort: TierPricingConfig;
-    moto_delivery: TierPricingConfig;
-  };
-  biddingConfig: OfferBiddingConfig;
-  lastUpdated: string;
-  updatedBy: string;
-}
-
-export const DEFAULT_PLATFORM_PRICING: ExtendedPlatformPricing = {
-  baseFare: 25.0,
-  baseIncludedKm: 1.5,
-  perKmRate: 9.0,
-  perMinuteRate: 0.5,
-  minimumFare: 25.0,
-  surgeMultiplier: 1.0,
-  commissionRate: 15,
-  autoDispatch: true,
-  maxBroadcastDistanceKm: 6.5,
-  tierMultipliers: {
-    moto_comfort: 1.0,
-    moto_quick: 1.15,
-    moto_delivery: 0.85,
-    moto_ev: 0.95,
-  },
-  tierPricing: {
-    moto_comfort: {
-      id: 'moto_comfort',
-      name: 'Comfort Moto Ride',
-      tagline: 'Comfort bike • Clean helmet included',
-      icon: '🛵',
-      baseFare: 25.0,
-      baseIncludedKm: 1.5,
-      perKmRate: 9.0,
-      perMinuteRate: 0.5,
-      minimumFare: 25.0,
-    },
-    moto_delivery: {
-      id: 'moto_delivery',
-      name: 'Moto Courier',
-      tagline: 'Package & parcel courier delivery',
-      icon: '📦',
-      baseFare: 20.0,
-      baseIncludedKm: 1.5,
-      perKmRate: 7.5,
-      perMinuteRate: 0.3,
-      minimumFare: 20.0,
-    },
-  },
-  biddingConfig: {
-    enabled: true,
-    tier1Percent: 0,
-    tier2Percent: 10,
-    tier3Percent: 15,
-    roundToWholeRupee: true,
-    tier1Label: 'Accept Offer',
-    tier2Label: 'Offer +10%',
-    tier3Label: 'Offer +15%',
-  },
-  lastUpdated: new Date().toISOString(),
-  updatedBy: 'System Admin',
-};
-
-const STORAGE_KEY = 'motoride_platform_pricing_config';
-const SYNC_EVENT = 'motoride:pricing_updated';
+export type { TierPricingConfig, OfferBiddingConfig, ExtendedPlatformPricing };
+export { DEFAULT_PLATFORM_PRICING };
 
 interface PricingContextType {
   pricing: ExtendedPlatformPricing;
@@ -112,112 +32,34 @@ interface PricingContextType {
     isAccurateRoute?: boolean;
   }) => FareBreakdown;
   isCustomized: boolean;
+  lastSyncSource: string | null;
 }
 
 const PricingContext = createContext<PricingContextType | undefined>(undefined);
 
-function loadSavedPricing(): ExtendedPlatformPricing {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      const savedTierPricing = parsed.tierPricing || {};
-      const savedBidding = parsed.biddingConfig || {};
-      return {
-        ...DEFAULT_PLATFORM_PRICING,
-        ...parsed,
-        tierMultipliers: {
-          ...DEFAULT_PLATFORM_PRICING.tierMultipliers,
-          ...(parsed.tierMultipliers || {}),
-        },
-        tierPricing: {
-          moto_comfort: {
-            ...DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort,
-            ...(savedTierPricing.moto_comfort || {}),
-            // Ensure synchronization with top-level baseFare/perKmRate if legacy
-            baseFare: savedTierPricing.moto_comfort?.baseFare ?? parsed.baseFare ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.baseFare,
-            perKmRate: savedTierPricing.moto_comfort?.perKmRate ?? parsed.perKmRate ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.perKmRate,
-            baseIncludedKm: savedTierPricing.moto_comfort?.baseIncludedKm ?? parsed.baseIncludedKm ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.baseIncludedKm,
-            perMinuteRate: savedTierPricing.moto_comfort?.perMinuteRate ?? parsed.perMinuteRate ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.perMinuteRate,
-            minimumFare: savedTierPricing.moto_comfort?.minimumFare ?? parsed.minimumFare ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.minimumFare,
-          },
-          moto_delivery: {
-            ...DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery,
-            ...(savedTierPricing.moto_delivery || {}),
-          },
-        },
-        biddingConfig: {
-          ...DEFAULT_PLATFORM_PRICING.biddingConfig,
-          ...savedBidding,
-        },
-      };
-    }
-  } catch (err) {
-    console.warn('Failed to load saved platform pricing', err);
-  }
-  return DEFAULT_PLATFORM_PRICING;
-}
-
 export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [pricing, setPricing] = useState<ExtendedPlatformPricing>(loadSavedPricing);
+  const [pricing, setPricing] = useState<ExtendedPlatformPricing>(loadLocalPricing);
+  const [lastSyncSource, setLastSyncSource] = useState<string | null>(null);
 
-  // Sync across tabs and windows
+  // Cross-device, cross-tab, and Supabase Realtime synchronization
   useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          const savedTierPricing = parsed.tierPricing || {};
-          const savedBidding = parsed.biddingConfig || {};
-          setPricing({
-            ...DEFAULT_PLATFORM_PRICING,
-            ...parsed,
-            tierMultipliers: {
-              ...DEFAULT_PLATFORM_PRICING.tierMultipliers,
-              ...(parsed.tierMultipliers || {}),
-            },
-            tierPricing: {
-              moto_comfort: {
-                ...DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort,
-                ...(savedTierPricing.moto_comfort || {}),
-              },
-              moto_delivery: {
-                ...DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery,
-                ...(savedTierPricing.moto_delivery || {}),
-              },
-            },
-            biddingConfig: {
-              ...DEFAULT_PLATFORM_PRICING.biddingConfig,
-              ...savedBidding,
-            },
-          });
-        } catch {
-          // ignore
-        }
-      }
-    };
-
-    const handleCustomEvent = (e: Event) => {
-      const customEvent = e as CustomEvent<ExtendedPlatformPricing>;
-      if (customEvent.detail) {
-        setPricing(customEvent.detail);
-      }
-    };
-
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener(SYNC_EVENT, handleCustomEvent);
+    const unsubscribe = subscribeToPricingUpdates((updatedPricing, source) => {
+      setPricing(updatedPricing);
+      setLastSyncSource(source);
+    });
 
     return () => {
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener(SYNC_EVENT, handleCustomEvent);
+      unsubscribe();
     };
   }, []);
 
   const updatePricing = (updates: Partial<ExtendedPlatformPricing>) => {
     setPricing((prev) => {
-      const next: ExtendedPlatformPricing = {
+      const nextRaw: Partial<ExtendedPlatformPricing> = {
         ...prev,
         ...updates,
+        isAdminConfigured: true,
+        updatedBy: 'Admin Panel',
         tierMultipliers: {
           ...prev.tierMultipliers,
           ...(updates.tierMultipliers || {}),
@@ -243,12 +85,11 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
         },
         lastUpdated: new Date().toISOString(),
       };
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: next }));
-      } catch (err) {
-        console.error('Failed to save platform pricing to storage', err);
-      }
+      const next = normalizePlatformPricing(nextRaw);
+      // Persist to Supabase and broadcast over Supabase Realtime to all mobile apps
+      saveRemotePlatformPricing(next).catch((err) => {
+        console.warn('[PricingContext] Save remote pricing error:', err);
+      });
       return next;
     });
   };
@@ -258,8 +99,10 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
       const currentTier = prev.tierPricing[tierId];
       const updatedTier = { ...currentTier, ...updates };
 
-      const next: ExtendedPlatformPricing = {
+      const nextRaw: Partial<ExtendedPlatformPricing> = {
         ...prev,
+        isAdminConfigured: true,
+        updatedBy: 'Admin Panel',
         tierPricing: {
           ...prev.tierPricing,
           [tierId]: updatedTier,
@@ -276,13 +119,11 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
           : {}),
         lastUpdated: new Date().toISOString(),
       };
-
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: next }));
-      } catch (err) {
-        console.error('Failed to save tier pricing to storage', err);
-      }
+      const next = normalizePlatformPricing(nextRaw);
+      // Persist to Supabase and broadcast over Supabase Realtime to all mobile apps
+      saveRemotePlatformPricing(next).catch((err) => {
+        console.warn('[PricingContext] Save remote tier pricing error:', err);
+      });
       return next;
     });
   };
@@ -290,15 +131,14 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
   const resetPricingToDefault = () => {
     const reset = {
       ...DEFAULT_PLATFORM_PRICING,
+      isAdminConfigured: false,
+      updatedBy: 'Default Platform (Pending Admin Setup)',
       lastUpdated: new Date().toISOString(),
     };
     setPricing(reset);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(reset));
-      window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: reset }));
-    } catch (err) {
-      console.error('Failed to reset platform pricing', err);
-    }
+    saveRemotePlatformPricing(reset).catch((err) => {
+      console.warn('[PricingContext] Reset remote pricing error:', err);
+    });
   };
 
   const calculateFare = (params: {
@@ -316,11 +156,11 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
       ? pricing.tierPricing.moto_delivery
       : pricing.tierPricing.moto_comfort;
 
-    const baseFare = tierConfig?.baseFare ?? (isDelivery ? 20.0 : pricing.baseFare);
-    const baseIncludedKm = tierConfig?.baseIncludedKm ?? (isDelivery ? 1.5 : pricing.baseIncludedKm);
-    const perKmRate = tierConfig?.perKmRate ?? (isDelivery ? 7.5 : pricing.perKmRate);
-    const perMinuteRate = tierConfig?.perMinuteRate ?? (isDelivery ? 0.3 : pricing.perMinuteRate);
-    const minimumFare = tierConfig?.minimumFare ?? (isDelivery ? 20.0 : pricing.minimumFare);
+    const baseFare = tierConfig?.baseFare ?? pricing.baseFare ?? 0.0;
+    const baseIncludedKm = tierConfig?.baseIncludedKm ?? pricing.baseIncludedKm ?? 0.0;
+    const perKmRate = tierConfig?.perKmRate ?? pricing.perKmRate ?? 0.0;
+    const perMinuteRate = tierConfig?.perMinuteRate ?? pricing.perMinuteRate ?? 0.0;
+    const minimumFare = tierConfig?.minimumFare ?? pricing.minimumFare ?? 0.0;
 
     return calculateMotoFare({
       ...params,
@@ -341,14 +181,16 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   };
 
-  const isCustomized =
+  const isCustomized = Boolean(
+    pricing.isAdminConfigured ||
     pricing.baseFare !== DEFAULT_PLATFORM_PRICING.baseFare ||
     pricing.perKmRate !== DEFAULT_PLATFORM_PRICING.perKmRate ||
     pricing.surgeMultiplier !== DEFAULT_PLATFORM_PRICING.surgeMultiplier ||
     pricing.commissionRate !== DEFAULT_PLATFORM_PRICING.commissionRate ||
     pricing.minimumFare !== DEFAULT_PLATFORM_PRICING.minimumFare ||
     pricing.tierPricing.moto_delivery.baseFare !== DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.baseFare ||
-    pricing.tierPricing.moto_delivery.perKmRate !== DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.perKmRate;
+    pricing.tierPricing.moto_delivery.perKmRate !== DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.perKmRate
+  );
 
   return (
     <PricingContext.Provider
@@ -359,6 +201,7 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
         resetPricingToDefault,
         calculateFare,
         isCustomized,
+        lastSyncSource,
       }}
     >
       {children}

@@ -776,6 +776,7 @@ export const fetchAllRidesAdmin = async (
     let query = supabase
       .from('rides')
       .select('*')
+      .neq('passenger_name', '__PLATFORM_CONFIG__')
       .order('created_at', { ascending: false })
       .limit(limit);
 
