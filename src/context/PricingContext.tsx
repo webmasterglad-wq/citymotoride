@@ -131,8 +131,6 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
   const resetPricingToDefault = () => {
     const reset = {
       ...DEFAULT_PLATFORM_PRICING,
-      isAdminConfigured: false,
-      updatedBy: 'Default Platform (Pending Admin Setup)',
       lastUpdated: new Date().toISOString(),
     };
     setPricing(reset);
@@ -156,11 +154,11 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
       ? pricing.tierPricing.moto_delivery
       : pricing.tierPricing.moto_comfort;
 
-    const baseFare = tierConfig?.baseFare ?? pricing.baseFare ?? 0.0;
-    const baseIncludedKm = tierConfig?.baseIncludedKm ?? pricing.baseIncludedKm ?? 0.0;
-    const perKmRate = tierConfig?.perKmRate ?? pricing.perKmRate ?? 0.0;
-    const perMinuteRate = tierConfig?.perMinuteRate ?? pricing.perMinuteRate ?? 0.0;
-    const minimumFare = tierConfig?.minimumFare ?? pricing.minimumFare ?? 0.0;
+    const baseFare = tierConfig?.baseFare ?? (isDelivery ? 20.0 : pricing.baseFare);
+    const baseIncludedKm = tierConfig?.baseIncludedKm ?? (isDelivery ? 1.5 : pricing.baseIncludedKm);
+    const perKmRate = tierConfig?.perKmRate ?? (isDelivery ? 7.5 : pricing.perKmRate);
+    const perMinuteRate = tierConfig?.perMinuteRate ?? (isDelivery ? 0.3 : pricing.perMinuteRate);
+    const minimumFare = tierConfig?.minimumFare ?? (isDelivery ? 20.0 : pricing.minimumFare);
 
     return calculateMotoFare({
       ...params,
@@ -181,16 +179,14 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
     });
   };
 
-  const isCustomized = Boolean(
-    pricing.isAdminConfigured ||
+  const isCustomized =
     pricing.baseFare !== DEFAULT_PLATFORM_PRICING.baseFare ||
     pricing.perKmRate !== DEFAULT_PLATFORM_PRICING.perKmRate ||
     pricing.surgeMultiplier !== DEFAULT_PLATFORM_PRICING.surgeMultiplier ||
     pricing.commissionRate !== DEFAULT_PLATFORM_PRICING.commissionRate ||
     pricing.minimumFare !== DEFAULT_PLATFORM_PRICING.minimumFare ||
     pricing.tierPricing.moto_delivery.baseFare !== DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.baseFare ||
-    pricing.tierPricing.moto_delivery.perKmRate !== DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.perKmRate
-  );
+    pricing.tierPricing.moto_delivery.perKmRate !== DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.perKmRate;
 
   return (
     <PricingContext.Provider

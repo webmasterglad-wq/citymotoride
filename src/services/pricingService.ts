@@ -2,7 +2,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { ExtendedPlatformPricing, DEFAULT_PLATFORM_PRICING, TierPricingConfig } from '../types/pricing';
 
-export const PRICING_STORAGE_KEY = 'motoride_platform_pricing_v4';
+export const PRICING_STORAGE_KEY = 'motoride_platform_pricing_v5';
 export const PRICING_SYNC_EVENT = 'motoride:pricing_updated';
 export const PRICING_BROADCAST_CHANNEL_NAME = 'motoride_pricing_bc';
 export const PRICING_REALTIME_CHANNEL = 'motoride_platform_pricing';
@@ -26,67 +26,34 @@ let sharedRealtimeChannel: RealtimeChannel | null = null;
 
 /**
  * Validates and deeply merges any partial or raw pricing payload with defaults.
- * CRITICAL: Unless explicitly saved by an admin in the admin panel (isAdminConfigured === true),
- * all base fares, per-km rates, and minimum fares default strictly to ₹0.00.
  */
 export function normalizePlatformPricing(raw: any): ExtendedPlatformPricing {
   if (!raw || typeof raw !== 'object') {
     return DEFAULT_PLATFORM_PRICING;
   }
 
-  // Check if this payload represents an explicit admin update from the Admin Panel
-  const isExplicitAdminConfigured = Boolean(
-    raw.isAdminConfigured === true ||
-    (raw.updatedBy &&
-      (raw.updatedBy.includes('Admin Panel') || raw.updatedBy === 'Admin') &&
-      raw.updatedBy !== 'System Admin' &&
-      !raw.updatedBy.includes('Pending Admin Setup') &&
-      !raw.updatedBy.includes('Default System'))
-  );
-
   const savedTierPricing = raw.tierPricing || {};
   const savedComfort = savedTierPricing.moto_comfort || {};
   const savedDelivery = savedTierPricing.moto_delivery || {};
   const savedBidding = raw.biddingConfig || {};
 
-  // If not explicitly configured by an admin, strictly enforce ₹0.00
-  const comfortBaseFare = isExplicitAdminConfigured
-    ? Number(savedComfort.baseFare ?? raw.baseFare ?? 0.0)
-    : 0.0;
-  const comfortPerKm = isExplicitAdminConfigured
-    ? Number(savedComfort.perKmRate ?? raw.perKmRate ?? 0.0)
-    : 0.0;
-  const comfortIncludedKm = isExplicitAdminConfigured
-    ? Number(savedComfort.baseIncludedKm ?? raw.baseIncludedKm ?? 0.0)
-    : 0.0;
-  const comfortPerMin = isExplicitAdminConfigured
-    ? Number(savedComfort.perMinuteRate ?? raw.perMinuteRate ?? 0.0)
-    : 0.0;
-  const comfortMinFare = isExplicitAdminConfigured
-    ? Number(savedComfort.minimumFare ?? raw.minimumFare ?? 0.0)
-    : 0.0;
+  // Resolve Comfort Moto rates (with backward compatibility to top-level fields)
+  const comfortBaseFare = Number(savedComfort.baseFare ?? raw.baseFare ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.baseFare);
+  const comfortPerKm = Number(savedComfort.perKmRate ?? raw.perKmRate ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.perKmRate);
+  const comfortIncludedKm = Number(savedComfort.baseIncludedKm ?? raw.baseIncludedKm ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.baseIncludedKm);
+  const comfortPerMin = Number(savedComfort.perMinuteRate ?? raw.perMinuteRate ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.perMinuteRate);
+  const comfortMinFare = Number(savedComfort.minimumFare ?? raw.minimumFare ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.minimumFare);
 
-  // Resolve Moto Courier rates (strictly ₹0.00 if unconfigured)
-  const deliveryBaseFare = isExplicitAdminConfigured
-    ? Number(savedDelivery.baseFare ?? 0.0)
-    : 0.0;
-  const deliveryPerKm = isExplicitAdminConfigured
-    ? Number(savedDelivery.perKmRate ?? 0.0)
-    : 0.0;
-  const deliveryIncludedKm = isExplicitAdminConfigured
-    ? Number(savedDelivery.baseIncludedKm ?? 0.0)
-    : 0.0;
-  const deliveryPerMin = isExplicitAdminConfigured
-    ? Number(savedDelivery.perMinuteRate ?? 0.0)
-    : 0.0;
-  const deliveryMinFare = isExplicitAdminConfigured
-    ? Number(savedDelivery.minimumFare ?? 0.0)
-    : 0.0;
+  // Resolve Moto Courier rates
+  const deliveryBaseFare = Number(savedDelivery.baseFare ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.baseFare);
+  const deliveryPerKm = Number(savedDelivery.perKmRate ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.perKmRate);
+  const deliveryIncludedKm = Number(savedDelivery.baseIncludedKm ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.baseIncludedKm);
+  const deliveryPerMin = Number(savedDelivery.perMinuteRate ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.perMinuteRate);
+  const deliveryMinFare = Number(savedDelivery.minimumFare ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.minimumFare);
 
   return {
     ...DEFAULT_PLATFORM_PRICING,
     ...raw,
-    isAdminConfigured: isExplicitAdminConfigured,
     baseFare: comfortBaseFare,
     perKmRate: comfortPerKm,
     baseIncludedKm: comfortIncludedKm,
@@ -123,9 +90,7 @@ export function normalizePlatformPricing(raw: any): ExtendedPlatformPricing {
       ...savedBidding,
     },
     lastUpdated: raw.lastUpdated || new Date().toISOString(),
-    updatedBy: isExplicitAdminConfigured
-      ? (raw.updatedBy || 'Admin Panel')
-      : 'Default Platform (Pending Admin Setup)',
+    updatedBy: raw.updatedBy || 'System Admin',
   };
 }
 
@@ -416,7 +381,7 @@ export function subscribeToPricingUpdates(
         })
         .on('broadcast', { event: 'request_pricing_sync' }, () => {
           const current = loadLocalPricing();
-          if (supabaseChannel && current.isAdminConfigured) {
+          if (supabaseChannel) {
             supabaseChannel
               .send({
                 type: 'broadcast',

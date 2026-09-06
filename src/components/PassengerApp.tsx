@@ -123,7 +123,7 @@ const RIDE_TIERS: RideTier[] = [
     id: 'moto_delivery',
     name: 'Moto Courier',
     tagline: 'Package & parcel courier',
-    multiplier: 1.0,
+    multiplier: 0.85,
     icon: '📦',
     etaMinsBonus: 1,
   },
