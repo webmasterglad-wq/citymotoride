@@ -158,13 +158,23 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
     >
       <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
         {/* Left: Brand */}
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-950 text-xs tracking-tight shadow-md shadow-amber-500/20">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-950 text-xs tracking-tight shadow-md shadow-amber-500/20 shrink-0">
             MR
           </div>
-          <span className={`font-bold tracking-tight text-sm ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-            Moto<span className="text-amber-500">Ride</span>
-          </span>
+          <div className="flex flex-col">
+            <span className={`font-bold tracking-tight text-sm leading-none ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+              Moto<span className="text-amber-500">Ride</span>
+            </span>
+            <span
+              id="brand-tagline-offer-fare"
+              className={`text-[10px] font-medium tracking-tight mt-0.5 leading-none ${
+                isLight ? 'text-slate-500' : 'text-slate-400'
+              }`}
+            >
+              Offer Fare Book Ride
+            </span>
+          </div>
         </div>
 
         {/* Center/Right: View Switcher - Only shows available app role based on auth */}
