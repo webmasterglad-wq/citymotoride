@@ -2,7 +2,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { ExtendedPlatformPricing, DEFAULT_PLATFORM_PRICING, TierPricingConfig } from '../types/pricing';
 
-export const PRICING_STORAGE_KEY = 'motoride_platform_pricing_v5';
+export const PRICING_STORAGE_KEY = 'motoride_platform_pricing_v6';
 export const PRICING_SYNC_EVENT = 'motoride:pricing_updated';
 export const PRICING_BROADCAST_CHANNEL_NAME = 'motoride_pricing_bc';
 export const PRICING_REALTIME_CHANNEL = 'motoride_platform_pricing';
@@ -37,19 +37,19 @@ export function normalizePlatformPricing(raw: any): ExtendedPlatformPricing {
   const savedDelivery = savedTierPricing.moto_delivery || {};
   const savedBidding = raw.biddingConfig || {};
 
-  // Resolve Comfort Moto rates (with backward compatibility to top-level fields)
-  const comfortBaseFare = Number(savedComfort.baseFare ?? raw.baseFare ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.baseFare);
+  // Resolve Comfort Moto rates (default to 0.0 for baseFare and minimumFare)
+  const comfortBaseFare = Number(savedComfort.baseFare ?? raw.baseFare ?? 0.0);
   const comfortPerKm = Number(savedComfort.perKmRate ?? raw.perKmRate ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.perKmRate);
   const comfortIncludedKm = Number(savedComfort.baseIncludedKm ?? raw.baseIncludedKm ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.baseIncludedKm);
   const comfortPerMin = Number(savedComfort.perMinuteRate ?? raw.perMinuteRate ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.perMinuteRate);
-  const comfortMinFare = Number(savedComfort.minimumFare ?? raw.minimumFare ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_comfort.minimumFare);
+  const comfortMinFare = Number(savedComfort.minimumFare ?? raw.minimumFare ?? 0.0);
 
-  // Resolve Moto Courier rates
-  const deliveryBaseFare = Number(savedDelivery.baseFare ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.baseFare);
+  // Resolve Moto Courier rates (default to 0.0 for baseFare and minimumFare)
+  const deliveryBaseFare = Number(savedDelivery.baseFare ?? 0.0);
   const deliveryPerKm = Number(savedDelivery.perKmRate ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.perKmRate);
   const deliveryIncludedKm = Number(savedDelivery.baseIncludedKm ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.baseIncludedKm);
   const deliveryPerMin = Number(savedDelivery.perMinuteRate ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.perMinuteRate);
-  const deliveryMinFare = Number(savedDelivery.minimumFare ?? DEFAULT_PLATFORM_PRICING.tierPricing.moto_delivery.minimumFare);
+  const deliveryMinFare = Number(savedDelivery.minimumFare ?? 0.0);
 
   return {
     ...DEFAULT_PLATFORM_PRICING,
@@ -90,7 +90,7 @@ export function normalizePlatformPricing(raw: any): ExtendedPlatformPricing {
       ...savedBidding,
     },
     lastUpdated: raw.lastUpdated || new Date().toISOString(),
-    updatedBy: raw.updatedBy || 'System Admin',
+    updatedBy: raw.updatedBy || 'Default Platform',
   };
 }
 
@@ -99,21 +99,20 @@ export function normalizePlatformPricing(raw: any): ExtendedPlatformPricing {
  */
 export function loadLocalPricing(): ExtendedPlatformPricing {
   try {
-    // Purge legacy storage keys to prevent obsolete cached 25.0 / 20.0 fares from appearing
+    // Purge legacy storage keys to prevent obsolete cached fares from appearing
     const legacyKeys = [
       'motoride_platform_pricing_config',
       'motoride_platform_pricing_v2',
       'motoride_platform_pricing_v3',
+      'motoride_platform_pricing_v4',
+      'motoride_platform_pricing_v5',
     ];
     for (const key of legacyKeys) {
       if (typeof window !== 'undefined' && localStorage.getItem(key)) {
         try {
-          const legacyObj = JSON.parse(localStorage.getItem(key) || '');
-          if (!legacyObj?.isAdminConfigured) {
-            localStorage.removeItem(key);
-          }
-        } catch {
           localStorage.removeItem(key);
+        } catch {
+          // ignore
         }
       }
     }

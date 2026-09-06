@@ -37,11 +37,11 @@ export interface RouteDistanceResult {
  * Standard Platform Pricing Defaults (Tricity Moto INR)
  */
 export const DEFAULT_PRICING = {
-  baseFare: 20.0,           // ₹20 base fee (covers first 1.5 km)
+  baseFare: 0.0,           // ₹0 base fee (covers first 1.5 km until admin configures)
   baseIncludedKm: 1.5,      // 1.5 km included in base
   perKmRate: 8.0,           // ₹8 per km after base distance
   perMinuteRate: 0.5,       // ₹0.50 per minute of estimated trip time
-  minimumFare: 25.0,        // ₹25 absolute minimum ride charge
+  minimumFare: 0.0,        // ₹0 minimum ride charge
   roadCircuityFactor: 1.25, // Multiplier for straight-line Haversine to real road route
 };
 

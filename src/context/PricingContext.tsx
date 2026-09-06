@@ -154,11 +154,11 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
       ? pricing.tierPricing.moto_delivery
       : pricing.tierPricing.moto_comfort;
 
-    const baseFare = tierConfig?.baseFare ?? (isDelivery ? 20.0 : pricing.baseFare);
+    const baseFare = tierConfig?.baseFare ?? (isDelivery ? 0.0 : pricing.baseFare);
     const baseIncludedKm = tierConfig?.baseIncludedKm ?? (isDelivery ? 1.5 : pricing.baseIncludedKm);
     const perKmRate = tierConfig?.perKmRate ?? (isDelivery ? 7.5 : pricing.perKmRate);
     const perMinuteRate = tierConfig?.perMinuteRate ?? (isDelivery ? 0.3 : pricing.perMinuteRate);
-    const minimumFare = tierConfig?.minimumFare ?? (isDelivery ? 20.0 : pricing.minimumFare);
+    const minimumFare = tierConfig?.minimumFare ?? (isDelivery ? 0.0 : pricing.minimumFare);
 
     return calculateMotoFare({
       ...params,

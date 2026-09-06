@@ -2148,7 +2148,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                     }
 
                     const bidding = pricing?.biddingConfig || DEFAULT_PLATFORM_PRICING.biddingConfig;
-                    const baseFare = Number(ride.fare || 25.0);
+                    const baseFare = Number(ride.fare || 0);
                     
                     // Option 1: Base Fare
                     const t1Percent = bidding.tier1Percent ?? 0;

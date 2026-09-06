@@ -39,11 +39,11 @@ export interface ExtendedPlatformPricing extends PlatformSettings {
 }
 
 export const DEFAULT_PLATFORM_PRICING: ExtendedPlatformPricing = {
-  baseFare: 25.0,
+  baseFare: 0.0,
   baseIncludedKm: 1.5,
   perKmRate: 9.0,
   perMinuteRate: 0.5,
-  minimumFare: 25.0,
+  minimumFare: 0.0,
   surgeMultiplier: 1.0,
   commissionRate: 15,
   autoDispatch: true,
@@ -60,22 +60,22 @@ export const DEFAULT_PLATFORM_PRICING: ExtendedPlatformPricing = {
       name: 'Comfort Moto Ride',
       tagline: 'Comfort bike • Clean helmet included',
       icon: '🛵',
-      baseFare: 25.0,
+      baseFare: 0.0,
       baseIncludedKm: 1.5,
       perKmRate: 9.0,
       perMinuteRate: 0.5,
-      minimumFare: 25.0,
+      minimumFare: 0.0,
     },
     moto_delivery: {
       id: 'moto_delivery',
       name: 'Moto Courier',
       tagline: 'Package & parcel courier',
       icon: '📦',
-      baseFare: 20.0,
+      baseFare: 0.0,
       baseIncludedKm: 1.5,
       perKmRate: 7.5,
       perMinuteRate: 0.3,
-      minimumFare: 20.0,
+      minimumFare: 0.0,
     },
   },
   biddingConfig: {
@@ -89,5 +89,5 @@ export const DEFAULT_PLATFORM_PRICING: ExtendedPlatformPricing = {
     tier3Label: 'Offer +15%',
   },
   lastUpdated: new Date().toISOString(),
-  updatedBy: 'System Admin',
+  updatedBy: 'Default Platform',
 };

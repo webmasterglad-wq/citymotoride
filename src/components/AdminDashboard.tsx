@@ -1395,9 +1395,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
             </div>
 
             <div className="text-[11px] text-slate-500 flex items-center gap-2">
-              <span>Comfort: ₹{settings.tierPricing.moto_comfort.baseFare} base / ₹{settings.tierPricing.moto_comfort.perKmRate}/km</span>
+              <span>Comfort: ₹{(settings.tierPricing?.moto_comfort?.baseFare ?? 0).toFixed(2)} base / ₹{settings.tierPricing?.moto_comfort?.perKmRate ?? 9}/km</span>
               <span>•</span>
-              <span>Courier: ₹{settings.tierPricing.moto_delivery.baseFare} base / ₹{settings.tierPricing.moto_delivery.perKmRate}/km</span>
+              <span>Courier: ₹{(settings.tierPricing?.moto_delivery?.baseFare ?? 0).toFixed(2)} base / ₹{settings.tierPricing?.moto_delivery?.perKmRate ?? 7.5}/km</span>
             </div>
           </div>
 
@@ -1458,26 +1458,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                 <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-bold uppercase text-slate-400">Comfort Base Pickup (₹)</label>
-                    <span className="font-mono text-xs font-bold text-emerald-600">₹{settings.tierPricing.moto_comfort.baseFare.toFixed(2)}</span>
+                    <span className="font-mono text-xs font-bold text-emerald-600">₹{(settings.tierPricing?.moto_comfort?.baseFare ?? 0).toFixed(2)}</span>
                   </div>
                   <input
                     type="number"
                     min="0"
-                    step="1"
-                    value={settings.tierPricing.moto_comfort.baseFare}
+                    step="any"
+                    value={settings.tierPricing?.moto_comfort?.baseFare ?? 0}
                     onChange={(e) => {
-                      const val = Math.max(0, parseFloat(e.target.value) || 0);
-                      setSettings({
-                        ...settings,
+                      const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                      setSettings((prev) => ({
+                        ...prev,
                         baseFare: val,
                         tierPricing: {
-                          ...settings.tierPricing,
+                          ...prev.tierPricing,
                           moto_comfort: {
-                            ...settings.tierPricing.moto_comfort,
+                            ...prev.tierPricing.moto_comfort,
                             baseFare: val,
                           },
                         },
-                      });
+                      }));
                     }}
                     className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-emerald-500 ${
                       isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
@@ -1633,25 +1633,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                 <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-bold uppercase text-slate-400">Courier Base Pickup (₹)</label>
-                    <span className="font-mono text-xs font-bold text-sky-600">₹{settings.tierPricing.moto_delivery.baseFare.toFixed(2)}</span>
+                    <span className="font-mono text-xs font-bold text-sky-600">₹{(settings.tierPricing?.moto_delivery?.baseFare ?? 0).toFixed(2)}</span>
                   </div>
                   <input
                     type="number"
                     min="0"
-                    step="1"
-                    value={settings.tierPricing.moto_delivery.baseFare}
+                    step="any"
+                    value={settings.tierPricing?.moto_delivery?.baseFare ?? 0}
                     onChange={(e) => {
-                      const val = Math.max(0, parseFloat(e.target.value) || 0);
-                      setSettings({
-                        ...settings,
+                      const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                      setSettings((prev) => ({
+                        ...prev,
                         tierPricing: {
-                          ...settings.tierPricing,
+                          ...prev.tierPricing,
                           moto_delivery: {
-                            ...settings.tierPricing.moto_delivery,
+                            ...prev.tierPricing.moto_delivery,
                             baseFare: val,
                           },
                         },
-                      });
+                      }));
                     }}
                     className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-sky-500 ${
                       isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
@@ -1914,7 +1914,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                         <div>
                           <span className="font-bold block">{activeConfig.name} Fair Fare</span>
                           <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                            Base ₹{activeConfig.baseFare} + {chargeableKm.toFixed(1)}km @ ₹{activeConfig.perKmRate}/km
+                            Base ₹{(activeConfig.baseFare ?? 0).toFixed(2)} + {chargeableKm.toFixed(1)}km @ ₹{activeConfig.perKmRate}/km
                           </span>
                         </div>
                         <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
