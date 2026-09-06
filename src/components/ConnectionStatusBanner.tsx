@@ -14,6 +14,9 @@ import {
   Moon,
   LogOut,
   UserCheck,
+  User,
+  Bike,
+  ArrowLeftRight,
 } from 'lucide-react';
 import {
   getStoredSupabaseConfig,
@@ -156,9 +159,9 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
           : 'bg-slate-900/95 border-b border-slate-800 text-slate-200'
       }`}
     >
-      <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+      <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap md:flex-nowrap items-center justify-between gap-3">
         {/* Left: Brand */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 shrink-0">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-950 text-xs tracking-tight shadow-md shadow-amber-500/20 shrink-0">
             MR
           </div>
@@ -177,108 +180,131 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
           </div>
         </div>
 
-        {/* Center/Right: View Switcher - Only shows available app role based on auth */}
-        <div
-          className={`flex items-center gap-1.5 p-1 rounded-xl border text-xs ${
-            isLight ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-slate-950 border-slate-800 text-slate-300'
-          }`}
-        >
-          {/* Show Passenger App button only if captain is not signed in */}
-          {!isCaptainAuthed && (
-            <button
-              id="view-passenger-btn"
-              onClick={() => onChangeView('passenger')}
-              className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+        {/* Top Center: Clickable Tab Switch Button (First "Passenger Mode", on click shows "Captain Mode") */}
+        <div className="w-full md:w-auto order-3 md:order-2 flex-1 flex justify-center items-center py-0.5">
+          <button
+            id="tab-switch-btn"
+            type="button"
+            onClick={() => onChangeView(activeView === 'passenger' ? 'captain' : 'passenger')}
+            title={activeView === 'passenger' ? 'Click to switch to Captain Mode' : 'Click to switch to Passenger Mode'}
+            className={`group relative inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-xs font-bold transition-all duration-200 shadow-sm hover:shadow-md cursor-pointer select-none active:scale-[0.97] ${
+              activeView === 'passenger'
+                ? isLight
+                  ? 'bg-sky-50/90 hover:bg-sky-100 text-sky-950 border-sky-300 hover:border-sky-400 shadow-sky-500/10'
+                  : 'bg-sky-950/40 hover:bg-sky-900/50 text-sky-200 border-sky-500/40 hover:border-sky-400 shadow-sky-500/10'
+                : isLight
+                ? 'bg-emerald-50/90 hover:bg-emerald-100 text-emerald-950 border-emerald-300 hover:border-emerald-400 shadow-emerald-500/10'
+                : 'bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-200 border-emerald-500/40 hover:border-emerald-400 shadow-emerald-500/10'
+            }`}
+          >
+            {/* Mode Icon */}
+            <div
+              className={`w-7 h-7 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 shrink-0 ${
                 activeView === 'passenger'
-                  ? 'bg-sky-500 text-white font-bold shadow'
-                  : isLight
-                  ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-sky-500 text-white shadow-sm shadow-sky-500/30'
+                  : 'bg-emerald-500 text-slate-950 shadow-sm shadow-emerald-500/30'
               }`}
             >
-              Passenger App
-            </button>
-          )}
+              {activeView === 'passenger' ? (
+                <User className="w-4 h-4" />
+              ) : (
+                <Bike className="w-4 h-4" />
+              )}
+            </div>
 
-          {/* Show Captain App button only if passenger is not signed in */}
-          {!isPassengerAuthed && (
-            <button
-              id="view-captain-btn"
-              onClick={() => onChangeView('captain')}
-              className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
-                activeView === 'captain'
-                  ? 'bg-emerald-500 text-slate-950 font-bold shadow'
+            {/* Main Label: "Passenger Mode" or "Captain Mode" */}
+            <div className="flex flex-col items-start text-left leading-tight">
+              <div className="text-sm font-black tracking-tight flex items-center gap-1.5">
+                <span>{activeView === 'passenger' ? 'Passenger Mode' : 'Captain Mode'}</span>
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    activeView === 'passenger' ? 'bg-sky-500' : 'bg-emerald-500'
+                  } animate-pulse`}
+                />
+              </div>
+              <span className="text-[10px] font-medium opacity-75 group-hover:opacity-100 transition-opacity">
+                {activeView === 'passenger' ? 'Click to show Captain Mode' : 'Click to show Passenger Mode'}
+              </span>
+            </div>
+
+            {/* Clickable switch pill */}
+            <div
+              className={`ml-1 px-2 py-1 rounded-xl flex items-center gap-1 text-[10px] font-bold border transition-all ${
+                activeView === 'passenger'
+                  ? isLight
+                    ? 'bg-white/80 border-sky-200 text-sky-700 group-hover:bg-white'
+                    : 'bg-slate-900/80 border-sky-800/80 text-sky-300 group-hover:bg-slate-900'
                   : isLight
-                  ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-white/80 border-emerald-200 text-emerald-700 group-hover:bg-white'
+                  : 'bg-slate-900/80 border-emerald-800/80 text-emerald-300 group-hover:bg-slate-900'
               }`}
             >
-              Captain App
-            </button>
-          )}
+              <ArrowLeftRight className="w-3 h-3 group-hover:rotate-180 transition-transform duration-300 shrink-0" />
+              <span className="hidden sm:inline">
+                {activeView === 'passenger' ? 'Captain' : 'Passenger'}
+              </span>
+            </div>
+          </button>
         </div>
 
         {/* Action buttons & Auth Session */}
-        <div className="flex items-center gap-2">
-          {/* User badge, Sign Out, Database Setup, and Theme Toggle are only shown when signed in */}
+        <div className="flex items-center gap-2 order-2 md:order-3 shrink-0">
           {getUserForRole(activeView) && (
-            <>
-              <div className="flex items-center gap-2">
-                <div
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border ${
-                    isLight ? 'bg-slate-100 border-slate-200 text-slate-800' : 'bg-slate-800 border-slate-700 text-slate-200'
-                  }`}
-                >
-                  <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="max-w-[120px] truncate">{getUserForRole(activeView)?.name}</span>
-                  <span className="text-[10px] uppercase font-bold text-amber-500">({activeView})</span>
-                </div>
-                <button
-                  type="button"
-                  id="header-signout-btn"
-                  onClick={() => signOut(activeView)}
-                  title="Sign Out of this account"
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
-                    isLight
-                      ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                      : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border-rose-800'
-                  }`}
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
-                </button>
+            <div className="flex items-center gap-1.5">
+              <div
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border ${
+                  isLight ? 'bg-slate-100 border-slate-200 text-slate-800' : 'bg-slate-800 border-slate-700 text-slate-200'
+                }`}
+              >
+                <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="max-w-[110px] truncate">{getUserForRole(activeView)?.name}</span>
+                <span className="text-[10px] uppercase font-bold text-amber-500">({activeView})</span>
               </div>
-
-              {/* Database Setup Button */}
               <button
                 type="button"
-                id="header-sql-setup-btn"
-                onClick={onOpenSqlModal}
-                title="Open Supabase SQL Schema setup"
-                className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
+                id="header-signout-btn"
+                onClick={() => signOut(activeView)}
+                title="Sign Out of this account"
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
                   isLight
-                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                    ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                    : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border-rose-800'
                 }`}
               >
-                <Database className="w-3.5 h-3.5 text-emerald-500" />
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
               </button>
-
-              {/* Theme Toggle */}
-              <button
-                type="button"
-                onClick={toggleTheme}
-                title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-                className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
-                  isLight
-                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                }`}
-              >
-                {isLight ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
-              </button>
-            </>
+            </div>
           )}
+
+          {/* Database Setup Button */}
+          <button
+            type="button"
+            id="header-sql-setup-btn"
+            onClick={onOpenSqlModal}
+            title="Open Supabase SQL Schema setup"
+            className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
+              isLight
+                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5 text-emerald-500" />
+          </button>
+
+          {/* Theme Toggle */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+            className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
+              isLight
+                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+            }`}
+          >
+            {isLight ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+          </button>
         </div>
       </div>
 

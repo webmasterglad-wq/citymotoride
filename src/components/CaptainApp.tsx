@@ -148,15 +148,29 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   const [currentCaptain, setCurrentCaptain] = useState<UserProfile>(() => {
     try {
+      const storedBike = localStorage.getItem('motoride_registered_bike');
       const stored = localStorage.getItem('motoride_active_captain_profile');
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed && (parsed.vehicle_details || parsed.name)) {
-          return { ...captainUser, ...parsed };
+          return {
+            ...captainUser,
+            ...parsed,
+            vehicle_details: storedBike || parsed.vehicle_details || captainUser.vehicle_details || 'Yamaha MT-07 · Stealth Black #DL-01-AB-7492',
+          };
         }
       }
+      if (storedBike) {
+        return {
+          ...captainUser,
+          vehicle_details: storedBike,
+        };
+      }
     } catch (_) {}
-    return captainUser;
+    return {
+      ...captainUser,
+      vehicle_details: captainUser.vehicle_details || 'Yamaha MT-07 · Stealth Black #DL-01-AB-7492',
+    };
   });
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [profileModalTab, setProfileModalTab] = useState<'profile' | 'vehicle' | 'earnings' | 'preferences' | 'checklist'>('profile');
@@ -237,12 +251,22 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
   useEffect(() => {
     if (captainUser) {
-      setCurrentCaptain((prev) => ({
-        ...prev,
-        ...captainUser,
-        vehicle_details: captainUser.vehicle_details || prev.vehicle_details,
-        email: captainUser.email || prev.email,
-      }));
+      setCurrentCaptain((prev) => {
+        const storedBike = localStorage.getItem('motoride_registered_bike');
+        const effectiveVehicle =
+          captainUser.vehicle_details ||
+          storedBike ||
+          prev.vehicle_details ||
+          'Yamaha MT-07 · Stealth Black #DL-01-AB-7492';
+        return {
+          ...prev,
+          ...captainUser,
+          name: captainUser.name || prev.name,
+          phone: captainUser.phone || prev.phone,
+          email: captainUser.email || prev.email,
+          vehicle_details: effectiveVehicle,
+        };
+      });
     }
   }, [captainUser]);
 
@@ -2489,16 +2513,19 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             const next = { ...prev, ...updated };
             try {
               localStorage.setItem('motoride_active_captain_profile', JSON.stringify(next));
+              if (updated.vehicle_details) {
+                localStorage.setItem('motoride_registered_bike', updated.vehicle_details);
+              }
             } catch (_) {}
             return next;
           });
-          updateUser('captain', {
-            name: updated.name,
-            email: updated.email,
-            phone: updated.phone,
-            vehicle_details: updated.vehicle_details,
-            avatar_url: updated.avatar_url,
-          });
+          const toUpdate: Partial<UserProfile> = {};
+          if (updated.name !== undefined && updated.name !== '') toUpdate.name = updated.name;
+          if (updated.email !== undefined && updated.email !== '') toUpdate.email = updated.email;
+          if (updated.phone !== undefined) toUpdate.phone = updated.phone;
+          if (updated.vehicle_details !== undefined && updated.vehicle_details !== '') toUpdate.vehicle_details = updated.vehicle_details;
+          if (updated.avatar_url !== undefined) toUpdate.avatar_url = updated.avatar_url;
+          updateUser('captain', toUpdate);
         }}
         todayIncome={earningsSummary.todayIncome}
         todayEarnings={earningsSummary.todayIncome}

@@ -26,16 +26,27 @@ function AppContent() {
   const isCaptainAuthed = isAuthenticated('captain');
   const isAdminAuthed = isAuthenticated('admin');
 
-  // Automatically keep view synced with authenticated role:
-  // When passenger signs in, ensure view is not captain.
-  // When captain signs in, ensure view is not passenger.
-  useEffect(() => {
-    if (isPassengerAuthed && activeView === 'captain') {
-      setActiveView('passenger');
-    } else if (isCaptainAuthed && activeView === 'passenger') {
-      setActiveView('captain');
-    }
-  }, [isPassengerAuthed, isCaptainAuthed, activeView]);
+  const captainUserProp = React.useMemo(() => {
+    if (!captainUser) return undefined;
+    return {
+      id: captainUser.id,
+      name: captainUser.name,
+      email: captainUser.email,
+      phone: captainUser.phone,
+      role: 'captain' as const,
+      rating: captainUser.rating || 5.0,
+      vehicle_details: captainUser.vehicle_details || '',
+      avatar_url: captainUser.avatar_url,
+    };
+  }, [
+    captainUser?.id,
+    captainUser?.name,
+    captainUser?.email,
+    captainUser?.phone,
+    captainUser?.rating,
+    captainUser?.vehicle_details,
+    captainUser?.avatar_url,
+  ]);
 
   return (
     <div
@@ -45,7 +56,7 @@ function AppContent() {
           : 'bg-slate-950 text-slate-100 selection:bg-amber-500 selection:text-slate-950'
       }`}
     >
-      {/* Realtime Navigation & Connection Header */}
+      {/* Realtime Navigation & Connection Header with Top Center App Switcher */}
       <ConnectionStatusBanner
         onOpenSqlModal={() => setIsSqlModalOpen(true)}
         onRefreshAll={handleRefreshAll}
@@ -53,7 +64,7 @@ function AppContent() {
         onChangeView={setActiveView}
       />
 
-      {/* Main App Container - Only Show App Features After Sign In */}
+      {/* Main App Container */}
       <main className="flex-1 w-full flex flex-col justify-center" key={refreshKey}>
         {/* ================= ADMIN VIEW ================= */}
         {activeView === 'admin' && (
@@ -69,8 +80,8 @@ function AppContent() {
           )
         )}
 
-        {/* ================= PASSENGER VIEW (Hidden if captain is signed in) ================= */}
-        {activeView === 'passenger' && !isCaptainAuthed && (
+        {/* ================= PASSENGER VIEW ================= */}
+        {activeView === 'passenger' && (
           !isPassengerAuthed ? (
             <div className="py-8 px-4 my-auto">
               <AuthScreen
@@ -100,8 +111,8 @@ function AppContent() {
           )
         )}
 
-        {/* ================= CAPTAIN VIEW (Hidden if passenger is signed in) ================= */}
-        {activeView === 'captain' && !isPassengerAuthed && (
+        {/* ================= CAPTAIN VIEW ================= */}
+        {activeView === 'captain' && (
           !isCaptainAuthed ? (
             <div className="py-8 px-4 my-auto">
               <AuthScreen
@@ -112,20 +123,7 @@ function AppContent() {
           ) : (
             <div className="py-6 px-4">
               <CaptainApp
-                captainUser={
-                  captainUser
-                    ? {
-                        id: captainUser.id,
-                        name: captainUser.name,
-                        email: captainUser.email,
-                        phone: captainUser.phone,
-                        role: 'captain',
-                        rating: captainUser.rating || 5.0,
-                        vehicle_details: captainUser.vehicle_details || '',
-                        avatar_url: captainUser.avatar_url,
-                      }
-                    : undefined
-                }
+                captainUser={captainUserProp}
                 titleSuffix={captainUser?.name ? captainUser.name.split(' ')[0] : ''}
                 onOpenSqlModal={() => setIsSqlModalOpen(true)}
               />

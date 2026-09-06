@@ -453,7 +453,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         vehicle_details: role === 'captain' ? '' : undefined,
       };
 
-      const updatedUser: AuthUser = { ...base, ...updates };
+      // Filter out undefined values to prevent accidental property deletions
+      const cleanUpdates: Partial<AuthUser> = {};
+      (Object.keys(updates) as (keyof AuthUser)[]).forEach((k) => {
+        if (updates[k] !== undefined) {
+          (cleanUpdates as any)[k] = updates[k];
+        }
+      });
+
+      const updatedUser: AuthUser = { ...base, ...cleanUpdates };
       targetUserId = updatedUser.id;
       try {
         localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(updatedUser));

@@ -77,66 +77,134 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
     initialTab || 'profile'
   );
   const [isEditing, setIsEditing] = useState(false);
+  const parseVehicleStr = (vehStr: string) => {
+    const safeStr = (vehStr || '').trim();
+    let model = 'Yamaha MT-07';
+    let color = 'Stealth Black';
+    let plate = 'DL-01-AB-7492';
+
+    if (safeStr.includes('#')) {
+      const parts = safeStr.split('#');
+      plate = parts[1]?.trim() || plate;
+      const left = parts[0]?.trim() || '';
+      if (left.includes('·')) {
+        const sub = left.split('·');
+        model = sub[0]?.trim() || model;
+        color = sub[1]?.trim() || color;
+      } else if (left.includes('-')) {
+        const sub = left.split('-');
+        model = sub[0]?.trim() || model;
+        color = sub[1]?.trim() || color;
+      } else {
+        model = left || model;
+      }
+    } else if (safeStr.includes('·')) {
+      const sub = safeStr.split('·');
+      model = sub[0]?.trim() || model;
+      color = sub[1]?.trim() || color;
+    } else if (safeStr.length > 0) {
+      model = safeStr;
+    }
+
+    return { model, color, plate };
+  };
+
+  const getInitialBike = () => {
+    try {
+      const storedBike = localStorage.getItem('motoride_registered_bike');
+      if (storedBike) return storedBike;
+      const stored = localStorage.getItem('motoride_active_captain_profile');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.vehicle_details) return parsed.vehicle_details;
+      }
+    } catch (_) {}
+    return captain.vehicle_details || 'Yamaha MT-07 · Stealth Black #DL-01-AB-7492';
+  };
+
+  const initialVehicle = getInitialBike();
+  const initialParsed = parseVehicleStr(initialVehicle);
+
   const [name, setName] = useState(captain.name || '');
   const [phone, setPhone] = useState(captain.phone || '');
   const [email, setEmail] = useState(captain.email || 'alex.rivera.driver@motoride.com');
-  const [vehicleDetails, setVehicleDetails] = useState(
-    captain.vehicle_details || 'Yamaha MT-07 · Stealth Black #DL-01-AB-7492'
-  );
-  const [licensePlate, setLicensePlate] = useState('DL-01-AB-7492');
+  const [vehicleDetails, setVehicleDetails] = useState(initialVehicle);
+  const [licensePlate, setLicensePlate] = useState(initialParsed.plate);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [savedSuccessMessage, setSavedSuccessMessage] = useState('Profile changes saved successfully');
 
   // Dedicated Registered Bike Editing State
   const [isEditingBike, setIsEditingBike] = useState(false);
-  const [bikeModel, setBikeModel] = useState('Yamaha MT-07');
-  const [bikeColor, setBikeColor] = useState('Stealth Black');
-  const [bikePlateInput, setBikePlateInput] = useState('DL-01-AB-7492');
+  const [isBikeDirty, setIsBikeDirty] = useState(false);
+  const [bikeModel, setBikeModel] = useState(initialParsed.model);
+  const [bikeColor, setBikeColor] = useState(initialParsed.color);
+  const [bikePlateInput, setBikePlateInput] = useState(initialParsed.plate);
 
   const syncVehicleFields = (vehStr: string) => {
-    const safeStr = vehStr || '';
+    const safeStr = (vehStr || '').trim();
+    if (!safeStr) return;
     setVehicleDetails(safeStr);
-    if (safeStr.includes('#')) {
-      const parts = safeStr.split('#');
-      const plate = parts[1]?.trim() || '';
-      setLicensePlate(plate);
-      setBikePlateInput(plate);
-      if (parts[0].includes('·')) {
-        const sub = parts[0].split('·');
-        setBikeModel(sub[0]?.trim() || '');
-        setBikeColor(sub[1]?.trim() || '');
-      } else {
-        setBikeModel(parts[0]?.trim() || '');
-      }
-    } else if (safeStr.includes('·')) {
-      const sub = safeStr.split('·');
-      setBikeModel(sub[0]?.trim() || '');
-      setBikeColor(sub[1]?.trim() || '');
+    const parsed = parseVehicleStr(safeStr);
+    setLicensePlate(parsed.plate);
+    setBikePlateInput(parsed.plate);
+    setBikeModel(parsed.model);
+    setBikeColor(parsed.color);
+  };
+
+  const handleOpenBikeEditor = () => {
+    if (!isEditingBike) {
+      const parsed = parseVehicleStr(vehicleDetails);
+      setBikeModel(parsed.model);
+      setBikeColor(parsed.color);
+      setBikePlateInput(parsed.plate);
+      setIsBikeDirty(false);
+      setIsEditingBike(true);
     } else {
-      setBikeModel(safeStr.trim());
+      setIsEditingBike(false);
+      setIsBikeDirty(false);
     }
+  };
+
+  const handleCancelBikeEdit = () => {
+    setIsEditingBike(false);
+    setIsBikeDirty(false);
+    const parsed = parseVehicleStr(vehicleDetails);
+    setBikeModel(parsed.model);
+    setBikeColor(parsed.color);
+    setBikePlateInput(parsed.plate);
   };
 
   // Switch tab if initialTab provided on open
   useEffect(() => {
     if (initialTab && isOpen) {
       setActiveTab(initialTab);
+      if (initialTab === 'vehicle' && !isEditingBike && !isBikeDirty) {
+        const parsed = parseVehicleStr(vehicleDetails);
+        setBikeModel(parsed.model);
+        setBikeColor(parsed.color);
+        setBikePlateInput(parsed.plate);
+      }
     }
   }, [initialTab, isOpen]);
 
   // Synchronize state whenever captain prop updates (e.g. login, profile changes)
+  // CRITICAL: Never automatically overwrite or remove user-filled bike details if user is editing or has dirty changes!
   useEffect(() => {
     if (captain) {
-      setName(captain.name || '');
-      setPhone(captain.phone || '');
-      if (captain.email) {
+      if (captain.name && !isEditing) {
+        setName(captain.name);
+      }
+      if (captain.phone && !isEditing) {
+        setPhone(captain.phone);
+      }
+      if (captain.email && !isEditing) {
         setEmail(captain.email);
       }
-      if (captain.vehicle_details) {
+      if (captain.vehicle_details && !isEditingBike && !isBikeDirty && !isEditing) {
         syncVehicleFields(captain.vehicle_details);
       }
     }
-  }, [captain]);
+  }, [captain, isEditingBike, isBikeDirty, isEditing]);
 
   // Captain Preferences
   const [autoAccept, setAutoAccept] = useState(false);
@@ -301,15 +369,34 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    const finalVehicle = vehicleDetails.trim();
+    const finalVehicle = vehicleDetails.trim() || 'Yamaha MT-07 · Stealth Black #DL-01-AB-7492';
+
+    try {
+      localStorage.setItem('motoride_registered_bike', finalVehicle);
+      const parsed = parseVehicleStr(finalVehicle);
+      localStorage.setItem('motoride_registered_bike_plate', parsed.plate);
+      localStorage.setItem('motoride_registered_bike_model', parsed.model);
+      localStorage.setItem('motoride_registered_bike_color', parsed.color);
+      const stored = localStorage.getItem('motoride_active_captain_profile');
+      if (stored) {
+        const parsedStored = JSON.parse(stored);
+        localStorage.setItem(
+          'motoride_active_captain_profile',
+          JSON.stringify({ ...parsedStored, vehicle_details: finalVehicle })
+        );
+      }
+    } catch (_) {}
+
     onUpdateCaptain({
       name: name.trim(),
       phone: phone.trim(),
       email: email.trim(),
       vehicle_details: finalVehicle,
+      avatar_url: captain.avatar_url,
     });
     syncVehicleFields(finalVehicle);
     setIsEditing(false);
+    setIsBikeDirty(false);
     setSavedSuccessMessage('Captain profile and registered bike updated successfully!');
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
@@ -324,20 +411,51 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
 
     setVehicleDetails(newVehicleDetails);
     setLicensePlate(finalPlate);
-    setRcDoc((prev) => ({
-      ...prev,
-      rcNumber: finalPlate,
-      updatedAt: new Date().toISOString(),
-    }));
+    setBikeModel(finalModel);
+    setBikeColor(finalColor);
+    setBikePlateInput(finalPlate);
+    setIsBikeDirty(false);
+    setIsEditingBike(false);
 
-    onUpdateCaptain({
-      vehicle_details: newVehicleDetails,
+    // Save to localStorage immediately so it is permanently durable across reloads
+    try {
+      localStorage.setItem('motoride_registered_bike', newVehicleDetails);
+      localStorage.setItem('motoride_registered_bike_plate', finalPlate);
+      localStorage.setItem('motoride_registered_bike_model', finalModel);
+      localStorage.setItem('motoride_registered_bike_color', finalColor);
+      const stored = localStorage.getItem('motoride_active_captain_profile');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        localStorage.setItem(
+          'motoride_active_captain_profile',
+          JSON.stringify({ ...parsed, vehicle_details: newVehicleDetails })
+        );
+      }
+    } catch (_) {}
+
+    setRcDoc((prev) => {
+      const next = {
+        ...prev,
+        rcNumber: finalPlate,
+        updatedAt: new Date().toISOString(),
+      };
+      try {
+        localStorage.setItem(`motoride_captain_rc_${captain.id}`, JSON.stringify(next));
+      } catch (_) {}
+      return next;
     });
 
-    setIsEditingBike(false);
-    setSavedSuccessMessage(`Registered bike updated to ${finalModel}!`);
+    onUpdateCaptain({
+      name: name.trim() || captain.name || 'Captain',
+      phone: phone.trim() || captain.phone || '',
+      email: email.trim() || captain.email || '',
+      vehicle_details: newVehicleDetails,
+      avatar_url: captain.avatar_url,
+    });
+
+    setSavedSuccessMessage(`Registered bike updated to ${finalModel} (${finalPlate})!`);
     setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
+    setTimeout(() => setSavedSuccess(false), 3000);
   };
 
   const toggleChecklistItem = (key: keyof typeof checklist) => {
@@ -558,7 +676,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                             type="button"
                             onClick={() => {
                               setActiveTab('vehicle');
-                              setIsEditingBike(true);
+                              handleOpenBikeEditor();
                             }}
                             className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 cursor-pointer"
                           >
@@ -632,7 +750,10 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                         type="text"
                         required
                         value={vehicleDetails || ''}
-                        onChange={(e) => setVehicleDetails(e.target.value)}
+                        onChange={(e) => {
+                          setVehicleDetails(e.target.value);
+                          setIsBikeDirty(true);
+                        }}
                         placeholder="e.g. Yamaha MT-07 · Stealth Black #DL-01-AB-7492"
                         className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-amber-500 ${
                           isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -649,7 +770,10 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                           <button
                             key={preset}
                             type="button"
-                            onClick={() => setVehicleDetails(`${preset} #${licensePlate}`)}
+                            onClick={() => {
+                              setVehicleDetails(`${preset} #${licensePlate}`);
+                              setIsBikeDirty(true);
+                            }}
                             className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
                               vehicleDetails.startsWith(preset)
                                 ? 'bg-amber-500/20 text-amber-600 border-amber-500/40 font-bold'
@@ -709,7 +833,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                       </span>
                       <button
                         type="button"
-                        onClick={() => setIsEditingBike(!isEditingBike)}
+                        onClick={handleOpenBikeEditor}
                         className={`text-xs px-2.5 py-1 rounded-lg font-bold border transition-colors cursor-pointer ${
                           isLight
                             ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300'
@@ -749,10 +873,11 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                                 setBikeModel(preset.m);
                                 setBikeColor(preset.c);
                                 setBikePlateInput(preset.p);
+                                setIsBikeDirty(true);
                               }}
                               className={`text-[10px] px-2 py-1 rounded-md border font-semibold transition-colors cursor-pointer ${
                                 bikeModel === preset.m
-                                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
+                                    ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
                                   : isLight
                                   ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
                                   : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
@@ -773,7 +898,10 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                             type="text"
                             required
                             value={bikeModel || ''}
-                            onChange={(e) => setBikeModel(e.target.value)}
+                            onChange={(e) => {
+                              setBikeModel(e.target.value);
+                              setIsBikeDirty(true);
+                            }}
                             placeholder="e.g. Yamaha MT-07"
                             className={`w-full p-2 border rounded-xl focus:outline-none focus:border-amber-500 ${
                               isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -789,7 +917,10 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                             type="text"
                             required
                             value={bikeColor || ''}
-                            onChange={(e) => setBikeColor(e.target.value)}
+                            onChange={(e) => {
+                              setBikeColor(e.target.value);
+                              setIsBikeDirty(true);
+                            }}
                             placeholder="e.g. Stealth Black"
                             className={`w-full p-2 border rounded-xl focus:outline-none focus:border-amber-500 ${
                               isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -806,7 +937,10 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                           type="text"
                           required
                           value={bikePlateInput || ''}
-                          onChange={(e) => setBikePlateInput(e.target.value.toUpperCase())}
+                          onChange={(e) => {
+                            setBikePlateInput(e.target.value.toUpperCase());
+                            setIsBikeDirty(true);
+                          }}
                           placeholder="e.g. DL-01-AB-7492"
                           className={`w-full p-2 font-mono font-bold uppercase border rounded-xl focus:outline-none focus:border-amber-500 ${
                             isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
@@ -817,8 +951,8 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                       <div className="flex gap-2 pt-1">
                         <button
                           type="button"
-                          onClick={() => setIsEditingBike(false)}
-                          className={`flex-1 py-2 font-bold rounded-xl border text-xs ${
+                          onClick={handleCancelBikeEdit}
+                          className={`flex-1 py-2 font-bold rounded-xl border text-xs cursor-pointer ${
                             isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                           }`}
                         >
