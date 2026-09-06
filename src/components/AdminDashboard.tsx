@@ -113,16 +113,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
 
   // Platform Settings State (Synced from PricingContext)
   const [settings, setSettings] = useState<ExtendedPlatformPricing>(pricing);
+  const [isPricingDirty, setIsPricingDirty] = useState<boolean>(false);
   const [pricingActiveCategory, setPricingActiveCategory] = useState<'both' | 'moto_comfort' | 'moto_delivery'>('both');
   const [simDistAdmin, setSimDistAdmin] = useState<number>(4.8);
   const [simTierAdmin, setSimTierAdmin] = useState<'moto_comfort' | 'moto_delivery'>('moto_comfort');
   const [simOfferFareAdmin, setSimOfferFareAdmin] = useState<number>(100);
 
   useEffect(() => {
-    setSettings(pricing);
-  }, [pricing]);
+    if (!isPricingDirty) {
+      setSettings(pricing);
+    }
+  }, [pricing, isPricingDirty]);
 
   const handleSavePricing = () => {
+    setIsPricingDirty(false);
     updatePricing({
       ...settings,
       isAdminConfigured: true,
@@ -144,6 +148,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
   };
 
   const handleResetPricing = () => {
+    setIsPricingDirty(false);
     resetPricingToDefault();
     setSettings(DEFAULT_PLATFORM_PRICING);
     setActionNotice({
@@ -1394,10 +1399,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
               </div>
             </div>
 
-            <div className="text-[11px] text-slate-500 flex items-center gap-2">
-              <span>Comfort: ₹{(settings.tierPricing?.moto_comfort?.baseFare ?? 0).toFixed(2)} base / ₹{settings.tierPricing?.moto_comfort?.perKmRate ?? 9}/km</span>
+            <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-2">
+              <span className="font-medium text-slate-700 dark:text-slate-300">
+                Comfort: ₹{(settings.tierPricing?.moto_comfort?.baseFare ?? 0).toFixed(2)} base • {settings.tierPricing?.moto_comfort?.baseIncludedKm ?? 1.5}km incl • ₹{(settings.tierPricing?.moto_comfort?.perKmRate ?? 9).toFixed(2)}/km • ₹{(settings.tierPricing?.moto_comfort?.perMinuteRate ?? 0.5).toFixed(2)}/min
+              </span>
               <span>•</span>
-              <span>Courier: ₹{(settings.tierPricing?.moto_delivery?.baseFare ?? 0).toFixed(2)} base / ₹{settings.tierPricing?.moto_delivery?.perKmRate ?? 7.5}/km</span>
+              <span className="font-medium text-slate-700 dark:text-slate-300">
+                Courier: ₹{(settings.tierPricing?.moto_delivery?.baseFare ?? 0).toFixed(2)} base • {settings.tierPricing?.moto_delivery?.baseIncludedKm ?? 1.5}km incl • ₹{(settings.tierPricing?.moto_delivery?.perKmRate ?? 7.5).toFixed(2)}/km • ₹{(settings.tierPricing?.moto_delivery?.perMinuteRate ?? 0.3).toFixed(2)}/min
+              </span>
             </div>
           </div>
 
@@ -1467,6 +1476,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                     value={settings.tierPricing?.moto_comfort?.baseFare ?? 0}
                     onChange={(e) => {
                       const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                      setIsPricingDirty(true);
                       setSettings((prev) => ({
                         ...prev,
                         baseFare: val,
@@ -1492,86 +1502,98 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                 <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-bold uppercase text-slate-400">Comfort Included Distance (km)</label>
-                    <span className="font-mono text-xs font-bold text-sky-600">{settings.tierPricing.moto_comfort.baseIncludedKm} km</span>
+                    <span className="font-mono text-xs font-bold text-sky-600">{settings.tierPricing?.moto_comfort?.baseIncludedKm ?? 1.5} km</span>
                   </div>
                   <input
                     type="number"
                     min="0"
-                    step="0.5"
-                    value={settings.tierPricing.moto_comfort.baseIncludedKm}
+                    step="any"
+                    value={settings.tierPricing?.moto_comfort?.baseIncludedKm ?? 0}
                     onChange={(e) => {
-                      const val = Math.max(0, parseFloat(e.target.value) || 0);
-                      setSettings({
-                        ...settings,
+                      const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                      setIsPricingDirty(true);
+                      setSettings((prev) => ({
+                        ...prev,
                         baseIncludedKm: val,
                         tierPricing: {
-                          ...settings.tierPricing,
+                          ...prev.tierPricing,
                           moto_comfort: {
-                            ...settings.tierPricing.moto_comfort,
+                            ...prev.tierPricing.moto_comfort,
                             baseIncludedKm: val,
                           },
                         },
-                      });
+                      }));
                     }}
                     className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-sky-500 ${
                       isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
                     }`}
                   />
+                  <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Distance included in base pickup fare before per-km charges apply.
+                  </p>
                 </div>
 
                 {/* Per-Km Rate */}
                 <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-bold uppercase text-slate-400">Comfort Per-Km Rate (₹/km)</label>
-                    <span className="font-mono text-xs font-bold text-emerald-600">₹{settings.tierPricing.moto_comfort.perKmRate.toFixed(2)}/km</span>
+                    <span className="font-mono text-xs font-bold text-emerald-600">₹{(settings.tierPricing?.moto_comfort?.perKmRate ?? 9).toFixed(2)}/km</span>
                   </div>
                   <input
                     type="number"
                     min="0"
-                    step="0.5"
-                    value={settings.tierPricing.moto_comfort.perKmRate}
+                    step="any"
+                    value={settings.tierPricing?.moto_comfort?.perKmRate ?? 0}
                     onChange={(e) => {
-                      const val = Math.max(0, parseFloat(e.target.value) || 0);
-                      setSettings({
-                        ...settings,
+                      const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                      setIsPricingDirty(true);
+                      setSettings((prev) => ({
+                        ...prev,
                         perKmRate: val,
                         tierPricing: {
-                          ...settings.tierPricing,
+                          ...prev.tierPricing,
                           moto_comfort: {
-                            ...settings.tierPricing.moto_comfort,
+                            ...prev.tierPricing.moto_comfort,
                             perKmRate: val,
                           },
                         },
-                      });
+                      }));
                     }}
                     className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-emerald-500 ${
                       isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
                     }`}
                   />
+                  <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Rate applied per kilometer after included distance is exceeded.
+                  </p>
                 </div>
 
                 {/* Per-Minute Time Rate & Minimum Fare */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
-                    <label className="text-[10px] font-bold uppercase text-slate-400 block">Time (₹/min)</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold uppercase text-slate-400 block">Time (₹/min)</label>
+                      <span className="font-mono text-[11px] font-bold text-teal-600">₹{(settings.tierPricing?.moto_comfort?.perMinuteRate ?? 0.5).toFixed(2)}/m</span>
+                    </div>
                     <input
                       type="number"
                       min="0"
-                      step="0.1"
-                      value={settings.tierPricing.moto_comfort.perMinuteRate}
+                      step="any"
+                      value={settings.tierPricing?.moto_comfort?.perMinuteRate ?? 0}
                       onChange={(e) => {
-                        const val = Math.max(0, parseFloat(e.target.value) || 0);
-                        setSettings({
-                          ...settings,
+                        const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                        setIsPricingDirty(true);
+                        setSettings((prev) => ({
+                          ...prev,
                           perMinuteRate: val,
                           tierPricing: {
-                            ...settings.tierPricing,
+                            ...prev.tierPricing,
                             moto_comfort: {
-                              ...settings.tierPricing.moto_comfort,
+                              ...prev.tierPricing.moto_comfort,
                               perMinuteRate: val,
                             },
                           },
-                        });
+                        }));
                       }}
                       className={`w-full border rounded-xl px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-teal-500 ${
                         isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
@@ -1580,25 +1602,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                   </div>
 
                   <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
-                    <label className="text-[10px] font-bold uppercase text-slate-400 block">Min Fare (₹)</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold uppercase text-slate-400 block">Min Fare (₹)</label>
+                      <span className="font-mono text-[11px] font-bold text-amber-600">₹{(settings.tierPricing?.moto_comfort?.minimumFare ?? 0).toFixed(2)}</span>
+                    </div>
                     <input
                       type="number"
                       min="0"
-                      step="5"
-                      value={settings.tierPricing.moto_comfort.minimumFare}
+                      step="any"
+                      value={settings.tierPricing?.moto_comfort?.minimumFare ?? 0}
                       onChange={(e) => {
-                        const val = Math.max(0, parseFloat(e.target.value) || 0);
-                        setSettings({
-                          ...settings,
+                        const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                        setIsPricingDirty(true);
+                        setSettings((prev) => ({
+                          ...prev,
                           minimumFare: val,
                           tierPricing: {
-                            ...settings.tierPricing,
+                            ...prev.tierPricing,
                             moto_comfort: {
-                              ...settings.tierPricing.moto_comfort,
+                              ...prev.tierPricing.moto_comfort,
                               minimumFare: val,
                             },
                           },
-                        });
+                        }));
                       }}
                       className={`w-full border rounded-xl px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-amber-500 ${
                         isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
@@ -1642,6 +1668,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                     value={settings.tierPricing?.moto_delivery?.baseFare ?? 0}
                     onChange={(e) => {
                       const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                      setIsPricingDirty(true);
                       setSettings((prev) => ({
                         ...prev,
                         tierPricing: {
@@ -1666,83 +1693,95 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                 <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-bold uppercase text-slate-400">Courier Included Distance (km)</label>
-                    <span className="font-mono text-xs font-bold text-sky-600">{settings.tierPricing.moto_delivery.baseIncludedKm} km</span>
+                    <span className="font-mono text-xs font-bold text-sky-600">{settings.tierPricing?.moto_delivery?.baseIncludedKm ?? 1.5} km</span>
                   </div>
                   <input
                     type="number"
                     min="0"
-                    step="0.5"
-                    value={settings.tierPricing.moto_delivery.baseIncludedKm}
+                    step="any"
+                    value={settings.tierPricing?.moto_delivery?.baseIncludedKm ?? 0}
                     onChange={(e) => {
-                      const val = Math.max(0, parseFloat(e.target.value) || 0);
-                      setSettings({
-                        ...settings,
+                      const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                      setIsPricingDirty(true);
+                      setSettings((prev) => ({
+                        ...prev,
                         tierPricing: {
-                          ...settings.tierPricing,
+                          ...prev.tierPricing,
                           moto_delivery: {
-                            ...settings.tierPricing.moto_delivery,
+                            ...prev.tierPricing.moto_delivery,
                             baseIncludedKm: val,
                           },
                         },
-                      });
+                      }));
                     }}
                     className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-sky-500 ${
                       isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
                     }`}
                   />
+                  <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Distance included in base pickup fare before per-km charges apply.
+                  </p>
                 </div>
 
                 {/* Per-Km Rate */}
                 <div className={`p-3.5 rounded-2xl border space-y-1.5 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-bold uppercase text-slate-400">Courier Per-Km Rate (₹/km)</label>
-                    <span className="font-mono text-xs font-bold text-sky-600">₹{settings.tierPricing.moto_delivery.perKmRate.toFixed(2)}/km</span>
+                    <span className="font-mono text-xs font-bold text-sky-600">₹{(settings.tierPricing?.moto_delivery?.perKmRate ?? 7.5).toFixed(2)}/km</span>
                   </div>
                   <input
                     type="number"
                     min="0"
-                    step="0.5"
-                    value={settings.tierPricing.moto_delivery.perKmRate}
+                    step="any"
+                    value={settings.tierPricing?.moto_delivery?.perKmRate ?? 0}
                     onChange={(e) => {
-                      const val = Math.max(0, parseFloat(e.target.value) || 0);
-                      setSettings({
-                        ...settings,
+                      const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                      setIsPricingDirty(true);
+                      setSettings((prev) => ({
+                        ...prev,
                         tierPricing: {
-                          ...settings.tierPricing,
+                          ...prev.tierPricing,
                           moto_delivery: {
-                            ...settings.tierPricing.moto_delivery,
+                            ...prev.tierPricing.moto_delivery,
                             perKmRate: val,
                           },
                         },
-                      });
+                      }));
                     }}
                     className={`w-full border rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-sky-500 ${
                       isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
                     }`}
                   />
+                  <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Rate applied per kilometer after included distance is exceeded.
+                  </p>
                 </div>
 
                 {/* Per-Minute Time Rate & Minimum Fare */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
-                    <label className="text-[10px] font-bold uppercase text-slate-400 block">Time (₹/min)</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold uppercase text-slate-400 block">Time (₹/min)</label>
+                      <span className="font-mono text-[11px] font-bold text-teal-600">₹{(settings.tierPricing?.moto_delivery?.perMinuteRate ?? 0.3).toFixed(2)}/m</span>
+                    </div>
                     <input
                       type="number"
                       min="0"
-                      step="0.1"
-                      value={settings.tierPricing.moto_delivery.perMinuteRate}
+                      step="any"
+                      value={settings.tierPricing?.moto_delivery?.perMinuteRate ?? 0}
                       onChange={(e) => {
-                        const val = Math.max(0, parseFloat(e.target.value) || 0);
-                        setSettings({
-                          ...settings,
+                        const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                        setIsPricingDirty(true);
+                        setSettings((prev) => ({
+                          ...prev,
                           tierPricing: {
-                            ...settings.tierPricing,
+                            ...prev.tierPricing,
                             moto_delivery: {
-                              ...settings.tierPricing.moto_delivery,
+                              ...prev.tierPricing.moto_delivery,
                               perMinuteRate: val,
                             },
                           },
-                        });
+                        }));
                       }}
                       className={`w-full border rounded-xl px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-teal-500 ${
                         isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
@@ -1751,24 +1790,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                   </div>
 
                   <div className={`p-3 rounded-2xl border space-y-1 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
-                    <label className="text-[10px] font-bold uppercase text-slate-400 block">Min Fare (₹)</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold uppercase text-slate-400 block">Min Fare (₹)</label>
+                      <span className="font-mono text-[11px] font-bold text-amber-600">₹{(settings.tierPricing?.moto_delivery?.minimumFare ?? 0).toFixed(2)}</span>
+                    </div>
                     <input
                       type="number"
                       min="0"
-                      step="5"
-                      value={settings.tierPricing.moto_delivery.minimumFare}
+                      step="any"
+                      value={settings.tierPricing?.moto_delivery?.minimumFare ?? 0}
                       onChange={(e) => {
-                        const val = Math.max(0, parseFloat(e.target.value) || 0);
-                        setSettings({
-                          ...settings,
+                        const val = e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0);
+                        setIsPricingDirty(true);
+                        setSettings((prev) => ({
+                          ...prev,
                           tierPricing: {
-                            ...settings.tierPricing,
+                            ...prev.tierPricing,
                             moto_delivery: {
-                              ...settings.tierPricing.moto_delivery,
+                              ...prev.tierPricing.moto_delivery,
                               minimumFare: val,
                             },
                           },
-                        });
+                        }));
                       }}
                       className={`w-full border rounded-xl px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-amber-500 ${
                         isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
@@ -1914,7 +1957,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                         <div>
                           <span className="font-bold block">{activeConfig.name} Fair Fare</span>
                           <span className={`text-[9px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                            Base ₹{(activeConfig.baseFare ?? 0).toFixed(2)} + {chargeableKm.toFixed(1)}km @ ₹{activeConfig.perKmRate}/km
+                            Base ₹{(activeConfig.baseFare ?? 0).toFixed(2)} ({activeConfig.baseIncludedKm}km incl) + {chargeableKm.toFixed(1)}km @ ₹{activeConfig.perKmRate}/km + {simulatedMins}m @ ₹{activeConfig.perMinuteRate}/m
                           </span>
                         </div>
                         <span className="text-base font-black text-emerald-600 dark:text-emerald-400">

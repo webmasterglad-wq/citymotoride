@@ -67,12 +67,12 @@ export const PricingProvider: React.FC<{ children: ReactNode }> = ({ children })
         tierPricing: {
           moto_comfort: {
             ...prev.tierPricing.moto_comfort,
-            ...(updates.tierPricing?.moto_comfort || {}),
             ...(updates.baseFare !== undefined ? { baseFare: updates.baseFare } : {}),
             ...(updates.perKmRate !== undefined ? { perKmRate: updates.perKmRate } : {}),
             ...(updates.baseIncludedKm !== undefined ? { baseIncludedKm: updates.baseIncludedKm } : {}),
             ...(updates.perMinuteRate !== undefined ? { perMinuteRate: updates.perMinuteRate } : {}),
             ...(updates.minimumFare !== undefined ? { minimumFare: updates.minimumFare } : {}),
+            ...(updates.tierPricing?.moto_comfort || {}),
           },
           moto_delivery: {
             ...prev.tierPricing.moto_delivery,
