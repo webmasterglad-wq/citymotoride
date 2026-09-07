@@ -1020,18 +1020,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                 <Bike className="w-3 h-3 text-amber-500 shrink-0" />
                 <span className="truncate">{currentCaptain.vehicle_details || 'Yamaha MT-07 · Black'}</span>
               </button>
-              {currentCaptain.email && (
-                <>
-                  <span>·</span>
-                  <span
-                    id="captain-dashboard-header-email"
-                    title={`Captain Account Email: ${currentCaptain.email}`}
-                    className="font-mono text-[10px] text-slate-500 dark:text-slate-400 max-w-[210px] truncate"
-                  >
-                    {currentCaptain.email}
-                  </span>
-                </>
-              )}
             </div>
           </div>
         </div>
