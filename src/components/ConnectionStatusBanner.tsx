@@ -271,35 +271,6 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
               </button>
             </div>
           )}
-
-          {/* Database Setup Button */}
-          <button
-            type="button"
-            id="header-sql-setup-btn"
-            onClick={onOpenSqlModal}
-            title="Open Supabase SQL Schema setup"
-            className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
-              isLight
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-            }`}
-          >
-            <Database className="w-3.5 h-3.5 text-emerald-500" />
-          </button>
-
-          {/* Theme Toggle */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-            className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
-              isLight
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-            }`}
-          >
-            {isLight ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
-          </button>
         </div>
       </div>
 
