@@ -20,7 +20,6 @@ import {
   Plus,
   Minus,
   CreditCard,
-  Wallet,
   Check,
   ChevronRight,
   Radio,

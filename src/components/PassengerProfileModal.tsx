@@ -5,7 +5,6 @@ import {
   Mail,
   Shield,
   Star,
-  Wallet,
   CreditCard,
   MapPin,
   Clock,
@@ -50,7 +49,7 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
   onUpdateUser,
 }) => {
   const { isLight, toggleTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'wallet' | 'history' | 'saved' | 'safety'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'history' | 'saved' | 'safety'>('profile');
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [phone, setPhone] = useState(user?.phone || '');
@@ -67,9 +66,6 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
       if (user.email) setEmail(user.email);
     }
   }, [user]);
-
-  // Wallet state
-  const [walletBalance, setWalletBalance] = useState(0);
 
   // Ride Preferences state
   const [helmetSize, setHelmetSize] = useState<'M' | 'L' | 'XL'>('M');
@@ -92,12 +88,6 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
       email: email.trim(),
     });
     setIsEditing(false);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
-  };
-
-  const handleAddFunds = (amount: number) => {
-    setWalletBalance((prev) => prev + amount);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
   };
@@ -216,16 +206,6 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
             }`}
           >
             Ride Preferences
-          </button>
-          <button
-            onClick={() => setActiveTab('wallet')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'wallet'
-                ? 'bg-emerald-500 text-slate-950 shadow-md font-black'
-                : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Wallet & Pay (₹{walletBalance.toFixed(2)})
           </button>
           <button
             onClick={() => setActiveTab('history')}
@@ -562,88 +542,7 @@ export const PassengerProfileModal: React.FC<PassengerProfileModalProps> = ({
             </div>
           )}
 
-          {/* ================= TAB 3: WALLET & PAYMENT ================= */}
-          {activeTab === 'wallet' && (
-            <div className="space-y-3">
-              <div className={`border rounded-2xl p-4 space-y-3 ${
-                isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-gradient-to-tr from-emerald-900/60 to-teal-900/40 border-emerald-500/30 text-white'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <span className={`font-semibold ${isLight ? 'text-emerald-800' : 'text-emerald-300'}`}>MotoRide In-App Wallet</span>
-                  <Wallet className="w-5 h-5 text-emerald-500" />
-                </div>
-                <div>
-                  <span className={`text-3xl font-black ${isLight ? 'text-emerald-900' : 'text-white'}`}>₹{walletBalance.toFixed(2)}</span>
-                  <span className={`text-[11px] block mt-0.5 ${isLight ? 'text-emerald-700' : 'text-emerald-300/80'}`}>Available for instant 1-tap checkout</span>
-                </div>
-              </div>
 
-              {/* Quick Add Funds */}
-              <div className={`border rounded-2xl p-3.5 space-y-2.5 ${
-                isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
-              }`}>
-                <span className={`text-[11px] font-bold uppercase tracking-wider block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                  Quick Top Up Balance
-                </span>
-                <div className="grid grid-cols-3 gap-2">
-                  {[50, 100, 200].map((amt) => (
-                    <button
-                      key={amt}
-                      onClick={() => handleAddFunds(amt)}
-                      className={`py-2 font-bold rounded-xl border transition-colors cursor-pointer flex items-center justify-center gap-1 ${
-                        isLight
-                          ? 'bg-white hover:bg-emerald-500 hover:text-slate-950 text-slate-800 border-slate-300 shadow-xs'
-                          : 'bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 text-slate-200 border-slate-700'
-                      }`}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      +₹{amt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Payment Methods */}
-              <div className={`border rounded-2xl p-3.5 space-y-2 ${
-                isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
-              }`}>
-                <span className={`text-[11px] font-bold uppercase tracking-wider block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                  Linked Payment Methods
-                </span>
-                <div className="space-y-1.5">
-                  <div className={`p-2.5 border rounded-xl flex items-center justify-between ${
-                    isLight ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800'
-                  }`}>
-                    <div className="flex items-center gap-2.5">
-                      <CreditCard className="w-4 h-4 text-sky-500" />
-                      <div>
-                        <span className={`font-bold block ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>UPI / Google Pay / PhonePe</span>
-                        <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>Instant scan & pay</span>
-                      </div>
-                    </div>
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
-                      isLight ? 'bg-slate-200 text-slate-800' : 'bg-slate-800 text-slate-300'
-                    }`}>
-                      Default
-                    </span>
-                  </div>
-
-                  <div className={`p-2.5 border rounded-xl flex items-center justify-between ${
-                    isLight ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800'
-                  }`}>
-                    <div className="flex items-center gap-2.5">
-                      <DollarSign className="w-4 h-4 text-emerald-500" />
-                      <div>
-                        <span className={`font-bold block ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>Cash on Trip Finish</span>
-                        <span className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>Pay captain directly</span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] text-emerald-500 font-bold">Supported</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* ================= TAB 4: TRIP HISTORY ================= */}
           {activeTab === 'history' && (
