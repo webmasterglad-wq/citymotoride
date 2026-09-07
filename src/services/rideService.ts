@@ -612,6 +612,51 @@ export const updateRideStatus = async (
   }
 };
 
+/**
+ * Update ride offered fare while searching for captains (inDrive bidding)
+ */
+export const updateRideFare = async (
+  rideId: string,
+  newFare: number
+): Promise<{ data: Ride | null; error: string | null }> => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { data: null, error: 'Supabase client is not configured' };
+
+  try {
+    const { data, error } = await supabase
+      .from('rides')
+      .update({ fare: Number(newFare.toFixed(2)) })
+      .eq('id', rideId)
+      .select()
+      .single();
+
+    if (error) {
+      return { data: null, error: error.message };
+    }
+
+    // Broadcast updated ride fare on offers bus channel
+    try {
+      offersBroadcastChannel?.postMessage({
+        type: 'passenger_raised_fare',
+        rideId,
+        newFare: Number(newFare.toFixed(2)),
+      });
+    } catch {}
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('motoride_passenger_raised_fare', {
+          detail: { rideId, newFare: Number(newFare.toFixed(2)) },
+        })
+      );
+    } catch {}
+
+    return { data: data as Ride, error: null };
+  } catch (err: any) {
+    return { data: null, error: err.message };
+  }
+};
+
 const isSocketNormalClose = (err: any): boolean => {
   if (!err) return false;
   const msg = typeof err === 'string' ? err : err?.message || (err?.toString ? err.toString() : '');

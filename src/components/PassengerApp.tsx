@@ -52,6 +52,7 @@ import {
   fetchRideById,
   submitPassengerRatingForRide,
   updateRideStatus,
+  updateRideFare,
   subscribeToPassengerRide,
   unsubscribeChannel,
   subscribeToRideOffers,
@@ -145,6 +146,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [selectedTier, setSelectedTier] = useState<string>('moto_comfort');
   const [bookingMode] = useState<'indrive'>('indrive');
   const [customBidFare, setCustomBidFare] = useState<number>(0);
+  const [customBidInput, setCustomBidInput] = useState<string>('');
+  const [hasUserModifiedBid, setHasUserModifiedBid] = useState<boolean>(false);
+  const [isRaisingFare, setIsRaisingFare] = useState<boolean>(false);
+  const [raiseFareSuccess, setRaiseFareSuccess] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('upi');
   const [skipNotice, setSkipNotice] = useState<string | null>(null);
 
@@ -248,6 +253,8 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       setEstimatedMins(0);
       setBaseCalculatedFare(0);
       setCustomBidFare(0);
+      setCustomBidInput('');
+      setHasUserModifiedBid(false);
       setIsAccurateRoute(false);
       return;
     }
@@ -270,8 +277,11 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
     setFareBreakdown(breakdown);
     setBaseCalculatedFare(breakdown.totalFare);
-    setCustomBidFare(breakdown.totalFare);
-  }, [pickup, dropoff, selectedTier, pricing]);
+    if (!hasUserModifiedBid || customBidFare <= 0) {
+      setCustomBidFare(breakdown.totalFare);
+      setCustomBidInput(breakdown.totalFare.toFixed(0));
+    }
+  }, [pickup, dropoff, selectedTier, pricing, hasUserModifiedBid]);
 
   // Handler when map directions engine computes precise road route
   const handleRouteCalculated = (newDistKm: number, newDurMins: number) => {
@@ -294,8 +304,11 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
     setFareBreakdown(breakdown);
     setBaseCalculatedFare(breakdown.totalFare);
-    // Keep custom inDrive bid updated if at default or 0
-    setCustomBidFare((prev) => (prev <= 0 || prev <= breakdown.baseFare ? breakdown.totalFare : prev));
+    // Keep custom inDrive bid updated if user hasn't customized it
+    if (!hasUserModifiedBid || customBidFare <= 0) {
+      setCustomBidFare(breakdown.totalFare);
+      setCustomBidInput(breakdown.totalFare.toFixed(0));
+    }
   };
 
   // Swap pickup and dropoff locations
@@ -518,6 +531,70 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   // Safety PIN generated per ride ID
   const safetyPin = getRidePin(activeRide?.id);
 
+  const minAllowedFare = Math.max(10, activeTierConfig.minimumFare || 10);
+
+  const handleCustomBidInputChange = (val: string) => {
+    setCustomBidInput(val);
+    const num = parseFloat(val);
+    if (!isNaN(num) && num > 0) {
+      setCustomBidFare(num);
+      setHasUserModifiedBid(true);
+    }
+  };
+
+  const handleCustomBidInputBlur = () => {
+    if (!pickup.trim() || !dropoff.trim()) return;
+    const num = parseFloat(customBidInput);
+    if (isNaN(num) || num < minAllowedFare) {
+      const fallback = Math.max(minAllowedFare, baseCalculatedFare > 0 ? baseCalculatedFare : minAllowedFare);
+      setCustomBidFare(fallback);
+      setCustomBidInput(fallback.toFixed(0));
+      setHasUserModifiedBid(fallback !== baseCalculatedFare);
+    } else {
+      const rounded = Number(num.toFixed(2));
+      setCustomBidFare(rounded);
+      setCustomBidInput(rounded.toString());
+      setHasUserModifiedBid(true);
+    }
+  };
+
+  const handleAdjustBid = (delta: number) => {
+    if (!pickup.trim() || !dropoff.trim()) return;
+    setHasUserModifiedBid(true);
+    const current = customBidFare > 0 ? customBidFare : baseCalculatedFare > 0 ? baseCalculatedFare : minAllowedFare;
+    const next = Math.max(minAllowedFare, Math.round(current + delta));
+    setCustomBidFare(next);
+    setCustomBidInput(next.toString());
+  };
+
+  const handleResetToFairFare = () => {
+    if (baseCalculatedFare <= 0) return;
+    setHasUserModifiedBid(false);
+    setCustomBidFare(baseCalculatedFare);
+    setCustomBidInput(baseCalculatedFare.toFixed(0));
+  };
+
+  const handleRaiseRideFare = async (amountToAdd: number) => {
+    if (!activeRide || activeRide.status !== 'requested') return;
+    const currentFare = Number(activeRide.fare) || baseCalculatedFare || 15;
+    const newFare = Math.round(currentFare + amountToAdd);
+    setIsRaisingFare(true);
+    try {
+      const { data, error } = await updateRideFare(activeRide.id, newFare);
+      if (error) {
+        setErrorMessage(`Could not update offer: ${error}`);
+      } else if (data) {
+        setActiveRide(data);
+        setRaiseFareSuccess(`Offer raised to ₹${newFare.toFixed(2)}! Broadcasted to nearby captains.`);
+        setTimeout(() => setRaiseFareSuccess(null), 3500);
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Failed to update offer');
+    } finally {
+      setIsRaisingFare(false);
+    }
+  };
+
   // Book Ride Action
   const handleBookRide = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -538,8 +615,13 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       return;
     }
 
+    const finalFare = customBidFare > 0 ? customBidFare : baseCalculatedFare;
+    if (finalFare <= 0) {
+      setErrorMessage('Please specify an offer fare greater than ₹0.');
+      return;
+    }
+
     setIsSubmitting(true);
-    const finalFare = bookingMode === 'indrive' ? customBidFare : baseCalculatedFare;
     const selectedTierObj = RIDE_TIERS.find((t) => t.id === selectedTier) || RIDE_TIERS[0];
 
     try {
@@ -959,73 +1041,158 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
             {/* inDrive Bidding Controls (Always Active) */}
             <div
-              className={`p-3.5 border rounded-2xl space-y-2.5 transition-colors ${
+              className={`p-3.5 border rounded-2xl space-y-3 transition-colors ${
                 isLight
-                  ? 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 shadow-sm'
-                  : 'bg-gradient-to-r from-emerald-950/40 to-slate-900 border-emerald-500/30'
+                  ? 'bg-gradient-to-r from-amber-50/70 via-emerald-50/50 to-teal-50/50 border-amber-200/80 shadow-xs'
+                  : 'bg-gradient-to-r from-amber-950/20 via-emerald-950/20 to-slate-900 border-amber-500/30'
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className={`text-xs font-black flex items-center gap-1 ${isLight ? 'text-emerald-800' : 'text-emerald-300'}`}>
-                    <Flame className="w-3.5 h-3.5 text-amber-500" />
-                    Offer Your Price to Captains
-                  </span>
-                  <p className={`text-[10px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <Flame className="w-4 h-4 text-amber-500 shrink-0" />
+                    <span className={`text-xs font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                      Offer Your Price to Captains
+                    </span>
+                  </div>
+                  <p className={`text-[11px] mt-0.5 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                     {pickup.trim() && dropoff.trim() && baseCalculatedFare > 0
-                      ? `Suggested Fair Price: ₹${baseCalculatedFare.toFixed(2)} for ${distanceKm} km`
-                      : 'Fill pickup & drop-off to compute fair fare'}
+                      ? `Recommended Fair Price: ₹${baseCalculatedFare.toFixed(2)} (${distanceKm} km)`
+                      : 'Enter pickup & drop-off to compute fair fare'}
                     {pickup.trim() && dropoff.trim() && pricing.surgeMultiplier > 1.0 && (
                       <span className="ml-1 text-amber-600 font-bold">({pricing.surgeMultiplier}x Surge Active)</span>
                     )}
                   </p>
                 </div>
-                <div className="text-right">
-                  <span className="text-lg font-black text-amber-600">
-                    {customBidFare > 0 ? `₹${customBidFare.toFixed(2)}` : '—'}
+
+                {/* Direct Editable Fare Input */}
+                <div className="flex flex-col items-end">
+                  <div
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border shadow-inner transition-colors ${
+                      !pickup.trim() || !dropoff.trim()
+                        ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                        : isLight
+                        ? 'bg-white border-amber-400 focus-within:ring-2 focus-within:ring-amber-500/30'
+                        : 'bg-slate-950 border-amber-500/50 focus-within:ring-2 focus-within:ring-amber-500/30'
+                    }`}
+                  >
+                    <span className="text-sm font-black text-amber-500">₹</span>
+                    <input
+                      id="custom-bid-fare-input"
+                      type="number"
+                      min={minAllowedFare}
+                      step="1"
+                      disabled={!pickup.trim() || !dropoff.trim()}
+                      value={customBidInput}
+                      onChange={(e) => handleCustomBidInputChange(e.target.value)}
+                      onBlur={handleCustomBidInputBlur}
+                      placeholder={baseCalculatedFare > 0 ? baseCalculatedFare.toFixed(0) : '0'}
+                      className={`w-16 text-base font-black font-mono bg-transparent focus:outline-none text-right ${
+                        isLight ? 'text-amber-700' : 'text-amber-400'
+                      }`}
+                    />
+                  </div>
+                  <span className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">
+                    Tap to type fare
                   </span>
                 </div>
               </div>
 
-              {/* Counter buttons */}
-              <div className="flex items-center gap-2 pt-1">
+              {/* Realtime Fare Comparison Tag */}
+              {pickup.trim() && dropoff.trim() && baseCalculatedFare > 0 && customBidFare > 0 && (
+                <div className="flex items-center gap-1.5">
+                  {customBidFare > baseCalculatedFare ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                      ⚡ +₹{(customBidFare - baseCalculatedFare).toFixed(0)} above fair price · Captains accept faster
+                    </span>
+                  ) : customBidFare < baseCalculatedFare ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                      ⏳ ₹{(baseCalculatedFare - customBidFare).toFixed(0)} below fair price · May take longer to match
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
+                      ✓ Matches standard recommended fair fare
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Counter and quick increment buttons */}
+              <div className="grid grid-cols-5 gap-1.5 pt-0.5">
                 <button
                   type="button"
-                  disabled={!pickup.trim() || !dropoff.trim()}
-                  onClick={() => setCustomBidFare((prev) => Math.max(activeTierConfig.minimumFare || 0, Number((prev - 5.0).toFixed(2))))}
-                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  id="bid-decrement-btn"
+                  disabled={!pickup.trim() || !dropoff.trim() || customBidFare <= minAllowedFare}
+                  onClick={() => handleAdjustBid(-5)}
+                  className={`py-2 px-1 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
                     isLight
-                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
+                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200 shadow-xs'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
                   }`}
+                  title="Decrease by ₹5"
                 >
-                  <Minus className="w-3.5 h-3.5" /> - ₹5
+                  <Minus className="w-3.5 h-3.5 stroke-[3]" /> -5
                 </button>
 
                 <button
                   type="button"
-                  disabled={!pickup.trim() || !dropoff.trim()}
-                  onClick={() => setCustomBidFare(baseCalculatedFare)}
-                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                    isLight
-                      ? 'bg-white hover:bg-slate-100 text-emerald-700 border-emerald-200 font-black'
-                      : 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border-slate-700 font-black'
+                  id="bid-reset-fair-btn"
+                  disabled={!pickup.trim() || !dropoff.trim() || baseCalculatedFare <= 0}
+                  onClick={handleResetToFairFare}
+                  className={`py-2 px-1 rounded-xl text-[11px] font-black border transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed truncate active:scale-95 ${
+                    !hasUserModifiedBid
+                      ? isLight
+                        ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs'
+                        : 'bg-amber-500 text-slate-950 border-amber-400'
+                      : isLight
+                      ? 'bg-white hover:bg-slate-100 text-emerald-700 border-emerald-300 shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border-slate-700'
                   }`}
+                  title="Reset to recommended fair fare"
                 >
-                  Fair ({baseCalculatedFare > 0 ? `₹${baseCalculatedFare.toFixed(2)}` : '—'})
+                  Fair
                 </button>
 
                 <button
                   type="button"
+                  id="bid-plus-5-btn"
                   disabled={!pickup.trim() || !dropoff.trim()}
-                  onClick={() => setCustomBidFare((prev) => Number((prev + 5.0).toFixed(2)))}
-                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  onClick={() => handleAdjustBid(5)}
+                  className={`py-2 px-1 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
                     isLight
-                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
+                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200 shadow-xs'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
                   }`}
                 >
-                  <Plus className="w-3.5 h-3.5" /> + ₹5
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" /> +5
+                </button>
+
+                <button
+                  type="button"
+                  id="bid-plus-10-btn"
+                  disabled={!pickup.trim() || !dropoff.trim()}
+                  onClick={() => handleAdjustBid(10)}
+                  className={`py-2 px-1 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
+                    isLight
+                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200 shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                  }`}
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" /> +10
+                </button>
+
+                <button
+                  type="button"
+                  id="bid-plus-20-btn"
+                  disabled={!pickup.trim() || !dropoff.trim()}
+                  onClick={() => handleAdjustBid(20)}
+                  className={`py-2 px-1 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
+                    isLight
+                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200 shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                  }`}
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" /> +20
                 </button>
               </div>
             </div>
@@ -1147,7 +1314,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 </>
               ) : (
                 <>
-                  <span>Request Ride for ₹{customBidFare.toFixed(2)}</span>
+                  <span>Request Ride for ₹{((customBidFare > 0 ? customBidFare : baseCalculatedFare) || 0).toFixed(2)}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -1691,28 +1858,87 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             }
 
             return (
-              /* Searching State Radar Card */
-              <div
-                className={`border p-4 rounded-2xl flex items-center gap-3 animate-pulse transition-colors ${
-                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
-                }`}
-              >
-                <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-500 flex items-center justify-center">
-                  <Radio className="w-5 h-5 animate-spin" />
+              <div className="space-y-3">
+                {/* Searching State Radar Card */}
+                <div
+                  className={`border p-4 rounded-2xl flex items-center gap-3 animate-pulse transition-colors ${
+                    isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-500 flex items-center justify-center shrink-0">
+                    <Radio className="w-5 h-5 animate-spin" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                      Broadcasting Request to Captains
+                    </h4>
+                    {skipNotice ? (
+                      <p className="text-[11px] font-bold text-amber-500 animate-pulse">
+                        {skipNotice}
+                      </p>
+                    ) : (
+                      <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                        Nearby drivers are reviewing your request of ₹{activeRide.fare?.toFixed(2) || '14.50'}. Captain fare offers will appear here for mutual acceptance.
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h4 className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                    Broadcasting Request to Captains
-                  </h4>
-                  {skipNotice ? (
-                    <p className="text-[11px] font-bold text-amber-500 animate-pulse">
-                      {skipNotice}
-                    </p>
-                  ) : (
-                    <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                      Nearby drivers are reviewing your request of ₹{activeRide.fare?.toFixed(2) || '14.50'}. Captain fare offers will appear here for mutual acceptance.
-                    </p>
+
+                {/* Offer Your Price to Captain (Raise Offer while searching) */}
+                <div
+                  className={`p-3.5 border rounded-2xl space-y-2.5 transition-colors ${
+                    isLight
+                      ? 'bg-gradient-to-r from-amber-50 to-orange-50/60 border-amber-200 shadow-xs'
+                      : 'bg-gradient-to-r from-amber-950/30 to-slate-900 border-amber-500/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <Flame className="w-3.5 h-3.5 text-amber-500" />
+                        <h4 className={`text-xs font-black uppercase tracking-wider ${isLight ? 'text-amber-900' : 'text-amber-300'}`}>
+                          Offer Your Price to Captains
+                        </h4>
+                      </div>
+                      <p className={`text-[11px] mt-0.5 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                        Raise your offer to get accepted by nearby drivers faster
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Current Offer</span>
+                      <span className="text-base font-black text-amber-600 dark:text-amber-400">
+                        ₹{Number(activeRide.fare || 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {raiseFareSuccess && (
+                    <div className="p-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5 animate-in fade-in">
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>{raiseFareSuccess}</span>
+                    </div>
                   )}
+
+                  {/* Quick Raise Chips */}
+                  <div className="grid grid-cols-3 gap-2 pt-0.5">
+                    {[10, 20, 50].map((extra) => (
+                      <button
+                        key={extra}
+                        type="button"
+                        id={`raise-offer-btn-${extra}`}
+                        disabled={isRaisingFare}
+                        onClick={() => handleRaiseRideFare(extra)}
+                        className={`py-2 px-2 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 active:scale-95 ${
+                          isLight
+                            ? 'bg-white hover:bg-amber-500 hover:text-slate-950 text-slate-800 border-amber-300 shadow-xs'
+                            : 'bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 border-slate-700'
+                        }`}
+                      >
+                        {isRaisingFare ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3 stroke-[3]" />}
+                        <span>+₹{extra}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             );
