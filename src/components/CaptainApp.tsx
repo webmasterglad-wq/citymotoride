@@ -329,7 +329,11 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
   const captainBikeParsed = useMemo(() => {
     const raw = (currentCaptain.vehicle_details || '').trim();
-    if (!raw) return { raw: '', model: '', color: '', plate: '' };
+    const storedPlate = typeof localStorage !== 'undefined' ? (localStorage.getItem('motoride_registered_bike_plate') || '') : '';
+    const storedModel = typeof localStorage !== 'undefined' ? (localStorage.getItem('motoride_registered_bike_model') || '') : '';
+    const storedColor = typeof localStorage !== 'undefined' ? (localStorage.getItem('motoride_registered_bike_color') || '') : '';
+
+    if (!raw && !storedPlate && !storedModel) return { raw: '', model: '', color: '', plate: '' };
     let model = '';
     let color = '';
     let plate = '';
@@ -349,8 +353,21 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       model = mainPart.trim();
     }
 
-    return { raw, model, color, plate };
-  }, [currentCaptain.vehicle_details]);
+    if (!plate && (currentCaptain as any).license_plate) {
+      plate = (currentCaptain as any).license_plate;
+    }
+    if (!plate && storedPlate) {
+      plate = storedPlate;
+    }
+    if (!model && storedModel) {
+      model = storedModel;
+    }
+    if (!color && storedColor) {
+      color = storedColor;
+    }
+
+    return { raw: raw || `${model}${color ? ' · ' + color : ''}${plate ? ' #' + plate : ''}`, model, color, plate };
+  }, [currentCaptain.vehicle_details, (currentCaptain as any).license_plate]);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const headerAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -1198,25 +1215,14 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             </div>
 
             <div
-              className="min-w-0 pr-0.5 cursor-pointer"
+              className="min-w-0 pr-0.5 cursor-pointer flex flex-col justify-center"
               onClick={() => {
                 setProfileModalTab('vehicle');
                 setIsProfileOpen(true);
               }}
             >
-              <div className="flex items-center gap-1.5 leading-none mb-0.5">
-                <span className="text-[9px] uppercase font-black tracking-wider text-amber-600 dark:text-amber-400">
-                  Registered Bike
-                </span>
-                {captainBikeParsed.plate ? (
-                  <span className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded border leading-none shrink-0 ${
-                    isLight ? 'bg-white border-slate-300 text-slate-900 shadow-xs' : 'bg-slate-950 border-slate-700 text-amber-300'
-                  }`}>
-                    #{captainBikeParsed.plate}
-                  </span>
-                ) : null}
-              </div>
-              <div className={`text-xs font-bold truncate max-w-[110px] sm:max-w-[190px] md:max-w-[270px] leading-tight ${
+              {/* Bike Name */}
+              <div className={`text-xs font-bold truncate max-w-[120px] sm:max-w-[200px] md:max-w-[280px] leading-tight ${
                 isLight ? 'text-slate-900' : 'text-slate-100'
               }`}>
                 {captainBikeParsed.model ? (
@@ -1230,6 +1236,28 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                   <span>{captainBikeParsed.raw}</span>
                 ) : (
                   <span className="text-amber-500 font-semibold text-[11px]">+ Add Bike Details</span>
+                )}
+              </div>
+              {/* Bike Number below Bike Name */}
+              <div className="flex items-center gap-1.5 mt-0.5 leading-none">
+                <span className={`text-[10px] font-semibold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Bike No:
+                </span>
+                {captainBikeParsed.plate ? (
+                  <span
+                    id="captain-header-bike-number-badge"
+                    className={`text-[10px] sm:text-[11px] font-mono font-black px-1.5 py-0.5 rounded border leading-none tracking-wide shrink-0 shadow-xs ${
+                      isLight
+                        ? 'bg-white border-amber-300 text-slate-900'
+                        : 'bg-slate-950 border-amber-500/50 text-amber-300'
+                    }`}
+                  >
+                    #{captainBikeParsed.plate}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono text-amber-500/80 font-medium italic">
+                    Not specified
+                  </span>
                 )}
               </div>
             </div>
