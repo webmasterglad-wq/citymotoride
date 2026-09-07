@@ -1623,7 +1623,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                       </span>
                     </h4>
                     <p className={`text-xs font-medium ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
-                      {activeRide.captain_vehicle || 'Yamaha MT-07 · Black #7492'}
+                      {activeRide.captain_vehicle || 'Motorcycle'}
                     </p>
                   </div>
                 </div>
@@ -1790,7 +1790,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                                   </span>
                                 </h5>
                                 <p className={`text-[11px] truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                                  {offer.captain_vehicle || 'Yamaha MT-07'} · ~{offer.eta_minutes || 3}m away
+                                  {offer.captain_vehicle || 'Motorcycle'} · ~{offer.eta_minutes || 3}m away
                                 </p>
                               </div>
                             </div>

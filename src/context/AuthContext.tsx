@@ -89,6 +89,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (session?.user) {
         const metadata = session.user.user_metadata || {};
         const role = (metadata.role as AppRole) || 'passenger';
+
+        let localBike = '';
+        try {
+          const raw = localStorage.getItem('motoride_registered_bike');
+          if (raw && !raw.includes('Yamaha MT-07')) {
+            localBike = raw;
+          } else {
+            const storedP = localStorage.getItem('motoride_active_captain_profile');
+            if (storedP) {
+              const p = JSON.parse(storedP);
+              if (p?.vehicle_details && !p.vehicle_details.includes('Yamaha MT-07')) {
+                localBike = p.vehicle_details;
+              }
+            }
+          }
+        } catch (_) {}
+
         const userObj: AuthUser = {
           id: session.user.id,
           name: metadata.full_name || session.user.email?.split('@')[0] || 'User',
@@ -96,7 +113,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phone: metadata.phone || '',
           role,
           rating: role === 'captain' ? 4.95 : 4.9,
-          vehicle_details: metadata.vehicle_details || (role === 'captain' ? 'Yamaha MT-07 · Dark Edition' : undefined),
+          vehicle_details: metadata.vehicle_details || (role === 'captain' ? localBike : undefined),
           avatar_url: metadata.avatar_url,
           createdAt: session.user.created_at,
         };
@@ -191,7 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               full_name: cleanName,
               phone: cleanPhone,
               role,
-              vehicle_details: role === 'captain' ? 'Honda CB300R · Black #4819' : undefined,
+              vehicle_details: role === 'captain' ? '' : undefined,
             },
           },
         });
@@ -216,7 +233,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phone: cleanPhone,
           role,
           rating: role === 'captain' ? 4.96 : 4.92,
-          vehicle_details: role === 'captain' ? 'Honda CB300R · Black #4819' : undefined,
+          vehicle_details: role === 'captain' ? '' : undefined,
           createdAt: new Date().toISOString(),
         };
 
@@ -246,7 +263,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           phone: cleanPhone,
           role,
           rating: role === 'captain' ? 4.95 : 4.9,
-          vehicle_details: role === 'captain' ? 'Honda CB300R · Black #4819' : undefined,
+          vehicle_details: role === 'captain' ? '' : undefined,
           createdAt: new Date().toISOString(),
         };
 
@@ -465,6 +482,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       targetUserId = updatedUser.id;
       try {
         localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(updatedUser));
+        if (role === 'captain' && updates.vehicle_details !== undefined) {
+          localStorage.setItem('motoride_registered_bike', updates.vehicle_details);
+        }
       } catch (e) {
         console.warn('[Motoride Auth] Failed to save updated user in storage:', e);
       }
@@ -476,6 +496,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (client) {
       (async () => {
         try {
+          // Update Supabase auth user metadata so session reloads retain latest vehicle details
+          await client.auth.updateUser({
+            data: {
+              ...(updates.name ? { full_name: updates.name } : {}),
+              ...(updates.phone ? { phone: updates.phone } : {}),
+              ...(updates.vehicle_details !== undefined ? { vehicle_details: updates.vehicle_details } : {}),
+            },
+          }).catch((err) => console.warn('[Motoride Auth] updateUser metadata notice:', err));
+
           if (role === 'captain') {
             const vehicleModel = updates.vehicle_details ? updates.vehicle_details.split('·')[0].trim() : undefined;
             const vehiclePlate =
@@ -489,7 +518,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 ...(updates.name ? { full_name: updates.name } : {}),
                 ...(updates.email ? { email: updates.email } : {}),
                 ...(updates.phone ? { phone: updates.phone } : {}),
-                ...(updates.vehicle_details ? { vehicle_details: updates.vehicle_details } : {}),
+                ...(updates.vehicle_details !== undefined ? { vehicle_details: updates.vehicle_details } : {}),
                 ...(vehicleModel ? { vehicle_model: vehicleModel } : {}),
                 ...(vehiclePlate ? { vehicle_plate: vehiclePlate } : {}),
               })

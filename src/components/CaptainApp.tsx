@@ -258,7 +258,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         const storedBike = rawStoredBike?.includes('Yamaha MT-07') ? '' : rawStoredBike;
         const userBike = captainUser.vehicle_details?.includes('Yamaha MT-07') ? '' : captainUser.vehicle_details;
         const prevBike = prev.vehicle_details?.includes('Yamaha MT-07') ? '' : prev.vehicle_details;
-        const effectiveVehicle = userBike || storedBike || prevBike || '';
+        const effectiveVehicle = storedBike || userBike || prevBike || '';
         return {
           ...prev,
           ...captainUser,
@@ -2486,7 +2486,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             const next = { ...prev, ...updated };
             try {
               localStorage.setItem('motoride_active_captain_profile', JSON.stringify(next));
-              if (updated.vehicle_details) {
+              if (updated.vehicle_details !== undefined) {
                 localStorage.setItem('motoride_registered_bike', updated.vehicle_details);
               }
             } catch (_) {}
@@ -2496,7 +2496,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           if (updated.name !== undefined && updated.name !== '') toUpdate.name = updated.name;
           if (updated.email !== undefined && updated.email !== '') toUpdate.email = updated.email;
           if (updated.phone !== undefined) toUpdate.phone = updated.phone;
-          if (updated.vehicle_details !== undefined && updated.vehicle_details !== '') toUpdate.vehicle_details = updated.vehicle_details;
+          if (updated.vehicle_details !== undefined) toUpdate.vehicle_details = updated.vehicle_details;
           if (updated.avatar_url !== undefined) toUpdate.avatar_url = updated.avatar_url;
           updateUser('captain', toUpdate);
         }}

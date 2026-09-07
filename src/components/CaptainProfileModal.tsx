@@ -145,7 +145,6 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
 
   const syncVehicleFields = (vehStr: string) => {
     const safeStr = (vehStr || '').trim();
-    if (!safeStr) return;
     setVehicleDetails(safeStr);
     const parsed = parseVehicleStr(safeStr);
     setLicensePlate(parsed.plate);
@@ -156,10 +155,13 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
 
   const handleOpenBikeEditor = () => {
     if (!isEditingBike) {
-      const parsed = parseVehicleStr(vehicleDetails);
+      const storedBike = localStorage.getItem('motoride_registered_bike');
+      const effectiveBike = storedBike && !storedBike.includes('Yamaha MT-07') ? storedBike : (vehicleDetails || captain.vehicle_details || '');
+      const parsed = parseVehicleStr(effectiveBike);
       setBikeModel(parsed.model);
       setBikeColor(parsed.color);
       setBikePlateInput(parsed.plate);
+      setVehicleDetails(effectiveBike);
       setIsBikeDirty(false);
       setIsEditingBike(true);
     } else {
@@ -171,7 +173,9 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
   const handleCancelBikeEdit = () => {
     setIsEditingBike(false);
     setIsBikeDirty(false);
-    const parsed = parseVehicleStr(vehicleDetails);
+    const storedBike = localStorage.getItem('motoride_registered_bike');
+    const effectiveBike = storedBike && !storedBike.includes('Yamaha MT-07') ? storedBike : (vehicleDetails || captain.vehicle_details || '');
+    const parsed = parseVehicleStr(effectiveBike);
     setBikeModel(parsed.model);
     setBikeColor(parsed.color);
     setBikePlateInput(parsed.plate);
@@ -181,33 +185,24 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
   useEffect(() => {
     if (initialTab && isOpen) {
       setActiveTab(initialTab);
-      if (initialTab === 'vehicle' && !isEditingBike && !isBikeDirty) {
-        const parsed = parseVehicleStr(vehicleDetails);
-        setBikeModel(parsed.model);
-        setBikeColor(parsed.color);
-        setBikePlateInput(parsed.plate);
-      }
     }
   }, [initialTab, isOpen]);
 
-  // Synchronize state whenever captain prop updates (e.g. login, profile changes)
-  // CRITICAL: Never automatically overwrite or remove user-filled bike details if user is editing or has dirty changes!
+  // Synchronize state whenever captain or isOpen updates
   useEffect(() => {
-    if (captain) {
-      if (captain.name && !isEditing) {
-        setName(captain.name);
+    if (isOpen) {
+      const storedBike = localStorage.getItem('motoride_registered_bike');
+      const effectiveBike = storedBike && !storedBike.includes('Yamaha MT-07') ? storedBike : (captain.vehicle_details || '');
+      if (!isBikeDirty && !isEditingBike) {
+        syncVehicleFields(effectiveBike);
       }
-      if (captain.phone && !isEditing) {
-        setPhone(captain.phone);
-      }
-      if (captain.email && !isEditing) {
-        setEmail(captain.email);
-      }
-      if (captain.vehicle_details && !isEditingBike && !isBikeDirty && !isEditing) {
-        syncVehicleFields(captain.vehicle_details);
+      if (!isEditing) {
+        if (captain.name) setName(captain.name);
+        if (captain.phone) setPhone(captain.phone);
+        if (captain.email) setEmail(captain.email);
       }
     }
-  }, [captain, isEditingBike, isBikeDirty, isEditing]);
+  }, [isOpen, captain.vehicle_details, captain.name, captain.phone, captain.email, isBikeDirty, isEditingBike, isEditing]);
 
   // Captain Preferences
   const [autoAccept, setAutoAccept] = useState(false);
@@ -380,13 +375,25 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
       localStorage.setItem('motoride_registered_bike_plate', parsed.plate);
       localStorage.setItem('motoride_registered_bike_model', parsed.model);
       localStorage.setItem('motoride_registered_bike_color', parsed.color);
+      let updatedProfile = { ...captain, vehicle_details: finalVehicle };
       const stored = localStorage.getItem('motoride_active_captain_profile');
       if (stored) {
-        const parsedStored = JSON.parse(stored);
-        localStorage.setItem(
-          'motoride_active_captain_profile',
-          JSON.stringify({ ...parsedStored, vehicle_details: finalVehicle })
-        );
+        try {
+          const parsedStored = JSON.parse(stored);
+          updatedProfile = { ...parsedStored, vehicle_details: finalVehicle };
+        } catch (_) {}
+      }
+      localStorage.setItem('motoride_active_captain_profile', JSON.stringify(updatedProfile));
+
+      const storedAuth = localStorage.getItem('motoride_auth_user_captain');
+      if (storedAuth) {
+        try {
+          const parsedAuth = JSON.parse(storedAuth);
+          localStorage.setItem(
+            'motoride_auth_user_captain',
+            JSON.stringify({ ...parsedAuth, vehicle_details: finalVehicle })
+          );
+        } catch (_) {}
       }
     } catch (_) {}
 
@@ -432,13 +439,25 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
       localStorage.setItem('motoride_registered_bike_plate', finalPlate);
       localStorage.setItem('motoride_registered_bike_model', finalModel);
       localStorage.setItem('motoride_registered_bike_color', finalColor);
+      let updatedProfile = { ...captain, vehicle_details: newVehicleDetails };
       const stored = localStorage.getItem('motoride_active_captain_profile');
       if (stored) {
-        const parsed = JSON.parse(stored);
-        localStorage.setItem(
-          'motoride_active_captain_profile',
-          JSON.stringify({ ...parsed, vehicle_details: newVehicleDetails })
-        );
+        try {
+          const parsed = JSON.parse(stored);
+          updatedProfile = { ...parsed, vehicle_details: newVehicleDetails };
+        } catch (_) {}
+      }
+      localStorage.setItem('motoride_active_captain_profile', JSON.stringify(updatedProfile));
+
+      const storedAuth = localStorage.getItem('motoride_auth_user_captain');
+      if (storedAuth) {
+        try {
+          const parsedAuth = JSON.parse(storedAuth);
+          localStorage.setItem(
+            'motoride_auth_user_captain',
+            JSON.stringify({ ...parsedAuth, vehicle_details: newVehicleDetails })
+          );
+        } catch (_) {}
       }
     } catch (_) {}
 
