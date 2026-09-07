@@ -148,15 +148,17 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
   const [currentCaptain, setCurrentCaptain] = useState<UserProfile>(() => {
     try {
-      const storedBike = localStorage.getItem('motoride_registered_bike');
+      const rawStoredBike = localStorage.getItem('motoride_registered_bike');
+      const storedBike = rawStoredBike?.includes('Yamaha MT-07') ? '' : rawStoredBike;
       const stored = localStorage.getItem('motoride_active_captain_profile');
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed && (parsed.vehicle_details || parsed.name)) {
+          const parsedBike = parsed.vehicle_details?.includes('Yamaha MT-07') ? '' : parsed.vehicle_details;
           return {
             ...captainUser,
             ...parsed,
-            vehicle_details: storedBike || parsed.vehicle_details || captainUser.vehicle_details || 'Yamaha MT-07 · Stealth Black #DL-01-AB-7492',
+            vehicle_details: storedBike || parsedBike || (captainUser.vehicle_details?.includes('Yamaha MT-07') ? '' : captainUser.vehicle_details) || '',
           };
         }
       }
@@ -169,7 +171,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     } catch (_) {}
     return {
       ...captainUser,
-      vehicle_details: captainUser.vehicle_details || 'Yamaha MT-07 · Stealth Black #DL-01-AB-7492',
+      vehicle_details: captainUser.vehicle_details?.includes('Yamaha MT-07') ? '' : (captainUser.vehicle_details || ''),
     };
   });
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
@@ -252,12 +254,11 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   useEffect(() => {
     if (captainUser) {
       setCurrentCaptain((prev) => {
-        const storedBike = localStorage.getItem('motoride_registered_bike');
-        const effectiveVehicle =
-          captainUser.vehicle_details ||
-          storedBike ||
-          prev.vehicle_details ||
-          'Yamaha MT-07 · Stealth Black #DL-01-AB-7492';
+        const rawStoredBike = localStorage.getItem('motoride_registered_bike');
+        const storedBike = rawStoredBike?.includes('Yamaha MT-07') ? '' : rawStoredBike;
+        const userBike = captainUser.vehicle_details?.includes('Yamaha MT-07') ? '' : captainUser.vehicle_details;
+        const prevBike = prev.vehicle_details?.includes('Yamaha MT-07') ? '' : prev.vehicle_details;
+        const effectiveVehicle = userBike || storedBike || prevBike || '';
         return {
           ...prev,
           ...captainUser,
@@ -1004,22 +1005,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               <span className="text-amber-500 dark:text-amber-300 font-bold flex items-center">
                 ★ {currentCaptain.rating || 4.96}
               </span>
-              <span>·</span>
-              <button
-                type="button"
-                id="captain-dashboard-header-vehicle"
-                onClick={() => {
-                  setProfileModalTab('vehicle');
-                  setIsProfileOpen(true);
-                }}
-                title="Registered Bike: click to view RC or change"
-                className={`font-bold hover:underline flex items-center gap-1 cursor-pointer transition-colors max-w-[200px] truncate ${
-                  isLight ? 'text-slate-700 hover:text-amber-600' : 'text-slate-300 hover:text-amber-400'
-                }`}
-              >
-                <Bike className="w-3 h-3 text-amber-500 shrink-0" />
-                <span className="truncate">{currentCaptain.vehicle_details || 'Yamaha MT-07 · Black'}</span>
-              </button>
             </div>
           </div>
         </div>
@@ -1168,7 +1153,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                 </span>
               </div>
               <span className="font-bold text-xs block truncate text-slate-900 dark:text-white">
-                {currentCaptain.vehicle_details || 'Yamaha MT-07 · Black #DL-01-AB-7492'}
+                {currentCaptain.vehicle_details || 'No bike registered'}
               </span>
             </div>
           </div>
@@ -1184,7 +1169,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                 : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border-slate-700'
             }`}
           >
-            Change Bike
+            {currentCaptain.vehicle_details ? 'Change Bike' : 'Register Bike'}
           </button>
         </div>
 

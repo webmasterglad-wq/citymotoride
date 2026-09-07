@@ -79,29 +79,32 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const parseVehicleStr = (vehStr: string) => {
     const safeStr = (vehStr || '').trim();
-    let model = 'Yamaha MT-07';
-    let color = 'Stealth Black';
-    let plate = 'DL-01-AB-7492';
+    if (safeStr.includes('Yamaha MT-07')) {
+      return { model: '', color: '', plate: '' };
+    }
+    let model = '';
+    let color = '';
+    let plate = '';
 
     if (safeStr.includes('#')) {
       const parts = safeStr.split('#');
-      plate = parts[1]?.trim() || plate;
+      plate = parts[1]?.trim() || '';
       const left = parts[0]?.trim() || '';
       if (left.includes('·')) {
         const sub = left.split('·');
-        model = sub[0]?.trim() || model;
-        color = sub[1]?.trim() || color;
+        model = sub[0]?.trim() || '';
+        color = sub[1]?.trim() || '';
       } else if (left.includes('-')) {
         const sub = left.split('-');
-        model = sub[0]?.trim() || model;
-        color = sub[1]?.trim() || color;
+        model = sub[0]?.trim() || '';
+        color = sub[1]?.trim() || '';
       } else {
-        model = left || model;
+        model = left;
       }
     } else if (safeStr.includes('·')) {
       const sub = safeStr.split('·');
-      model = sub[0]?.trim() || model;
-      color = sub[1]?.trim() || color;
+      model = sub[0]?.trim() || '';
+      color = sub[1]?.trim() || '';
     } else if (safeStr.length > 0) {
       model = safeStr;
     }
@@ -112,14 +115,14 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
   const getInitialBike = () => {
     try {
       const storedBike = localStorage.getItem('motoride_registered_bike');
-      if (storedBike) return storedBike;
+      if (storedBike && !storedBike.includes('Yamaha MT-07')) return storedBike;
       const stored = localStorage.getItem('motoride_active_captain_profile');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed?.vehicle_details) return parsed.vehicle_details;
+        if (parsed?.vehicle_details && !parsed.vehicle_details.includes('Yamaha MT-07')) return parsed.vehicle_details;
       }
     } catch (_) {}
-    return captain.vehicle_details || 'Yamaha MT-07 · Stealth Black #DL-01-AB-7492';
+    return (captain.vehicle_details && !captain.vehicle_details.includes('Yamaha MT-07')) ? captain.vehicle_details : '';
   };
 
   const initialVehicle = getInitialBike();
@@ -369,7 +372,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    const finalVehicle = vehicleDetails.trim() || 'Yamaha MT-07 · Stealth Black #DL-01-AB-7492';
+    const finalVehicle = vehicleDetails.trim();
 
     try {
       localStorage.setItem('motoride_registered_bike', finalVehicle);
@@ -404,10 +407,16 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
 
   const handleSaveBike = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const finalModel = bikeModel.trim() || 'Yamaha MT-07';
-    const finalColor = bikeColor.trim() || 'Stealth Black';
-    const finalPlate = (bikePlateInput.trim() || licensePlate || 'DL-01-AB-7492').toUpperCase();
-    const newVehicleDetails = `${finalModel} · ${finalColor} #${finalPlate}`;
+    const finalModel = bikeModel.trim();
+    const finalColor = bikeColor.trim();
+    const finalPlate = (bikePlateInput.trim() || licensePlate).toUpperCase();
+    const newVehicleDetails = finalModel
+      ? finalColor
+        ? `${finalModel} · ${finalColor}${finalPlate ? ` #${finalPlate}` : ''}`
+        : `${finalModel}${finalPlate ? ` #${finalPlate}` : ''}`
+      : finalPlate
+      ? `#${finalPlate}`
+      : '';
 
     setVehicleDetails(newVehicleDetails);
     setLicensePlate(finalPlate);
@@ -671,7 +680,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                       <div className={`flex items-center justify-between border-b pb-2 ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
                         <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>Registered Bike</span>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-amber-500">{vehicleDetails}</span>
+                          <span className="font-bold text-amber-500">{vehicleDetails || 'Not registered'}</span>
                           <button
                             type="button"
                             onClick={() => {
@@ -680,7 +689,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                             }}
                             className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 cursor-pointer"
                           >
-                            Change Bike →
+                            {vehicleDetails ? 'Change Bike →' : 'Register Bike →'}
                           </button>
                         </div>
                       </div>
@@ -748,44 +757,16 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                       </label>
                       <input
                         type="text"
-                        required
                         value={vehicleDetails || ''}
                         onChange={(e) => {
                           setVehicleDetails(e.target.value);
                           setIsBikeDirty(true);
                         }}
-                        placeholder="e.g. Yamaha MT-07 · Stealth Black #DL-01-AB-7492"
+                        placeholder="e.g. Model · Color #License Plate"
                         className={`w-full p-2.5 border rounded-xl focus:outline-none focus:border-amber-500 ${
                           isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
                         }`}
                       />
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {[
-                          'Yamaha MT-07 · Stealth Black',
-                          'Royal Enfield Classic 350',
-                          'KTM 390 Duke · Orange',
-                          'Honda CB300R · Gray',
-                          'Ather 450X EV Moto',
-                        ].map((preset) => (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => {
-                              setVehicleDetails(`${preset} #${licensePlate}`);
-                              setIsBikeDirty(true);
-                            }}
-                            className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
-                              vehicleDetails.startsWith(preset)
-                                ? 'bg-amber-500/20 text-amber-600 border-amber-500/40 font-bold'
-                                : isLight
-                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200'
-                                : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700'
-                            }`}
-                          >
-                            + {preset}
-                          </button>
-                        ))}
-                      </div>
                     </div>
 
                     <div className="flex gap-2 pt-2">
@@ -823,8 +804,8 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                         <Bike className="w-4 h-4" />
                       </div>
                       <div>
-                        <span className={`font-black text-sm block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{vehicleDetails}</span>
-                        <span className={`text-[11px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Plate: {licensePlate}</span>
+                        <span className={`font-black text-sm block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{vehicleDetails || 'No bike registered'}</span>
+                        <span className={`text-[11px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Plate: {licensePlate || 'Not specified'}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -840,7 +821,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                             : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/40'
                         }`}
                       >
-                        {isEditingBike ? 'Close' : 'Change Bike'}
+                        {isEditingBike ? 'Close' : (vehicleDetails ? 'Change Bike' : 'Register Bike')}
                       </button>
                     </div>
                   </div>
@@ -850,43 +831,6 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                     <form onSubmit={handleSaveBike} className="mt-3 pt-3 border-t border-dashed border-slate-300 dark:border-slate-800 space-y-3 animate-in fade-in duration-150">
                       <div className="text-xs font-bold text-amber-600 dark:text-amber-400">
                         Update Registered Bike Details
-                      </div>
-
-                      {/* Quick Presets */}
-                      <div>
-                        <label className={`text-[10px] font-bold block mb-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                          Quick Fleet Presets:
-                        </label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {[
-                            { m: 'Yamaha MT-07', c: 'Stealth Black', p: 'DL-01-AB-7492' },
-                            { m: 'Royal Enfield Classic 350', c: 'Gunmetal Grey', p: 'MH-02-CD-1902' },
-                            { m: 'KTM 390 Duke', c: 'Electric Orange', p: 'KA-05-KT-3900' },
-                            { m: 'Honda CB300R', c: 'Matte Axis Gray', p: 'DL-04-XY-8821' },
-                            { m: 'Kawasaki Ninja 400', c: 'Lime Green', p: 'TN-09-NJ-4004' },
-                            { m: 'Ather 450X EV Moto', c: 'Space Grey', p: 'KA-01-EV-2024' },
-                          ].map((preset) => (
-                            <button
-                              key={preset.m}
-                              type="button"
-                              onClick={() => {
-                                setBikeModel(preset.m);
-                                setBikeColor(preset.c);
-                                setBikePlateInput(preset.p);
-                                setIsBikeDirty(true);
-                              }}
-                              className={`text-[10px] px-2 py-1 rounded-md border font-semibold transition-colors cursor-pointer ${
-                                bikeModel === preset.m
-                                    ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
-                                  : isLight
-                                  ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
-                                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                              }`}
-                            >
-                              {preset.m}
-                            </button>
-                          ))}
-                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -902,7 +846,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                               setBikeModel(e.target.value);
                               setIsBikeDirty(true);
                             }}
-                            placeholder="e.g. Yamaha MT-07"
+                            placeholder="e.g. Motorcycle Make & Model"
                             className={`w-full p-2 border rounded-xl focus:outline-none focus:border-amber-500 ${
                               isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
                             }`}
@@ -915,13 +859,12 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                           </label>
                           <input
                             type="text"
-                            required
                             value={bikeColor || ''}
                             onChange={(e) => {
                               setBikeColor(e.target.value);
                               setIsBikeDirty(true);
                             }}
-                            placeholder="e.g. Stealth Black"
+                            placeholder="e.g. Black / Red"
                             className={`w-full p-2 border rounded-xl focus:outline-none focus:border-amber-500 ${
                               isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
                             }`}
@@ -935,13 +878,12 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                         </label>
                         <input
                           type="text"
-                          required
                           value={bikePlateInput || ''}
                           onChange={(e) => {
                             setBikePlateInput(e.target.value.toUpperCase());
                             setIsBikeDirty(true);
                           }}
-                          placeholder="e.g. DL-01-AB-7492"
+                          placeholder="e.g. MH-02-AB-1234"
                           className={`w-full p-2 font-mono font-bold uppercase border rounded-xl focus:outline-none focus:border-amber-500 ${
                             isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
                           }`}
