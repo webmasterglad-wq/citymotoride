@@ -127,6 +127,7 @@ export interface UserProfile {
   role: 'passenger' | 'captain' | 'admin';
   rating?: number;
   vehicle_details?: string;
+  bike_image?: string;
   avatar_url?: string;
   acceptance_rate?: number;
   total_trips?: number;

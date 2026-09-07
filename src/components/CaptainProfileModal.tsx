@@ -133,6 +133,10 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
   const [email, setEmail] = useState(captain.email || 'alex.rivera.driver@motoride.com');
   const [vehicleDetails, setVehicleDetails] = useState(initialVehicle);
   const [licensePlate, setLicensePlate] = useState(initialParsed.plate);
+  const [bikeImage, setBikeImage] = useState<string>(() => {
+    return localStorage.getItem('motoride_registered_bike_image') || captain.bike_image || '';
+  });
+  const bikeImageInputRef = useRef<HTMLInputElement | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [savedSuccessMessage, setSavedSuccessMessage] = useState('Profile changes saved successfully');
 
@@ -142,6 +146,69 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
   const [bikeModel, setBikeModel] = useState(initialParsed.model);
   const [bikeColor, setBikeColor] = useState(initialParsed.color);
   const [bikePlateInput, setBikePlateInput] = useState(initialParsed.plate);
+
+  const handleBikeImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (typeof event.target?.result === 'string') {
+            const newImg = event.target.result as string;
+            setBikeImage(newImg);
+            try {
+              localStorage.setItem('motoride_registered_bike_image', newImg);
+              const stored = localStorage.getItem('motoride_active_captain_profile');
+              if (stored) {
+                const parsed = JSON.parse(stored);
+                localStorage.setItem(
+                  'motoride_active_captain_profile',
+                  JSON.stringify({ ...parsed, bike_image: newImg })
+                );
+              }
+              const storedAuth = localStorage.getItem('motoride_auth_user_captain');
+              if (storedAuth) {
+                const parsedAuth = JSON.parse(storedAuth);
+                localStorage.setItem(
+                  'motoride_auth_user_captain',
+                  JSON.stringify({ ...parsedAuth, bike_image: newImg })
+                );
+              }
+            } catch (_) {}
+            onUpdateCaptain({ bike_image: newImg });
+            setSavedSuccessMessage('Bike image updated and saved permanently!');
+            setSavedSuccess(true);
+            setTimeout(() => setSavedSuccess(false), 2500);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
+  const handleRemoveBikeImage = () => {
+    setBikeImage('');
+    try {
+      localStorage.removeItem('motoride_registered_bike_image');
+      const stored = localStorage.getItem('motoride_active_captain_profile');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        localStorage.setItem(
+          'motoride_active_captain_profile',
+          JSON.stringify({ ...parsed, bike_image: '' })
+        );
+      }
+      const storedAuth = localStorage.getItem('motoride_auth_user_captain');
+      if (storedAuth) {
+        const parsedAuth = JSON.parse(storedAuth);
+        localStorage.setItem(
+          'motoride_auth_user_captain',
+          JSON.stringify({ ...parsedAuth, bike_image: '' })
+        );
+      }
+    } catch (_) {}
+    onUpdateCaptain({ bike_image: '' });
+  };
 
   const syncVehicleFields = (vehStr: string) => {
     const safeStr = (vehStr || '').trim();
@@ -193,6 +260,10 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
     if (isOpen) {
       const storedBike = localStorage.getItem('motoride_registered_bike');
       const effectiveBike = storedBike && !storedBike.includes('Yamaha MT-07') ? storedBike : (captain.vehicle_details || '');
+      const storedBikeImg = localStorage.getItem('motoride_registered_bike_image') || captain.bike_image || '';
+      if (storedBikeImg) {
+        setBikeImage(storedBikeImg);
+      }
       if (!isBikeDirty && !isEditingBike) {
         syncVehicleFields(effectiveBike);
       }
@@ -202,7 +273,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
         if (captain.email) setEmail(captain.email);
       }
     }
-  }, [isOpen, captain.vehicle_details, captain.name, captain.phone, captain.email, isBikeDirty, isEditingBike, isEditing]);
+  }, [isOpen, captain.vehicle_details, captain.bike_image, captain.name, captain.phone, captain.email, isBikeDirty, isEditingBike, isEditing]);
 
   // Captain Preferences
   const [autoAccept, setAutoAccept] = useState(false);
@@ -402,7 +473,8 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
       phone: phone.trim(),
       email: email.trim(),
       vehicle_details: finalVehicle,
-      avatar_url: captain.avatar_url,
+      bike_image: bikeImage,
+      avatar_url: captain.avatar_url && !captain.avatar_url.includes('unsplash.com') ? captain.avatar_url : undefined,
     });
     syncVehicleFields(finalVehicle);
     setIsEditing(false);
@@ -439,12 +511,15 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
       localStorage.setItem('motoride_registered_bike_plate', finalPlate);
       localStorage.setItem('motoride_registered_bike_model', finalModel);
       localStorage.setItem('motoride_registered_bike_color', finalColor);
-      let updatedProfile = { ...captain, vehicle_details: newVehicleDetails };
+      if (bikeImage) {
+        localStorage.setItem('motoride_registered_bike_image', bikeImage);
+      }
+      let updatedProfile = { ...captain, vehicle_details: newVehicleDetails, bike_image: bikeImage };
       const stored = localStorage.getItem('motoride_active_captain_profile');
       if (stored) {
         try {
           const parsed = JSON.parse(stored);
-          updatedProfile = { ...parsed, vehicle_details: newVehicleDetails };
+          updatedProfile = { ...parsed, vehicle_details: newVehicleDetails, bike_image: bikeImage };
         } catch (_) {}
       }
       localStorage.setItem('motoride_active_captain_profile', JSON.stringify(updatedProfile));
@@ -455,7 +530,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
           const parsedAuth = JSON.parse(storedAuth);
           localStorage.setItem(
             'motoride_auth_user_captain',
-            JSON.stringify({ ...parsedAuth, vehicle_details: newVehicleDetails })
+            JSON.stringify({ ...parsedAuth, vehicle_details: newVehicleDetails, bike_image: bikeImage })
           );
         } catch (_) {}
       }
@@ -478,7 +553,8 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
       phone: phone.trim() || captain.phone || '',
       email: email.trim() || captain.email || '',
       vehicle_details: newVehicleDetails,
-      avatar_url: captain.avatar_url,
+      bike_image: bikeImage,
+      avatar_url: captain.avatar_url && !captain.avatar_url.includes('unsplash.com') ? captain.avatar_url : undefined,
     });
 
     setSavedSuccessMessage(`Registered bike updated to ${finalModel} (${finalPlate})!`);
@@ -492,6 +568,16 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden animate-in fade-in duration-200">
+      {/* Hidden file input for fast bike photo upload */}
+      <input
+        ref={bikeImageInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleBikeImageUpload}
+        className="hidden"
+        id="captain-modal-bike-image-file-input"
+      />
+
       {/* Backdrop overlay */}
       <div
         onClick={onClose}
@@ -511,7 +597,7 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
           }`}>
             <div className="flex items-center gap-3">
               <div className="relative group">
-                {captain.avatar_url ? (
+                {captain.avatar_url && !captain.avatar_url.includes('unsplash.com') ? (
                   <img
                     src={captain.avatar_url}
                     alt={captain.name}
@@ -519,8 +605,8 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                     className="w-12 h-12 rounded-2xl object-cover border-2 border-amber-400/50 shadow-lg"
                   />
                 ) : (
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 font-black text-xl flex items-center justify-center shadow-lg">
-                    🏍️
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 font-black text-lg flex items-center justify-center shadow-lg">
+                    {captain.name ? captain.name.slice(0, 2).toUpperCase() : 'CP'}
                   </div>
                 )}
                 <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center shadow">
@@ -818,13 +904,50 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                   isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900/80 border-slate-800 text-slate-200'
                 }`}>
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
-                        <Bike className="w-4 h-4" />
+                    <div className="flex items-center gap-3">
+                      {/* Bike Image Thumbnail with Camera Overlay */}
+                      <div className="relative group/bike shrink-0">
+                        {bikeImage ? (
+                          <img
+                            src={bikeImage}
+                            alt="Registered Bike"
+                            className="w-12 h-12 rounded-xl object-cover border border-amber-400/60 shadow-xs"
+                          />
+                        ) : (
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center border ${
+                            isLight ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                          }`}>
+                            <Bike className="w-6 h-6" />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => bikeImageInputRef.current?.click()}
+                          className="absolute -bottom-1 -right-1 p-1 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm cursor-pointer transition-transform hover:scale-110"
+                          title="Upload or change Bike photo"
+                        >
+                          <Camera className="w-2.5 h-2.5" />
+                        </button>
                       </div>
+
                       <div>
-                        <span className={`font-black text-sm block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>{vehicleDetails || 'No bike registered'}</span>
-                        <span className={`text-[11px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Plate: {licensePlate || 'Not specified'}</span>
+                        <span className={`font-black text-sm block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                          {vehicleDetails || 'No bike registered'}
+                        </span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`text-[11px] font-mono ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                            Plate: {licensePlate || 'Not specified'}
+                          </span>
+                          {bikeImage && (
+                            <button
+                              type="button"
+                              onClick={handleRemoveBikeImage}
+                              className="text-[10px] text-rose-500 hover:underline cursor-pointer font-medium"
+                            >
+                              Remove photo
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -850,6 +973,49 @@ export const CaptainProfileModal: React.FC<CaptainProfileModalProps> = ({
                     <form onSubmit={handleSaveBike} className="mt-3 pt-3 border-t border-dashed border-slate-300 dark:border-slate-800 space-y-3 animate-in fade-in duration-150">
                       <div className="text-xs font-bold text-amber-600 dark:text-amber-400">
                         Update Registered Bike Details
+                      </div>
+
+                      {/* Bike Photo Upload Field */}
+                      <div className={`p-2.5 rounded-xl border ${
+                        isLight ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-950/60 border-slate-800'
+                      }`}>
+                        <label className={`text-[11px] font-bold block mb-1.5 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                          Bike Photo / Image
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <div className="w-14 h-14 rounded-xl overflow-hidden border border-amber-400/50 bg-slate-900 flex items-center justify-center shrink-0">
+                            {bikeImage ? (
+                              <img src={bikeImage} alt="Bike" className="w-full h-full object-cover" />
+                            ) : (
+                              <Bike className="w-6 h-6 text-amber-500/60" />
+                            )}
+                          </div>
+                          <div className="flex-1 space-y-1">
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => bikeImageInputRef.current?.click()}
+                                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer flex items-center gap-1 shadow-xs"
+                              >
+                                <Upload className="w-3 h-3" />
+                                {bikeImage ? 'Change Photo' : 'Upload Bike Photo'}
+                              </button>
+                              {bikeImage && (
+                                <button
+                                  type="button"
+                                  onClick={handleRemoveBikeImage}
+                                  className="px-2 py-1 text-xs font-bold rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 cursor-pointer flex items-center gap-1"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-400">
+                              Upload a photo of your bike (JPG, PNG, WebP). Persisted permanently across sessions.
+                            </p>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">

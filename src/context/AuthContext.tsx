@@ -482,8 +482,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       targetUserId = updatedUser.id;
       try {
         localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(updatedUser));
-        if (role === 'captain' && updates.vehicle_details !== undefined) {
-          localStorage.setItem('motoride_registered_bike', updates.vehicle_details);
+        if (role === 'captain') {
+          if (updates.vehicle_details !== undefined) {
+            localStorage.setItem('motoride_registered_bike', updates.vehicle_details);
+          }
+          if (updates.bike_image !== undefined) {
+            localStorage.setItem('motoride_registered_bike_image', updates.bike_image);
+          }
+          if (updates.avatar_url !== undefined) {
+            localStorage.setItem('motoride_captain_avatar', updates.avatar_url);
+          }
         }
       } catch (e) {
         console.warn('[Motoride Auth] Failed to save updated user in storage:', e);
@@ -496,12 +504,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (client) {
       (async () => {
         try {
-          // Update Supabase auth user metadata so session reloads retain latest vehicle details
+          // Update Supabase auth user metadata so session reloads retain latest vehicle and avatar details
           await client.auth.updateUser({
             data: {
               ...(updates.name ? { full_name: updates.name } : {}),
               ...(updates.phone ? { phone: updates.phone } : {}),
+              ...(updates.avatar_url !== undefined ? { avatar_url: updates.avatar_url } : {}),
               ...(updates.vehicle_details !== undefined ? { vehicle_details: updates.vehicle_details } : {}),
+              ...(updates.bike_image !== undefined ? { bike_image: updates.bike_image } : {}),
             },
           }).catch((err) => console.warn('[Motoride Auth] updateUser metadata notice:', err));
 

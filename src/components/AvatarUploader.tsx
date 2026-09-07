@@ -10,7 +10,7 @@ interface AvatarUploaderProps {
   accentColor?: 'emerald' | 'amber';
 }
 
-// Curated avatar presets suitable for riders and captains
+// Curated avatar presets suitable for riders
 const PASSENGER_PRESETS = [
   {
     label: 'Urban Rider',
@@ -30,25 +30,6 @@ const PASSENGER_PRESETS = [
   },
 ];
 
-const CAPTAIN_PRESETS = [
-  {
-    label: 'Helmet Pro',
-    url: 'https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=250&auto=format&fit=crop&q=80',
-  },
-  {
-    label: 'Moto Rider',
-    url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=250&auto=format&fit=crop&q=80',
-  },
-  {
-    label: 'Fleet Captain',
-    url: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=250&auto=format&fit=crop&q=80',
-  },
-  {
-    label: 'Night Cruiser',
-    url: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=250&auto=format&fit=crop&q=80',
-  },
-];
-
 export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
   currentAvatarUrl,
   userName,
@@ -64,7 +45,8 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
   const [showPresets, setShowPresets] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const presets = role === 'captain' ? CAPTAIN_PRESETS : PASSENGER_PRESETS;
+  // Strictly no demo/preset avatars for Captain Dashboard
+  const presets = role === 'passenger' ? PASSENGER_PRESETS : [];
   const isAmber = accentColor === 'amber';
 
   const handleFile = async (file: File) => {
@@ -210,7 +192,7 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
                   : 'bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950'
               }`}
             >
-              {role === 'captain' ? '🏍️' : userName.charAt(0)}
+              {role === 'captain' ? (userName ? userName.slice(0, 2).toUpperCase() : 'CP') : userName.charAt(0)}
             </div>
           )}
 
@@ -260,17 +242,19 @@ export const AvatarUploader: React.FC<AvatarUploaderProps> = ({
             >
               Browse Files
             </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowPresets(!showPresets);
-              }}
-              className="text-[10px] text-slate-300 hover:text-white underline underline-offset-2 flex items-center gap-1 cursor-pointer"
-            >
-              <Sparkles className="w-2.5 h-2.5 text-amber-300" />
-              {showPresets ? 'Hide sample avatars' : 'Or choose sample avatar'}
-            </button>
+            {role !== 'captain' && presets.length > 0 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowPresets(!showPresets);
+                }}
+                className="text-[10px] text-slate-300 hover:text-white underline underline-offset-2 flex items-center gap-1 cursor-pointer"
+              >
+                <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                {showPresets ? 'Hide sample avatars' : 'Or choose sample avatar'}
+              </button>
+            )}
           </div>
         </div>
       </div>

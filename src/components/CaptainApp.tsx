@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Compass,
   MapPin,
@@ -150,28 +150,38 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     try {
       const rawStoredBike = localStorage.getItem('motoride_registered_bike');
       const storedBike = rawStoredBike?.includes('Yamaha MT-07') ? '' : rawStoredBike;
+      const storedBikeImage = localStorage.getItem('motoride_registered_bike_image') || '';
+      const storedAvatar = localStorage.getItem('motoride_captain_avatar') || '';
+      const cleanCaptainAvatar = captainUser.avatar_url?.includes('unsplash.com') ? '' : captainUser.avatar_url;
+
       const stored = localStorage.getItem('motoride_active_captain_profile');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed && (parsed.vehicle_details || parsed.name)) {
+        if (parsed && (parsed.vehicle_details || parsed.name || parsed.bike_image || parsed.avatar_url)) {
           const parsedBike = parsed.vehicle_details?.includes('Yamaha MT-07') ? '' : parsed.vehicle_details;
+          const parsedAvatar = parsed.avatar_url?.includes('unsplash.com') ? '' : parsed.avatar_url;
           return {
             ...captainUser,
             ...parsed,
             vehicle_details: storedBike || parsedBike || (captainUser.vehicle_details?.includes('Yamaha MT-07') ? '' : captainUser.vehicle_details) || '',
+            bike_image: storedBikeImage || parsed.bike_image || captainUser.bike_image || '',
+            avatar_url: storedAvatar || parsedAvatar || cleanCaptainAvatar || '',
           };
         }
       }
-      if (storedBike) {
+      if (storedBike || storedBikeImage || storedAvatar) {
         return {
           ...captainUser,
-          vehicle_details: storedBike,
+          vehicle_details: storedBike || (captainUser.vehicle_details?.includes('Yamaha MT-07') ? '' : (captainUser.vehicle_details || '')),
+          bike_image: storedBikeImage || captainUser.bike_image || '',
+          avatar_url: storedAvatar || cleanCaptainAvatar || '',
         };
       }
     } catch (_) {}
     return {
       ...captainUser,
       vehicle_details: captainUser.vehicle_details?.includes('Yamaha MT-07') ? '' : (captainUser.vehicle_details || ''),
+      avatar_url: captainUser.avatar_url?.includes('unsplash.com') ? '' : captainUser.avatar_url,
     };
   });
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
@@ -259,6 +269,15 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         const userBike = captainUser.vehicle_details?.includes('Yamaha MT-07') ? '' : captainUser.vehicle_details;
         const prevBike = prev.vehicle_details?.includes('Yamaha MT-07') ? '' : prev.vehicle_details;
         const effectiveVehicle = storedBike || userBike || prevBike || '';
+
+        const storedBikeImage = localStorage.getItem('motoride_registered_bike_image') || '';
+        const effectiveBikeImage = storedBikeImage || captainUser.bike_image || prev.bike_image || '';
+
+        const storedAvatar = localStorage.getItem('motoride_captain_avatar') || '';
+        const cleanUserAvatar = captainUser.avatar_url?.includes('unsplash.com') ? '' : captainUser.avatar_url;
+        const cleanPrevAvatar = prev.avatar_url?.includes('unsplash.com') ? '' : prev.avatar_url;
+        const effectiveAvatar = storedAvatar || cleanUserAvatar || cleanPrevAvatar || '';
+
         return {
           ...prev,
           ...captainUser,
@@ -266,6 +285,8 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           phone: captainUser.phone || prev.phone,
           email: captainUser.email || prev.email,
           vehicle_details: effectiveVehicle,
+          bike_image: effectiveBikeImage,
+          avatar_url: effectiveAvatar,
         };
       });
     }
@@ -306,8 +327,34 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   const [passengerRatingNotes, setPassengerRatingNotes] = useState<string>('');
   const { isLight } = useTheme();
 
+  const captainBikeParsed = useMemo(() => {
+    const raw = (currentCaptain.vehicle_details || '').trim();
+    if (!raw) return { raw: '', model: '', color: '', plate: '' };
+    let model = '';
+    let color = '';
+    let plate = '';
+
+    let mainPart = raw;
+    if (raw.includes('#')) {
+      const parts = raw.split('#');
+      mainPart = parts[0].trim();
+      plate = parts[1].trim();
+    }
+
+    if (mainPart.includes('·')) {
+      const parts = mainPart.split('·');
+      model = parts[0].trim();
+      color = parts.slice(1).join('·').trim();
+    } else {
+      model = mainPart.trim();
+    }
+
+    return { raw, model, color, plate };
+  }, [currentCaptain.vehicle_details]);
+
   const channelRef = useRef<RealtimeChannel | null>(null);
   const headerAvatarInputRef = useRef<HTMLInputElement>(null);
+  const headerBikeImageInputRef = useRef<HTMLInputElement>(null);
 
   const handleHeaderAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -316,7 +363,64 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         const reader = new FileReader();
         reader.onload = (event) => {
           if (typeof event.target?.result === 'string') {
-            setCurrentCaptain((prev) => ({ ...prev, avatar_url: event.target?.result as string }));
+            const newAvatar = event.target.result as string;
+            setCurrentCaptain((prev) => ({ ...prev, avatar_url: newAvatar }));
+            try {
+              localStorage.setItem('motoride_captain_avatar', newAvatar);
+              const stored = localStorage.getItem('motoride_active_captain_profile');
+              if (stored) {
+                const parsed = JSON.parse(stored);
+                localStorage.setItem(
+                  'motoride_active_captain_profile',
+                  JSON.stringify({ ...parsed, avatar_url: newAvatar })
+                );
+              }
+              const storedAuth = localStorage.getItem('motoride_auth_user_captain');
+              if (storedAuth) {
+                const parsedAuth = JSON.parse(storedAuth);
+                localStorage.setItem(
+                  'motoride_auth_user_captain',
+                  JSON.stringify({ ...parsedAuth, avatar_url: newAvatar })
+                );
+              }
+            } catch (_) {}
+            updateUser('captain', { avatar_url: newAvatar });
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
+  const handleHeaderBikeImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (typeof event.target?.result === 'string') {
+            const newBikeImg = event.target.result as string;
+            setCurrentCaptain((prev) => ({ ...prev, bike_image: newBikeImg }));
+            try {
+              localStorage.setItem('motoride_registered_bike_image', newBikeImg);
+              const stored = localStorage.getItem('motoride_active_captain_profile');
+              if (stored) {
+                const parsed = JSON.parse(stored);
+                localStorage.setItem(
+                  'motoride_active_captain_profile',
+                  JSON.stringify({ ...parsed, bike_image: newBikeImg })
+                );
+              }
+              const storedAuth = localStorage.getItem('motoride_auth_user_captain');
+              if (storedAuth) {
+                const parsedAuth = JSON.parse(storedAuth);
+                localStorage.setItem(
+                  'motoride_auth_user_captain',
+                  JSON.stringify({ ...parsedAuth, bike_image: newBikeImg })
+                );
+              }
+            } catch (_) {}
+            updateUser('captain', { bike_image: newBikeImg });
           }
         };
         reader.readAsDataURL(file);
@@ -957,14 +1061,24 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           id="captain-header-avatar-input"
         />
 
-        <div className="flex items-center gap-3">
-          <div className="relative group">
+        {/* Hidden file input for fast bike photo upload from header badge */}
+        <input
+          ref={headerBikeImageInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleHeaderBikeImageChange}
+          className="hidden"
+          id="captain-header-bike-image-input"
+        />
+
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative group shrink-0">
             <button
               onClick={() => setIsProfileOpen(true)}
               className="cursor-pointer block"
               title="Open Captain Profile & Photo"
             >
-              {currentCaptain.avatar_url ? (
+              {currentCaptain.avatar_url && !currentCaptain.avatar_url.includes('unsplash.com') ? (
                 <img
                   src={currentCaptain.avatar_url}
                   alt={currentCaptain.name}
@@ -972,8 +1086,8 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                   className="w-10 h-10 rounded-2xl object-cover border border-amber-400/50 shadow-md group-hover:scale-105 transition-transform"
                 />
               ) : (
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-black text-lg shadow-md group-hover:scale-105 transition-transform">
-                  🏍️
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-black text-sm tracking-wider shadow-md group-hover:scale-105 transition-transform">
+                  {currentCaptain.name ? currentCaptain.name.slice(0, 2).toUpperCase() : 'CP'}
                 </div>
               )}
             </button>
@@ -994,28 +1108,138 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             </button>
           </div>
 
-          <div>
+          <div
+            onClick={() => setIsProfileOpen(true)}
+            className="cursor-pointer min-w-0 group/prof"
+            title="Click to view Captain Profile & Vehicle details"
+          >
             <div className="flex items-center gap-1.5">
-              <span className={`font-black text-sm ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+              <span className={`font-black text-sm group-hover/prof:text-amber-500 transition-colors truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
                 {currentCaptain.name}
               </span>
-              {titleSuffix && <span className="text-amber-500 font-bold text-xs">({titleSuffix})</span>}
+              {titleSuffix && <span className="text-amber-500 font-bold text-xs shrink-0">({titleSuffix})</span>}
             </div>
-            <div className={`text-[11px] flex items-center gap-1.5 flex-wrap ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              <span className="text-amber-500 dark:text-amber-300 font-bold flex items-center">
+            <div className={`text-[11px] flex items-center gap-2 flex-wrap ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+              <span className="text-amber-500 dark:text-amber-300 font-bold flex items-center shrink-0">
                 ★ {currentCaptain.rating || 4.96}
               </span>
+              {captainBikeParsed.raw ? (
+                <span className="hidden sm:inline-flex items-center gap-1 font-semibold text-[11px] truncate">
+                  <span className="opacity-40">•</span>
+                  <span className="text-xs shrink-0">🏍️</span>
+                  <span className={`truncate max-w-[140px] md:max-w-[220px] ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                    {captainBikeParsed.model || captainBikeParsed.raw}
+                  </span>
+                  {captainBikeParsed.plate && (
+                    <span className={`text-[9px] font-mono font-bold px-1 py-0.2 rounded border shrink-0 ${
+                      isLight ? 'bg-white border-slate-300 text-slate-800' : 'bg-slate-900 border-slate-700 text-amber-300'
+                    }`}>
+                      #{captainBikeParsed.plate}
+                    </span>
+                  )}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
 
-        {/* Action Controls: Online Toggle */}
-        <div className="flex items-center gap-2">
+        {/* Action Controls: Full Clear Bike Details Badge + Online Toggle */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Full Clear Bike Details Badge near Online Tab */}
+          <div
+            id="captain-header-bike-details-badge"
+            className={`flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-2xl border text-left transition-all shadow-sm ${
+              isLight
+                ? 'bg-amber-50/90 border-amber-300/80 text-slate-900 ring-1 ring-amber-400/20'
+                : 'bg-slate-900 border-amber-500/30 text-slate-100 ring-1 ring-amber-500/20'
+            }`}
+          >
+            {/* Bike Image / Icon with Camera upload button */}
+            <div className="relative group/bike-img shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileModalTab('vehicle');
+                  setIsProfileOpen(true);
+                }}
+                className={`w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center cursor-pointer border ${
+                  isLight ? 'bg-amber-200 border-amber-300 shadow-xs' : 'bg-amber-500/20 border-amber-500/40'
+                }`}
+                title="View full bike details"
+              >
+                {currentCaptain.bike_image ? (
+                  <img
+                    src={currentCaptain.bike_image}
+                    alt="Registered Bike"
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Bike className="w-4 h-4 text-amber-700 dark:text-amber-400" />
+                )}
+              </button>
+
+              {/* Fast Camera Upload on Bike Icon */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  headerBikeImageInputRef.current?.click();
+                }}
+                className={`absolute -bottom-1 -right-1 p-0.5 rounded-full border shadow transition-colors cursor-pointer ${
+                  isLight
+                    ? 'bg-white hover:bg-amber-400 text-slate-700 hover:text-slate-950 border-slate-300'
+                    : 'bg-slate-950 hover:bg-amber-400 text-slate-300 hover:text-slate-950 border-slate-700'
+                }`}
+                title="Upload or update Bike photo"
+              >
+                <Camera className="w-2.5 h-2.5" />
+              </button>
+            </div>
+
+            <div
+              className="min-w-0 pr-0.5 cursor-pointer"
+              onClick={() => {
+                setProfileModalTab('vehicle');
+                setIsProfileOpen(true);
+              }}
+            >
+              <div className="flex items-center gap-1.5 leading-none mb-0.5">
+                <span className="text-[9px] uppercase font-black tracking-wider text-amber-600 dark:text-amber-400">
+                  Registered Bike
+                </span>
+                {captainBikeParsed.plate ? (
+                  <span className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded border leading-none shrink-0 ${
+                    isLight ? 'bg-white border-slate-300 text-slate-900 shadow-xs' : 'bg-slate-950 border-slate-700 text-amber-300'
+                  }`}>
+                    #{captainBikeParsed.plate}
+                  </span>
+                ) : null}
+              </div>
+              <div className={`text-xs font-bold truncate max-w-[110px] sm:max-w-[190px] md:max-w-[270px] leading-tight ${
+                isLight ? 'text-slate-900' : 'text-slate-100'
+              }`}>
+                {captainBikeParsed.model ? (
+                  <span>
+                    {captainBikeParsed.model}
+                    {captainBikeParsed.color && (
+                      <span className="font-normal opacity-75 text-[11px]"> ({captainBikeParsed.color})</span>
+                    )}
+                  </span>
+                ) : captainBikeParsed.raw ? (
+                  <span>{captainBikeParsed.raw}</span>
+                ) : (
+                  <span className="text-amber-500 font-semibold text-[11px]">+ Add Bike Details</span>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Uber Online Toggle Button */}
           <button
             id="uber-driver-toggle-online-btn"
             onClick={() => setIsOnline(!isOnline)}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-black transition-all shadow-lg cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-black transition-all shadow-lg cursor-pointer shrink-0 ${
               isOnline
                 ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/25 ring-2 ring-emerald-400/40'
                 : isLight
@@ -2489,6 +2713,12 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               if (updated.vehicle_details !== undefined) {
                 localStorage.setItem('motoride_registered_bike', updated.vehicle_details);
               }
+              if (updated.bike_image !== undefined) {
+                localStorage.setItem('motoride_registered_bike_image', updated.bike_image);
+              }
+              if (updated.avatar_url !== undefined) {
+                localStorage.setItem('motoride_captain_avatar', updated.avatar_url);
+              }
             } catch (_) {}
             return next;
           });
@@ -2497,6 +2727,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           if (updated.email !== undefined && updated.email !== '') toUpdate.email = updated.email;
           if (updated.phone !== undefined) toUpdate.phone = updated.phone;
           if (updated.vehicle_details !== undefined) toUpdate.vehicle_details = updated.vehicle_details;
+          if (updated.bike_image !== undefined) toUpdate.bike_image = updated.bike_image;
           if (updated.avatar_url !== undefined) toUpdate.avatar_url = updated.avatar_url;
           updateUser('captain', toUpdate);
         }}

@@ -36,6 +36,7 @@ function AppContent() {
       role: 'captain' as const,
       rating: captainUser.rating || 5.0,
       vehicle_details: captainUser.vehicle_details || '',
+      bike_image: captainUser.bike_image,
       avatar_url: captainUser.avatar_url,
     };
   }, [
@@ -45,6 +46,7 @@ function AppContent() {
     captainUser?.phone,
     captainUser?.rating,
     captainUser?.vehicle_details,
+    captainUser?.bike_image,
     captainUser?.avatar_url,
   ]);
 
