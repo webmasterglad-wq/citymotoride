@@ -180,13 +180,13 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
           </div>
         </div>
 
-        {/* Top Center: Clickable Tab Switch Button (First "Passenger Mode", on click shows "Captain Mode") */}
+        {/* Top Center: Clickable Tab Switch Button (Shows "Passenger App" or "Captain App") */}
         <div className="w-full md:w-auto order-3 md:order-2 flex-1 flex justify-center items-center py-0.5">
           <button
             id="tab-switch-btn"
             type="button"
             onClick={() => onChangeView(activeView === 'passenger' ? 'captain' : 'passenger')}
-            title={activeView === 'passenger' ? 'Click to switch to Captain Mode' : 'Click to switch to Passenger Mode'}
+            title={activeView === 'passenger' ? 'Switch to Captain App' : 'Switch to Passenger App'}
             className={`group relative inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-xs font-bold transition-all duration-200 shadow-sm hover:shadow-md cursor-pointer select-none active:scale-[0.97] ${
               activeView === 'passenger'
                 ? isLight
@@ -212,19 +212,14 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
               )}
             </div>
 
-            {/* Main Label: "Passenger Mode" or "Captain Mode" */}
-            <div className="flex flex-col items-start text-left leading-tight">
-              <div className="text-sm font-black tracking-tight flex items-center gap-1.5">
-                <span>{activeView === 'passenger' ? 'Passenger Mode' : 'Captain Mode'}</span>
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    activeView === 'passenger' ? 'bg-sky-500' : 'bg-emerald-500'
-                  } animate-pulse`}
-                />
-              </div>
-              <span className="text-[10px] font-medium opacity-75 group-hover:opacity-100 transition-opacity">
-                {activeView === 'passenger' ? 'Click to show Captain Mode' : 'Click to show Passenger Mode'}
-              </span>
+            {/* Main Label: "Passenger App" or "Captain App" */}
+            <div className="flex items-center gap-1.5 text-sm font-black tracking-tight">
+              <span>{activeView === 'passenger' ? 'Passenger App' : 'Captain App'}</span>
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  activeView === 'passenger' ? 'bg-sky-500' : 'bg-emerald-500'
+                } animate-pulse`}
+              />
             </div>
 
             {/* Clickable switch pill */}
