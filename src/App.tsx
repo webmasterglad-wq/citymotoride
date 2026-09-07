@@ -48,6 +48,15 @@ function AppContent() {
     captainUser?.avatar_url,
   ]);
 
+  // Keep activeView locked to respective dashboard when authenticated
+  useEffect(() => {
+    if (isPassengerAuthed && activeView !== 'passenger') {
+      setActiveView('passenger');
+    } else if (isCaptainAuthed && activeView !== 'captain') {
+      setActiveView('captain');
+    }
+  }, [isPassengerAuthed, isCaptainAuthed, activeView]);
+
   return (
     <div
       className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${

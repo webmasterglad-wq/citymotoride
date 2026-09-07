@@ -180,67 +180,69 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
           </div>
         </div>
 
-        {/* Top Center: Clickable Tab Switch Button (Shows "Passenger App" or "Captain App") */}
-        <div className="w-full md:w-auto order-3 md:order-2 flex-1 flex justify-center items-center py-0.5">
-          <button
-            id="tab-switch-btn"
-            type="button"
-            onClick={() => onChangeView(activeView === 'passenger' ? 'captain' : 'passenger')}
-            title={activeView === 'passenger' ? 'Switch to Captain App' : 'Switch to Passenger App'}
-            className={`group relative inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-xs font-bold transition-all duration-200 shadow-sm hover:shadow-md cursor-pointer select-none active:scale-[0.97] ${
-              activeView === 'passenger'
-                ? isLight
-                  ? 'bg-sky-50/90 hover:bg-sky-100 text-sky-950 border-sky-300 hover:border-sky-400 shadow-sky-500/10'
-                  : 'bg-sky-950/40 hover:bg-sky-900/50 text-sky-200 border-sky-500/40 hover:border-sky-400 shadow-sky-500/10'
-                : isLight
-                ? 'bg-emerald-50/90 hover:bg-emerald-100 text-emerald-950 border-emerald-300 hover:border-emerald-400 shadow-emerald-500/10'
-                : 'bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-200 border-emerald-500/40 hover:border-emerald-400 shadow-emerald-500/10'
-            }`}
-          >
-            {/* Mode Icon */}
-            <div
-              className={`w-7 h-7 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 shrink-0 ${
-                activeView === 'passenger'
-                  ? 'bg-sky-500 text-white shadow-sm shadow-sky-500/30'
-                  : 'bg-emerald-500 text-slate-950 shadow-sm shadow-emerald-500/30'
-              }`}
-            >
-              {activeView === 'passenger' ? (
-                <User className="w-4 h-4" />
-              ) : (
-                <Bike className="w-4 h-4" />
-              )}
-            </div>
-
-            {/* Main Label: "Passenger App" or "Captain App" */}
-            <div className="flex items-center gap-1.5 text-sm font-black tracking-tight">
-              <span>{activeView === 'passenger' ? 'Passenger App' : 'Captain App'}</span>
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  activeView === 'passenger' ? 'bg-sky-500' : 'bg-emerald-500'
-                } animate-pulse`}
-              />
-            </div>
-
-            {/* Clickable switch pill */}
-            <div
-              className={`ml-1 px-2 py-1 rounded-xl flex items-center gap-1 text-[10px] font-bold border transition-all ${
+        {/* Top Center: Clickable Tab Switch Button (Shows "Passenger App" or "Captain App" ONLY when not signed in) */}
+        {!isPassengerAuthed && !isCaptainAuthed && (
+          <div className="w-full md:w-auto order-3 md:order-2 flex-1 flex justify-center items-center py-0.5">
+            <button
+              id="tab-switch-btn"
+              type="button"
+              onClick={() => onChangeView(activeView === 'passenger' ? 'captain' : 'passenger')}
+              title={activeView === 'passenger' ? 'Switch to Captain App' : 'Switch to Passenger App'}
+              className={`group relative inline-flex items-center gap-3 px-4 py-2 rounded-2xl border text-xs font-bold transition-all duration-200 shadow-sm hover:shadow-md cursor-pointer select-none active:scale-[0.97] ${
                 activeView === 'passenger'
                   ? isLight
-                    ? 'bg-white/80 border-sky-200 text-sky-700 group-hover:bg-white'
-                    : 'bg-slate-900/80 border-sky-800/80 text-sky-300 group-hover:bg-slate-900'
+                    ? 'bg-sky-50/90 hover:bg-sky-100 text-sky-950 border-sky-300 hover:border-sky-400 shadow-sky-500/10'
+                    : 'bg-sky-950/40 hover:bg-sky-900/50 text-sky-200 border-sky-500/40 hover:border-sky-400 shadow-sky-500/10'
                   : isLight
-                  ? 'bg-white/80 border-emerald-200 text-emerald-700 group-hover:bg-white'
-                  : 'bg-slate-900/80 border-emerald-800/80 text-emerald-300 group-hover:bg-slate-900'
+                  ? 'bg-emerald-50/90 hover:bg-emerald-100 text-emerald-950 border-emerald-300 hover:border-emerald-400 shadow-emerald-500/10'
+                  : 'bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-200 border-emerald-500/40 hover:border-emerald-400 shadow-emerald-500/10'
               }`}
             >
-              <ArrowLeftRight className="w-3 h-3 group-hover:rotate-180 transition-transform duration-300 shrink-0" />
-              <span className="hidden sm:inline">
-                {activeView === 'passenger' ? 'Captain' : 'Passenger'}
-              </span>
-            </div>
-          </button>
-        </div>
+              {/* Mode Icon */}
+              <div
+                className={`w-7 h-7 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 shrink-0 ${
+                  activeView === 'passenger'
+                    ? 'bg-sky-500 text-white shadow-sm shadow-sky-500/30'
+                    : 'bg-emerald-500 text-slate-950 shadow-sm shadow-emerald-500/30'
+                }`}
+              >
+                {activeView === 'passenger' ? (
+                  <User className="w-4 h-4" />
+                ) : (
+                  <Bike className="w-4 h-4" />
+                )}
+              </div>
+
+              {/* Main Label: "Passenger App" or "Captain App" */}
+              <div className="flex items-center gap-1.5 text-sm font-black tracking-tight">
+                <span>{activeView === 'passenger' ? 'Passenger App' : 'Captain App'}</span>
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    activeView === 'passenger' ? 'bg-sky-500' : 'bg-emerald-500'
+                  } animate-pulse`}
+                />
+              </div>
+
+              {/* Clickable switch pill */}
+              <div
+                className={`ml-1 px-2 py-1 rounded-xl flex items-center gap-1 text-[10px] font-bold border transition-all ${
+                  activeView === 'passenger'
+                    ? isLight
+                      ? 'bg-white/80 border-sky-200 text-sky-700 group-hover:bg-white'
+                      : 'bg-slate-900/80 border-sky-800/80 text-sky-300 group-hover:bg-slate-900'
+                    : isLight
+                    ? 'bg-white/80 border-emerald-200 text-emerald-700 group-hover:bg-white'
+                    : 'bg-slate-900/80 border-emerald-800/80 text-emerald-300 group-hover:bg-slate-900'
+                }`}
+              >
+                <ArrowLeftRight className="w-3 h-3 group-hover:rotate-180 transition-transform duration-300 shrink-0" />
+                <span className="hidden sm:inline">
+                  {activeView === 'passenger' ? 'Captain' : 'Passenger'}
+                </span>
+              </div>
+            </button>
+          </div>
+        )}
 
         {/* Action buttons & Auth Session */}
         <div className="flex items-center gap-2 order-2 md:order-3 shrink-0">
