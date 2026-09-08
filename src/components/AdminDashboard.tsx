@@ -178,16 +178,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
     }
   };
 
-  const handleSaveExternalUrl = () => {
+  const handleSaveExternalUrl = async () => {
     if (!apkExternalUrlInput.trim()) {
       setApkNotice({ type: 'error', message: 'Please enter a valid APK download URL.' });
       return;
     }
-    const meta = saveApkExternalUrl(apkExternalUrlInput.trim(), 'MotoRide_Mobile_App.apk', apkVersionInput);
+    const meta = await saveApkExternalUrl(apkExternalUrlInput.trim(), 'MotoRide_Mobile_App.apk', apkVersionInput);
     setApkInfo(meta);
     setApkNotice({
       type: 'success',
-      message: 'Direct APK download URL linked successfully! Top-right "MotoRide Mobile App" button is now active.',
+      message: 'Direct APK download URL linked successfully! Top-right "MotoRide Mobile App" button is now active on all desktop and mobile devices.',
     });
     setApkExternalUrlInput('');
   };
@@ -2954,9 +2954,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                     <UploadCloud className="w-4 h-4" />
                   </span>
                   <h3 className={`text-sm font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                    Upload Real APK File From Device
+                    Upload Real APK File (Live on All Browsers & Mobile Devices)
                   </h3>
                 </div>
+                <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Once uploaded, the APK file is stored on the server. Any user visiting the app from any desktop or mobile browser (Android Chrome, iOS Safari, Samsung Internet) can immediately download the official APK via the top-right button.
+                </p>
 
                 <div className="space-y-3">
                   {/* Version tag input */}
