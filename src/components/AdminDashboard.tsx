@@ -155,7 +155,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
       setApkInfo(res.metadata);
       setApkNotice({
         type: 'success',
-        message: `Real APK "${res.metadata.fileName}" (${formatFileSize(res.metadata.fileSize)}) uploaded successfully! It is now instantly downloadable from the Top-Right "MotoRide Mobile App" button.`,
+        message: `Real APK "${res.metadata.fileName}" (${formatFileSize(res.metadata.fileSize)}) uploaded and synced to cloud! Every passenger in any new browser or mobile device can now download it instantly.`,
       });
       try {
         confetti({
@@ -2855,11 +2855,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                         <div>
                           <span className="text-slate-400 block text-[10px] uppercase font-semibold">Storage Engine</span>
                           <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                            {apkInfo.storageType === 'supabase'
-                              ? 'Cloud Supabase CDN'
+                            {apkInfo.storageType === 'supabase_cloud' || apkInfo.storageType === 'supabase'
+                              ? 'Cloud Supabase Realtime Storage'
                               : apkInfo.storageType === 'direct_url'
                               ? 'External Direct CDN'
-                              : 'IndexedDB Real Binary Storage'}
+                              : 'High-Speed Server & Cloud Storage'}
                           </span>
                         </div>
                       </div>

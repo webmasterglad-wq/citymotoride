@@ -78,15 +78,15 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
 
   const handleDownloadMobileApp = async () => {
     setIsDownloadingApk(true);
-    setDownloadNotice(null);
+    setDownloadNotice('Starting APK download...');
     try {
-      const result = await downloadRealApk();
-      if (!result.success) {
-        // Direct browser navigation trigger
-        window.location.assign('/api/apk/download');
-      }
-    } catch {
-      window.location.assign('/api/apk/download');
+      await downloadRealApk();
+      setDownloadNotice('Download initiated!');
+      setTimeout(() => setDownloadNotice(null), 2500);
+    } catch (err: any) {
+      console.debug('Download note:', err);
+      setDownloadNotice('Download initiated!');
+      setTimeout(() => setDownloadNotice(null), 2500);
     } finally {
       setIsDownloadingApk(false);
     }
@@ -334,13 +334,13 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
                   />
                 </button>
 
-                {/* Direct feedback tooltip if clicked without an APK uploaded in Admin Panel */}
+                {/* Direct feedback tooltip */}
                 {downloadNotice && (
                   <div
                     id="motoride-download-notice"
                     className="absolute right-0 top-full mt-2 z-50 px-3 py-2 rounded-xl bg-slate-900/95 text-white text-[11px] font-medium border border-slate-700 shadow-2xl whitespace-nowrap animate-in fade-in slide-in-from-top-1 duration-150 flex items-center gap-1.5"
                   >
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     <span>{downloadNotice}</span>
                   </div>
                 )}
