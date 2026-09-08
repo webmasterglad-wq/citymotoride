@@ -17,6 +17,8 @@ import {
   User,
   Bike,
   ArrowLeftRight,
+  Smartphone,
+  Download,
 } from 'lucide-react';
 import {
   getStoredSupabaseConfig,
@@ -29,6 +31,12 @@ import {
 } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import {
+  downloadRealApk,
+  getStoredApkMetadata,
+  subscribeToApkUpdates,
+  ApkMetadata,
+} from '../services/apkService';
 
 interface ConnectionStatusBannerProps {
   onOpenSqlModal: () => void;
@@ -54,6 +62,36 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
   const [statusMessage, setStatusMessage] = useState('');
   const [isEnvProvided, setIsEnvProvided] = useState(false);
   const [isCustom, setIsCustom] = useState(false);
+
+  // APK file state & download management for top right side last corner
+  const [apkMeta, setApkMeta] = useState<ApkMetadata | null>(() => getStoredApkMetadata());
+  const [isDownloadingApk, setIsDownloadingApk] = useState(false);
+  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    setApkMeta(getStoredApkMetadata());
+    const unsubscribe = subscribeToApkUpdates((meta) => {
+      setApkMeta(meta);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleDownloadMobileApp = async () => {
+    setIsDownloadingApk(true);
+    setDownloadNotice(null);
+    try {
+      const result = await downloadRealApk();
+      if (!result.success) {
+        setDownloadNotice(result.error || 'Please upload the official APK from Admin Panel first.');
+        setTimeout(() => setDownloadNotice(null), 4500);
+      }
+    } catch (err: any) {
+      setDownloadNotice(err?.message || 'Download could not start.');
+      setTimeout(() => setDownloadNotice(null), 4500);
+    } finally {
+      setIsDownloadingApk(false);
+    }
+  };
 
   const checkConnection = async () => {
     setConnectionStatus('checking');
@@ -244,9 +282,9 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
           </div>
         )}
 
-        {/* Action buttons & Auth Session */}
-        <div className="flex items-center gap-2 order-2 md:order-3 shrink-0">
-          {getUserForRole(activeView) && (
+        {/* Top Right Side Last Corner: Action buttons & Auth Session & MotoRide Mobile App button */}
+        <div className="flex items-center gap-2 order-2 md:order-3 shrink-0 ml-auto md:ml-0">
+          {getUserForRole(activeView) ? (
             <div className="flex items-center gap-1.5">
               <div
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border ${
@@ -272,6 +310,43 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
                 <span>Sign Out</span>
               </button>
             </div>
+          ) : (
+            /* Show in top right side last corner "MotoRide Mobile App" button ONLY on signout passenger and captain dashboard */
+            (activeView === 'passenger' || activeView === 'captain') && (
+              <div className="relative flex items-center">
+                <button
+                  type="button"
+                  id="top-right-last-corner-motoride-mobile-app-btn"
+                  onClick={handleDownloadMobileApp}
+                  disabled={isDownloadingApk}
+                  title="MotoRide Mobile App APK Download"
+                  className={`group relative inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-black transition-all duration-150 shadow-sm cursor-pointer select-none active:scale-95 ${
+                    isLight
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white border-emerald-400 shadow-emerald-500/20'
+                      : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white border-emerald-500/60 shadow-emerald-950/40'
+                  }`}
+                >
+                  <Smartphone className="w-4 h-4 text-emerald-100 shrink-0 group-hover:scale-110 transition-transform" />
+                  <span className="font-extrabold tracking-tight whitespace-nowrap">MotoRide Mobile App</span>
+                  <Download
+                    className={`w-3.5 h-3.5 text-emerald-100 shrink-0 ${
+                      isDownloadingApk ? 'animate-bounce' : 'group-hover:translate-y-0.5 transition-transform'
+                    }`}
+                  />
+                </button>
+
+                {/* Direct feedback tooltip if clicked without an APK uploaded in Admin Panel */}
+                {downloadNotice && (
+                  <div
+                    id="motoride-download-notice"
+                    className="absolute right-0 top-full mt-2 z-50 px-3 py-2 rounded-xl bg-slate-900/95 text-white text-[11px] font-medium border border-slate-700 shadow-2xl whitespace-nowrap animate-in fade-in slide-in-from-top-1 duration-150 flex items-center gap-1.5"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>{downloadNotice}</span>
+                  </div>
+                )}
+              </div>
+            )
           )}
         </div>
       </div>

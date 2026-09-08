@@ -1238,15 +1238,12 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                   <span className="text-amber-500 font-semibold text-[11px]">+ Add Bike Details</span>
                 )}
               </div>
-              {/* Bike Number below Bike Name */}
-              <div className="flex items-center gap-1.5 mt-0.5 leading-none">
-                <span className={`text-[10px] font-semibold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Bike No:
-                </span>
-                {captainBikeParsed.plate ? (
+              {/* Bike Plate directly below Bike Name without "Bike No:" label */}
+              {captainBikeParsed.plate ? (
+                <div className="mt-0.5 leading-none">
                   <span
                     id="captain-header-bike-number-badge"
-                    className={`text-[10px] sm:text-[11px] font-mono font-black px-1.5 py-0.5 rounded border leading-none tracking-wide shrink-0 shadow-xs ${
+                    className={`inline-block text-[10px] sm:text-[11px] font-mono font-black px-1.5 py-0.5 rounded border leading-none tracking-wide shrink-0 shadow-xs ${
                       isLight
                         ? 'bg-white border-amber-300 text-slate-900'
                         : 'bg-slate-950 border-amber-500/50 text-amber-300'
@@ -1254,12 +1251,8 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                   >
                     #{captainBikeParsed.plate}
                   </span>
-                ) : (
-                  <span className="text-[10px] font-mono text-amber-500/80 font-medium italic">
-                    Not specified
-                  </span>
-                )}
-              </div>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -2328,6 +2321,26 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* Passenger Comments & Wishes (inDrive Style) */}
+                  {ride.delivery_notes && (
+                    <div
+                      id={`ride-notes-${ride.id}`}
+                      className={`p-2.5 rounded-xl border flex items-start gap-2 text-xs ${
+                        isLight ? 'bg-amber-50/80 border-amber-200 text-amber-900' : 'bg-amber-950/30 border-amber-500/30 text-amber-200'
+                      }`}
+                    >
+                      <span className="text-sm shrink-0">💬</span>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[9px] uppercase font-bold text-amber-600 dark:text-amber-400 block tracking-wide">
+                          Passenger Comments & Wishes
+                        </span>
+                        <p className="text-xs font-semibold break-words mt-0.5">
+                          "{ride.delivery_notes}"
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* 3 Acceptance Fare Price Options (Connected to Admin Dynamic Pricing) */}
                   {(() => {

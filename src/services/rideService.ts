@@ -126,6 +126,7 @@ export interface CreateRideParams {
   estimated_mins?: number;
   service_type?: 'moto_comfort' | 'moto_delivery' | 'moto_standard' | string;
   tier_name?: string;
+  delivery_notes?: string;
 }
 
 export const setStoredRideTier = (rideId: string, tier: string, tierName?: string) => {
@@ -173,6 +174,7 @@ export const createRideBooking = async (
       distance_km: params.distance_km ?? 4.2,
       estimated_mins: params.estimated_mins ?? 12,
       service_type: chosenServiceType,
+      delivery_notes: params.delivery_notes ? params.delivery_notes.trim() : null,
       status: 'requested' as RideStatus,
       created_at: new Date().toISOString(),
       accepted_at: null,
@@ -186,11 +188,12 @@ export const createRideBooking = async (
       .select()
       .single();
 
-    // If column service_type doesn't exist yet on user's database schema, fallback without the column
-    if (error && (error.message?.includes('service_type') || error.code === 'PGRST204' || error.message?.includes('column'))) {
-      console.warn('[Motoride] Retrying ride insert without optional service_type column:', error.message);
+    // If column service_type or delivery_notes doesn't exist yet on user's database schema, fallback without the column
+    if (error && (error.message?.includes('service_type') || error.message?.includes('delivery_notes') || error.code === 'PGRST204' || error.message?.includes('column'))) {
+      console.warn('[Motoride] Retrying ride insert without optional columns:', error.message);
       const fallbackPayload = { ...payload };
       delete fallbackPayload.service_type;
+      delete fallbackPayload.delivery_notes;
 
       const retryRes = await supabase
         .from('rides')

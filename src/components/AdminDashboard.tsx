@@ -49,6 +49,10 @@ import {
   Settings,
   AlertCircle,
   ExternalLink,
+  Smartphone,
+  UploadCloud,
+  Download,
+  Info,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Ride, RideStatus, FleetCaptain, PlatformSettings, AdminAnalyticsSummary } from '../types/ride';
@@ -64,6 +68,16 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useTheme } from '../context/ThemeContext';
 import { usePricing, DEFAULT_PLATFORM_PRICING, ExtendedPlatformPricing } from '../context/PricingContext';
+import {
+  saveApkFile,
+  saveApkExternalUrl,
+  deleteApk,
+  getStoredApkMetadata,
+  formatFileSize,
+  downloadRealApk,
+  subscribeToApkUpdates,
+  ApkMetadata,
+} from '../services/apkService';
 
 interface AdminDashboardProps {
   onOpenSqlModal?: () => void;
@@ -102,7 +116,7 @@ const INITIAL_PASSENGERS: AdminPassenger[] = [];
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }) => {
   const { isLight } = useTheme();
   const { pricing, updatePricing, resetPricingToDefault, calculateFare, isCustomized } = usePricing();
-  const [activeTab, setActiveTab] = useState<'live_rides' | 'captains' | 'passengers' | 'pricing' | 'bidding' | 'audit_log'>('live_rides');
+  const [activeTab, setActiveTab] = useState<'live_rides' | 'captains' | 'passengers' | 'pricing' | 'bidding' | 'mobile_apk' | 'audit_log'>('live_rides');
   const [rides, setRides] = useState<Ride[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -110,6 +124,92 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
   const [actionNotice, setActionNotice] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // Mobile APK Management State
+  const [apkInfo, setApkInfo] = useState<ApkMetadata | null>(() => getStoredApkMetadata());
+  const [apkVersionInput, setApkVersionInput] = useState<string>('1.0.0');
+  const [apkExternalUrlInput, setApkExternalUrlInput] = useState<string>('');
+  const [isUploadingApk, setIsUploadingApk] = useState<boolean>(false);
+  const [apkNotice, setApkNotice] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const apkFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setApkInfo(getStoredApkMetadata());
+    const unsubscribe = subscribeToApkUpdates((meta) => {
+      setApkInfo(meta);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingApk(true);
+    setApkNotice(null);
+
+    const res = await saveApkFile(file, apkVersionInput);
+    setIsUploadingApk(false);
+
+    if (res.success) {
+      setApkInfo(res.metadata);
+      setApkNotice({
+        type: 'success',
+        message: `Real APK "${res.metadata.fileName}" (${formatFileSize(res.metadata.fileSize)}) uploaded successfully! It is now instantly downloadable from the Top-Right "MotoRide Mobile App" button.`,
+      });
+      try {
+        confetti({
+          particleCount: 50,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      } catch {
+        // ignore
+      }
+    } else {
+      setApkNotice({
+        type: 'error',
+        message: res.error || 'Failed to upload APK file.',
+      });
+    }
+
+    if (apkFileInputRef.current) {
+      apkFileInputRef.current.value = '';
+    }
+  };
+
+  const handleSaveExternalUrl = () => {
+    if (!apkExternalUrlInput.trim()) {
+      setApkNotice({ type: 'error', message: 'Please enter a valid APK download URL.' });
+      return;
+    }
+    const meta = saveApkExternalUrl(apkExternalUrlInput.trim(), 'MotoRide_Mobile_App.apk', apkVersionInput);
+    setApkInfo(meta);
+    setApkNotice({
+      type: 'success',
+      message: 'Direct APK download URL linked successfully! Top-right "MotoRide Mobile App" button is now active.',
+    });
+    setApkExternalUrlInput('');
+  };
+
+  const handleDeleteApk = async () => {
+    await deleteApk();
+    setApkInfo(null);
+    setApkNotice({
+      type: 'success',
+      message: 'APK build removed. The top-right download button will now prompt to upload a real APK.',
+    });
+  };
+
+  const handleTestDownload = async () => {
+    const res = await downloadRealApk();
+    if (!res.success) {
+      setApkNotice({
+        type: 'error',
+        message: res.error || 'Failed to start test download.',
+      });
+    }
+  };
 
   // Platform Settings State (Synced from PricingContext)
   const [settings, setSettings] = useState<ExtendedPlatformPricing>(pricing);
@@ -769,6 +869,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
         >
           <Sparkles className="w-4 h-4 text-indigo-500" />
           Captain 3-Form Offer Rules
+        </button>
+
+        <button
+          id="admin-tab-apk-btn"
+          onClick={() => setActiveTab('mobile_apk')}
+          className={`flex items-center gap-2 px-4 py-3 font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'mobile_apk'
+              ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10'
+              : isLight ? 'border-transparent text-slate-600 hover:text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Smartphone className="w-4 h-4 text-emerald-500" />
+          Mobile App APK {apkInfo ? '✓' : ''}
         </button>
       </div>
 
@@ -2601,6 +2714,346 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                 <p className="text-[10px] text-center text-slate-400">
                   Instantly updates live pricing context for all active Captains across tabs.
                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= TAB 6: MOTORIDE MOBILE APP APK DISPATCHER ================= */}
+      {activeTab === 'mobile_apk' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Header Banner */}
+          <div
+            className={`p-6 rounded-3xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm ${
+              isLight
+                ? 'bg-gradient-to-r from-emerald-50/80 via-teal-50/40 to-white border-emerald-200/80'
+                : 'bg-gradient-to-r from-emerald-950/40 via-teal-950/20 to-[#0b0f19] border-emerald-800/60'
+            }`}
+          >
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-2xl bg-emerald-500/20 text-emerald-500 border border-emerald-500/30">
+                  <Smartphone className="w-5 h-5" />
+                </span>
+                <h2 className={`text-base sm:text-lg font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                  MotoRide Mobile App APK Dispatcher
+                </h2>
+                <span
+                  className={`text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider ${
+                    apkInfo
+                      ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                      : 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                  }`}
+                >
+                  {apkInfo ? '● Live APK Active' : '○ No APK Uploaded'}
+                </span>
+              </div>
+              <p className={`text-xs max-w-2xl leading-relaxed ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                Upload the real, official MotoRide Android APK build file here. Once uploaded, the real binary file is
+                connected directly to the <strong>"MotoRide Mobile App"</strong> button positioned in the top right side last corner
+                of the signed-out Passenger and Captain portals. When passengers or captains
+                click the button, their browser immediately starts downloading the real file with no extra pages or text.
+              </p>
+            </div>
+
+            {apkInfo && (
+              <button
+                type="button"
+                onClick={handleTestDownload}
+                className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer active:scale-95 shrink-0"
+              >
+                <Download className="w-4 h-4" />
+                <span>Test Real APK Download</span>
+              </button>
+            )}
+          </div>
+
+          {/* Action Notification */}
+          {apkNotice && (
+            <div
+              className={`p-4 rounded-2xl border text-xs font-semibold flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1 duration-150 ${
+                apkNotice.type === 'success'
+                  ? isLight
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-emerald-950/40 border-emerald-800 text-emerald-200'
+                  : isLight
+                  ? 'bg-rose-50 border-rose-200 text-rose-900'
+                  : 'bg-rose-950/40 border-rose-800 text-rose-200'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {apkNotice.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                )}
+                <span>{apkNotice.message}</span>
+              </div>
+              <button
+                onClick={() => setApkNotice(null)}
+                className="text-xs opacity-70 hover:opacity-100 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Column: Currently Active Real APK Status Card */}
+            <div className="lg:col-span-6 space-y-6">
+              <div
+                className={`p-5 rounded-3xl border shadow-sm space-y-4 ${
+                  isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-xl bg-emerald-500/10 text-emerald-500">
+                      <Smartphone className="w-4 h-4" />
+                    </span>
+                    <h3 className={`text-sm font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                      Active Connected Mobile APK
+                    </h3>
+                  </div>
+                  {apkInfo && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                      Version: {apkInfo.version || '1.0.0'}
+                    </span>
+                  )}
+                </div>
+
+                {apkInfo ? (
+                  <div className="space-y-4">
+                    {/* File details card */}
+                    <div
+                      className={`p-4 rounded-2xl border space-y-3 ${
+                        isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-0.5 min-w-0">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                            Real File Name
+                          </span>
+                          <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 break-all">
+                            {apkInfo.fileName}
+                          </span>
+                        </div>
+                        <span className="px-2 py-1 rounded-xl text-xs font-mono font-bold bg-emerald-500 text-slate-950 shrink-0">
+                          {apkInfo.fileSize > 0 ? formatFileSize(apkInfo.fileSize) : 'Direct Link'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200/60 dark:border-slate-800 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 block text-[10px] uppercase font-semibold">Uploaded Date</span>
+                          <span className={`font-medium ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                            {new Date(apkInfo.uploadedAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px] uppercase font-semibold">Storage Engine</span>
+                          <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                            {apkInfo.storageType === 'supabase'
+                              ? 'Cloud Supabase CDN'
+                              : apkInfo.storageType === 'direct_url'
+                              ? 'External Direct CDN'
+                              : 'IndexedDB Real Binary Storage'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleTestDownload}
+                        className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition-all cursor-pointer active:scale-95"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>Test Download Real APK</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleDeleteApk}
+                        className="py-2.5 px-4 rounded-xl border border-rose-300 dark:border-rose-800/80 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-300 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove APK</span>
+                      </button>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 shrink-0 text-amber-500" />
+                      <span>
+                        The top-right "MotoRide Mobile App" button is currently LIVE and delivers this exact real file.
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center space-y-3 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-800">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center justify-center mx-auto">
+                      <Smartphone className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className={`text-xs font-bold ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                        No Real APK File Uploaded Yet
+                      </h4>
+                      <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                        Please upload your official <strong>.apk</strong> build file using the upload form on the right.
+                        No fake or dummy demo files are permitted.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Information Note */}
+              <div
+                className={`p-4 rounded-3xl border text-xs space-y-2 ${
+                  isLight ? 'bg-slate-50 border-slate-200 text-slate-600' : 'bg-[#0b0f19] border-slate-800 text-slate-400'
+                }`}
+              >
+                <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
+                  <Info className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>Requirement Compliance Check</span>
+                </div>
+                <ul className="space-y-1.5 text-[11px] pl-6 list-disc">
+                  <li>
+                    <strong>Top Right Side Last Corner Placement:</strong> Visible directly in the top right side last corner of the header.
+                  </li>
+                  <li>
+                    <strong>Button Label:</strong> Exactly named <code>MotoRide Mobile App</code>.
+                  </li>
+                  <li>
+                    <strong>Audience Filter:</strong> Appears exclusively on signed-out Passenger and Captain views.
+                  </li>
+                  <li>
+                    <strong>No Intermediate Page or Text:</strong> When clicked, it directly streams/downloads the real APK file.
+                  </li>
+                  <li>
+                    <strong>Real File Guarantee:</strong> Powered purely by the genuine binary build you upload below.
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Right Column: Upload Real APK File and Optional URL */}
+            <div className="lg:col-span-6 space-y-6">
+              {/* Upload Real File Box */}
+              <div
+                className={`p-5 rounded-3xl border shadow-sm space-y-4 ${
+                  isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-xl bg-teal-500/10 text-teal-500">
+                    <UploadCloud className="w-4 h-4" />
+                  </span>
+                  <h3 className={`text-sm font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                    Upload Real APK File From Device
+                  </h3>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Version tag input */}
+                  <div>
+                    <label className={`block text-[11px] font-bold mb-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
+                      App Version Tag (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={apkVersionInput}
+                      onChange={(e) => setApkVersionInput(e.target.value)}
+                      placeholder="e.g. 1.0.0 or 2.1-prod"
+                      className={`w-full rounded-xl px-3 py-2 text-xs font-mono border focus:outline-none focus:border-emerald-500 ${
+                        isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Hidden File Input */}
+                  <input
+                    ref={apkFileInputRef}
+                    type="file"
+                    accept=".apk,application/vnd.android.package-archive,application/octet-stream"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="admin-apk-file-input"
+                  />
+
+                  {/* Dropzone / Upload Trigger Button */}
+                  <div
+                    onClick={() => apkFileInputRef.current?.click()}
+                    className={`p-6 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-3 cursor-pointer transition-all ${
+                      isUploadingApk ? 'opacity-60 pointer-events-none' : 'hover:border-emerald-500 hover:bg-emerald-500/5'
+                    } ${
+                      isLight
+                        ? 'border-slate-300 bg-slate-50/50'
+                        : 'border-slate-700 bg-slate-900/30'
+                    }`}
+                  >
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center font-bold shadow-md shadow-emerald-500/20">
+                      {isUploadingApk ? (
+                        <RefreshCw className="w-6 h-6 animate-spin text-slate-950" />
+                      ) : (
+                        <UploadCloud className="w-6 h-6 text-slate-950" />
+                      )}
+                    </div>
+                    <div className="text-center space-y-1">
+                      <span className={`text-xs font-bold block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                        {isUploadingApk ? 'Saving Real Binary APK...' : 'Click to Browse or Drag & Drop APK File'}
+                      </span>
+                      <span className="text-[11px] text-slate-400 block">
+                        Select any <strong>.apk</strong> file from your computer or storage
+                      </span>
+                    </div>
+                    <span className="px-3 py-1 rounded-xl bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-mono font-bold">
+                      Format: .apk (Android Package Archive)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Alternative: External Direct CDN Link */}
+              <div
+                className={`p-5 rounded-3xl border shadow-sm space-y-3 ${
+                  isLight ? 'bg-white border-slate-200' : 'bg-[#0b0f19] border-slate-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-xl bg-sky-500/10 text-sky-500">
+                    <ExternalLink className="w-4 h-4" />
+                  </span>
+                  <h3 className={`text-sm font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                    Or Connect External Direct Download URL
+                  </h3>
+                </div>
+                <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  If your APK is hosted on Firebase App Distribution, AWS S3, GitHub Releases, Google Drive direct
+                  download, or your custom server, enter the direct link here:
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={apkExternalUrlInput}
+                    onChange={(e) => setApkExternalUrlInput(e.target.value)}
+                    placeholder="https://example.com/downloads/MotoRide.apk"
+                    className={`flex-1 rounded-xl px-3 py-2 text-xs font-mono border focus:outline-none focus:border-sky-500 ${
+                      isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-slate-100'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveExternalUrl}
+                    className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs transition-colors cursor-pointer shrink-0"
+                  >
+                    Link URL
+                  </button>
+                </div>
               </div>
             </div>
           </div>

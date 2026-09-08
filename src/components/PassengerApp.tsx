@@ -37,6 +37,7 @@ import {
   Settings,
   Bell,
   Sparkles,
+  Zap,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -148,6 +149,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [customBidFare, setCustomBidFare] = useState<number>(0);
   const [customBidInput, setCustomBidInput] = useState<string>('');
   const [hasUserModifiedBid, setHasUserModifiedBid] = useState<boolean>(false);
+  const [passengerNotes, setPassengerNotes] = useState<string>('');
   const [isRaisingFare, setIsRaisingFare] = useState<boolean>(false);
   const [raiseFareSuccess, setRaiseFareSuccess] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('upi');
@@ -559,19 +561,19 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   };
 
   const handleAdjustBid = (delta: number) => {
-    if (!pickup.trim() || !dropoff.trim()) return;
     setHasUserModifiedBid(true);
-    const current = customBidFare > 0 ? customBidFare : baseCalculatedFare > 0 ? baseCalculatedFare : minAllowedFare;
+    const fallbackBase = baseCalculatedFare > 0 ? baseCalculatedFare : (activeTierConfig.baseFare || 25);
+    const current = customBidFare > 0 ? customBidFare : fallbackBase;
     const next = Math.max(minAllowedFare, Math.round(current + delta));
     setCustomBidFare(next);
     setCustomBidInput(next.toString());
   };
 
   const handleResetToFairFare = () => {
-    if (baseCalculatedFare <= 0) return;
+    const target = baseCalculatedFare > 0 ? baseCalculatedFare : (activeTierConfig.baseFare || 25);
     setHasUserModifiedBid(false);
-    setCustomBidFare(baseCalculatedFare);
-    setCustomBidInput(baseCalculatedFare.toFixed(0));
+    setCustomBidFare(target);
+    setCustomBidInput(target.toFixed(0));
   };
 
   const handleRaiseRideFare = async (amountToAdd: number) => {
@@ -636,6 +638,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
         estimated_mins: estimatedMins,
         service_type: selectedTier,
         tier_name: selectedTierObj.name,
+        delivery_notes: passengerNotes.trim() || undefined,
       });
 
       if (error) {
@@ -699,6 +702,9 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     setErrorMessage(null);
     setReviewSubmitted(false);
   };
+
+  const recommendedFare = baseCalculatedFare > 0 ? baseCalculatedFare : (activeTierConfig.baseFare || 25);
+  const displayFare = customBidFare > 0 ? customBidFare : recommendedFare;
 
   return (
     <div
@@ -1039,161 +1045,213 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               </div>
             </div>
 
-            {/* inDrive Bidding Controls (Always Active) */}
+            {/* inDrive Bidding Controls (Iconic Classic inDrive Style) */}
             <div
-              className={`p-3.5 border rounded-2xl space-y-3 transition-colors ${
+              id="indrive-offer-price-card"
+              className={`p-4 border-2 rounded-2xl space-y-3.5 transition-all ${
                 isLight
-                  ? 'bg-gradient-to-r from-amber-50/70 via-emerald-50/50 to-teal-50/50 border-amber-200/80 shadow-xs'
-                  : 'bg-gradient-to-r from-amber-950/20 via-emerald-950/20 to-slate-900 border-amber-500/30'
+                  ? 'bg-gradient-to-b from-emerald-50/70 via-white to-amber-50/40 border-emerald-500/40 shadow-sm'
+                  : 'bg-gradient-to-b from-slate-900 via-slate-900/90 to-emerald-950/20 border-emerald-500/40 shadow-lg'
               }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <Flame className="w-4 h-4 text-amber-500 shrink-0" />
-                    <span className={`text-xs font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                      Offer Your Price to Captains
-                    </span>
+              {/* inDrive Card Header */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-black text-xs shadow-xs">
+                    ₹
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h4 className={`text-xs font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                        Offer Your Price to Captains
+                      </h4>
+                    </div>
+                    <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                      You set the price. Nearby drivers can accept or counter-bid.
+                    </p>
                   </div>
-                  <p className={`text-[11px] mt-0.5 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                    {pickup.trim() && dropoff.trim() && baseCalculatedFare > 0
-                      ? `Recommended Fair Price: ₹${baseCalculatedFare.toFixed(2)} (${distanceKm} km)`
-                      : 'Enter pickup & drop-off to compute fair fare'}
-                    {pickup.trim() && dropoff.trim() && pricing.surgeMultiplier > 1.0 && (
-                      <span className="ml-1 text-amber-600 font-bold">({pricing.surgeMultiplier}x Surge Active)</span>
-                    )}
-                  </p>
                 </div>
 
-                {/* Direct Editable Fare Input */}
-                <div className="flex flex-col items-end">
-                  <div
-                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border shadow-inner transition-colors ${
-                      !pickup.trim() || !dropoff.trim()
-                        ? 'opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                        : isLight
-                        ? 'bg-white border-amber-400 focus-within:ring-2 focus-within:ring-amber-500/30'
-                        : 'bg-slate-950 border-amber-500/50 focus-within:ring-2 focus-within:ring-amber-500/30'
-                    }`}
+                {hasUserModifiedBid && (
+                  <button
+                    type="button"
+                    onClick={handleResetToFairFare}
+                    className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-0.5"
                   >
-                    <span className="text-sm font-black text-amber-500">₹</span>
+                    <span>Reset Fair</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Large Centered inDrive Price Stepper */}
+              <div
+                className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 shadow-inner ${
+                  isLight
+                    ? 'bg-white border-slate-200'
+                    : 'bg-slate-950 border-slate-800'
+                }`}
+              >
+                {/* Decrement Round Button */}
+                <button
+                  type="button"
+                  id="bid-decrement-circle-btn"
+                  disabled={displayFare <= minAllowedFare}
+                  onClick={() => handleAdjustBid(-5)}
+                  className={`w-11 h-11 rounded-full flex items-center justify-center font-black border text-base transition-all active:scale-90 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0 ${
+                    isLight
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 shadow-xs'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700'
+                  }`}
+                  title="Decrease offer by ₹5"
+                >
+                  <Minus className="w-5 h-5 stroke-[2.5]" />
+                </button>
+
+                {/* Central Editable Big Number */}
+                <div className="flex-1 flex flex-col items-center justify-center text-center">
+                  <div className="flex items-baseline justify-center gap-0.5">
+                    <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                      ₹
+                    </span>
                     <input
                       id="custom-bid-fare-input"
                       type="number"
                       min={minAllowedFare}
                       step="1"
-                      disabled={!pickup.trim() || !dropoff.trim()}
-                      value={customBidInput}
+                      value={customBidInput || displayFare.toFixed(0)}
                       onChange={(e) => handleCustomBidInputChange(e.target.value)}
                       onBlur={handleCustomBidInputBlur}
-                      placeholder={baseCalculatedFare > 0 ? baseCalculatedFare.toFixed(0) : '0'}
-                      className={`w-16 text-base font-black font-mono bg-transparent focus:outline-none text-right ${
-                        isLight ? 'text-amber-700' : 'text-amber-400'
+                      placeholder={recommendedFare.toFixed(0)}
+                      className={`w-24 text-3xl sm:text-4xl font-black font-mono bg-transparent focus:outline-none text-center tracking-tight ${
+                        isLight ? 'text-slate-900' : 'text-slate-50'
                       }`}
                     />
                   </div>
-                  <span className="text-[9px] uppercase font-bold text-slate-400 mt-0.5">
-                    Tap to type fare
+
+                  <span className={`text-[10px] font-medium mt-0.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Recommended: <strong className="font-bold text-slate-800 dark:text-slate-200">₹{recommendedFare.toFixed(0)}</strong>
+                    {distanceKm > 0 && ` (${distanceKm} km)`}
                   </span>
                 </div>
+
+                {/* Increment Round Button */}
+                <button
+                  type="button"
+                  id="bid-increment-circle-btn"
+                  onClick={() => handleAdjustBid(5)}
+                  className={`w-11 h-11 rounded-full flex items-center justify-center font-black border text-base transition-all active:scale-90 cursor-pointer shrink-0 ${
+                    isLight
+                      ? 'bg-emerald-500 hover:bg-emerald-600 text-slate-950 border-emerald-400 shadow-sm'
+                      : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-400 shadow-sm'
+                  }`}
+                  title="Increase offer by ₹5"
+                >
+                  <Plus className="w-5 h-5 stroke-[2.5]" />
+                </button>
               </div>
 
-              {/* Realtime Fare Comparison Tag */}
-              {pickup.trim() && dropoff.trim() && baseCalculatedFare > 0 && customBidFare > 0 && (
-                <div className="flex items-center gap-1.5">
-                  {customBidFare > baseCalculatedFare ? (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
-                      ⚡ +₹{(customBidFare - baseCalculatedFare).toFixed(0)} above fair price · Captains accept faster
-                    </span>
-                  ) : customBidFare < baseCalculatedFare ? (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-                      ⏳ ₹{(baseCalculatedFare - customBidFare).toFixed(0)} below fair price · May take longer to match
-                    </span>
-                  ) : (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30">
-                      ✓ Matches standard recommended fair fare
-                    </span>
+              {/* Realtime Speed / Acceptance Feedback Pill */}
+              <div className="flex items-center justify-between text-[11px] px-1">
+                {displayFare > recommendedFare ? (
+                  <span className="text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                    <Zap className="w-3 h-3 fill-emerald-500" />
+                    +₹{(displayFare - recommendedFare).toFixed(0)} above recommended · Captains accept in seconds!
+                  </span>
+                ) : displayFare < recommendedFare ? (
+                  <span className="text-[10px] px-2.5 py-1 rounded-full font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-amber-500" />
+                    ₹{(recommendedFare - displayFare).toFixed(0)} below fair price · May take longer to match
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2.5 py-1 rounded-full font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 flex items-center gap-1">
+                    <Check className="w-3 h-3 stroke-[3]" />
+                    Matches recommended fair price
+                  </span>
+                )}
+
+                {pricing.surgeMultiplier > 1.0 && (
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                    🔥 {pricing.surgeMultiplier}x Surge
+                  </span>
+                )}
+              </div>
+
+              {/* Quick Increment Pill Steps */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                <button
+                  type="button"
+                  id="bid-quick-fair-pill"
+                  onClick={handleResetToFairFare}
+                  className={`px-3 py-1.5 rounded-full text-xs font-black border transition-all cursor-pointer whitespace-nowrap active:scale-95 ${
+                    !hasUserModifiedBid || displayFare === recommendedFare
+                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-xs'
+                      : isLight
+                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  }`}
+                >
+                  Fair ₹{recommendedFare.toFixed(0)}
+                </button>
+
+                {[5, 10, 20, 50].map((step) => (
+                  <button
+                    key={step}
+                    type="button"
+                    id={`bid-quick-plus-${step}-pill`}
+                    onClick={() => handleAdjustBid(step)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-black border transition-all cursor-pointer whitespace-nowrap active:scale-95 ${
+                      isLight
+                        ? 'bg-white hover:bg-emerald-50 text-emerald-800 border-emerald-300 shadow-xs'
+                        : 'bg-slate-800 hover:bg-emerald-950/50 text-emerald-400 border-emerald-500/40'
+                    }`}
+                  >
+                    +₹{step}
+                  </button>
+                ))}
+              </div>
+
+              {/* Comments and wishes for driver */}
+              <div className="pt-1 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor="indrive-passenger-notes"
+                    className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                      isLight ? 'text-slate-600' : 'text-slate-400'
+                    }`}
+                  >
+                    <MessageSquare className="w-3 h-3 text-emerald-500" />
+                    <span>Comments & wishes for driver</span>
+                    <span className="text-[9px] font-normal lowercase text-slate-400">(optional)</span>
+                  </label>
+                  {passengerNotes && (
+                    <button
+                      type="button"
+                      onClick={() => setPassengerNotes('')}
+                      className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      Clear
+                    </button>
                   )}
                 </div>
-              )}
 
-              {/* Counter and quick increment buttons */}
-              <div className="grid grid-cols-5 gap-1.5 pt-0.5">
-                <button
-                  type="button"
-                  id="bid-decrement-btn"
-                  disabled={!pickup.trim() || !dropoff.trim() || customBidFare <= minAllowedFare}
-                  onClick={() => handleAdjustBid(-5)}
-                  className={`py-2 px-1 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
+                <div
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-colors ${
                     isLight
-                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200 shadow-xs'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                  }`}
-                  title="Decrease by ₹5"
-                >
-                  <Minus className="w-3.5 h-3.5 stroke-[3]" /> -5
-                </button>
-
-                <button
-                  type="button"
-                  id="bid-reset-fair-btn"
-                  disabled={!pickup.trim() || !dropoff.trim() || baseCalculatedFare <= 0}
-                  onClick={handleResetToFairFare}
-                  className={`py-2 px-1 rounded-xl text-[11px] font-black border transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed truncate active:scale-95 ${
-                    !hasUserModifiedBid
-                      ? isLight
-                        ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-xs'
-                        : 'bg-amber-500 text-slate-950 border-amber-400'
-                      : isLight
-                      ? 'bg-white hover:bg-slate-100 text-emerald-700 border-emerald-300 shadow-xs'
-                      : 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border-slate-700'
-                  }`}
-                  title="Reset to recommended fair fare"
-                >
-                  Fair
-                </button>
-
-                <button
-                  type="button"
-                  id="bid-plus-5-btn"
-                  disabled={!pickup.trim() || !dropoff.trim()}
-                  onClick={() => handleAdjustBid(5)}
-                  className={`py-2 px-1 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
-                    isLight
-                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200 shadow-xs'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                      ? 'bg-white border-slate-200 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20'
+                      : 'bg-slate-950 border-slate-800 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20'
                   }`}
                 >
-                  <Plus className="w-3.5 h-3.5 stroke-[3]" /> +5
-                </button>
-
-                <button
-                  type="button"
-                  id="bid-plus-10-btn"
-                  disabled={!pickup.trim() || !dropoff.trim()}
-                  onClick={() => handleAdjustBid(10)}
-                  className={`py-2 px-1 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
-                    isLight
-                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200 shadow-xs'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                  }`}
-                >
-                  <Plus className="w-3.5 h-3.5 stroke-[3]" /> +10
-                </button>
-
-                <button
-                  type="button"
-                  id="bid-plus-20-btn"
-                  disabled={!pickup.trim() || !dropoff.trim()}
-                  onClick={() => handleAdjustBid(20)}
-                  className={`py-2 px-1 rounded-xl text-xs font-black border transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
-                    isLight
-                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200 shadow-xs'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                  }`}
-                >
-                  <Plus className="w-3.5 h-3.5 stroke-[3]" /> +20
-                </button>
+                  <input
+                    id="indrive-passenger-notes"
+                    type="text"
+                    value={passengerNotes}
+                    onChange={(e) => setPassengerNotes(e.target.value)}
+                    placeholder="E.g., 2 helmets needed, have backpack, wait at gate 2"
+                    className={`w-full text-xs bg-transparent focus:outline-none ${
+                      isLight ? 'text-slate-800 placeholder:text-slate-400' : 'text-slate-200 placeholder:text-slate-500'
+                    }`}
+                  />
+                </div>
               </div>
             </div>
 
@@ -1314,7 +1372,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 </>
               ) : (
                 <>
-                  <span>Request Ride for ₹{((customBidFare > 0 ? customBidFare : baseCalculatedFare) || 0).toFixed(2)}</span>
+                  <span>Find a Captain for ₹{((customBidFare > 0 ? customBidFare : baseCalculatedFare) || 0).toFixed(2)}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
