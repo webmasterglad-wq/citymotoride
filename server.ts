@@ -8,6 +8,9 @@ async function startServer() {
   const PORT = 3000;
 
   const dataDir = path.join(process.cwd(), 'data', 'apk');
+  const publicDir = path.join(process.cwd(), 'public');
+  const distDir = path.join(process.cwd(), 'dist');
+
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
@@ -20,13 +23,30 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  // Helper to find the active APK binary path
+  const resolveActiveApkPath = (): string | null => {
+    const primaryPath = path.join(dataDir, 'motoride.apk');
+    if (fs.existsSync(primaryPath) && fs.statSync(primaryPath).size > 0) {
+      return primaryPath;
+    }
+    const publicPath = path.join(publicDir, 'MotoRide_Mobile_App.apk');
+    if (fs.existsSync(publicPath) && fs.statSync(publicPath).size > 0) {
+      return publicPath;
+    }
+    const distPath = path.join(distDir, 'MotoRide_Mobile_App.apk');
+    if (fs.existsSync(distPath) && fs.statSync(distPath).size > 0) {
+      return distPath;
+    }
+    return null;
+  };
+
   // 1. Get APK Info (metadata) - accessible by all browsers & devices
   app.get('/api/apk/info', (req, res) => {
     try {
-      const apkPath = path.join(dataDir, 'motoride.apk');
+      const apkPath = resolveActiveApkPath();
       const metaPath = path.join(dataDir, 'metadata.json');
 
-      if (!fs.existsSync(apkPath)) {
+      if (!apkPath) {
         if (fs.existsSync(metaPath)) {
           try {
             const raw = fs.readFileSync(metaPath, 'utf8');
@@ -46,7 +66,7 @@ async function startServer() {
         fileSize: stat.size,
         mimeType: 'application/vnd.android.package-archive',
         uploadedAt: stat.mtime.toISOString(),
-        version: '1.0.0',
+        version: '1.2.0',
         storageType: 'server',
         downloadUrl: '/api/apk/download',
       };
@@ -73,10 +93,10 @@ async function startServer() {
   // 2. Universal Direct APK Download - works on all desktop and mobile browsers
   app.get('/api/apk/download', (req, res) => {
     try {
-      const apkPath = path.join(dataDir, 'motoride.apk');
+      const apkPath = resolveActiveApkPath();
       const metaPath = path.join(dataDir, 'metadata.json');
 
-      if (!fs.existsSync(apkPath)) {
+      if (!apkPath) {
         if (fs.existsSync(metaPath)) {
           try {
             const raw = fs.readFileSync(metaPath, 'utf8');
@@ -121,12 +141,12 @@ async function startServer() {
     }
   });
 
-  // 3. Upload APK from Admin Panel (streamed directly to disk)
+  // 3. Upload APK from Admin Panel (streamed directly to disk and synced to public)
   app.post('/api/apk/upload', (req, res) => {
     try {
       const queryFileName = (req.query.fileName as string) || 'MotoRide_Mobile_App.apk';
       const cleanFileName = queryFileName.endsWith('.apk') ? queryFileName : `${queryFileName}.apk`;
-      const version = ((req.query.version as string) || '1.0.0').trim();
+      const version = ((req.query.version as string) || '1.2.0').trim();
 
       const apkPath = path.join(dataDir, 'motoride.apk');
       const metaPath = path.join(dataDir, 'metadata.json');
@@ -150,6 +170,20 @@ async function startServer() {
           };
 
           fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf8');
+
+          // Synchronize to public directory so static Vite serving also has it
+          try {
+            if (!fs.existsSync(publicDir)) {
+              fs.mkdirSync(publicDir, { recursive: true });
+            }
+            fs.copyFileSync(apkPath, path.join(publicDir, 'MotoRide_Mobile_App.apk'));
+            if (fs.existsSync(distDir)) {
+              fs.copyFileSync(apkPath, path.join(distDir, 'MotoRide_Mobile_App.apk'));
+            }
+          } catch (syncErr) {
+            console.warn('Syncing APK to public failed (non-fatal):', syncErr);
+          }
+
           res.json({ success: true, metadata });
         } catch (postErr: any) {
           res.status(500).json({ success: false, error: postErr?.message || 'Error saving metadata' });
@@ -169,7 +203,7 @@ async function startServer() {
   // 4. Save External URL (optional alternative)
   app.post('/api/apk/external-url', (req, res) => {
     try {
-      const { downloadUrl, fileName = 'MotoRide_Mobile_App.apk', version = '1.0.0' } = req.body;
+      const { downloadUrl, fileName = 'MotoRide_Mobile_App.apk', version = '1.2.0' } = req.body;
       if (!downloadUrl) {
         return res.status(400).json({ success: false, error: 'downloadUrl is required' });
       }
@@ -216,10 +250,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    app.use(express.static(distDir));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      res.sendFile(path.join(distDir, 'index.html'));
     });
   }
 

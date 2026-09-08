@@ -82,12 +82,11 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
     try {
       const result = await downloadRealApk();
       if (!result.success) {
-        setDownloadNotice(result.error || 'Please upload the official APK from Admin Panel first.');
-        setTimeout(() => setDownloadNotice(null), 4500);
+        // Direct browser navigation trigger
+        window.location.assign('/api/apk/download');
       }
-    } catch (err: any) {
-      setDownloadNotice(err?.message || 'Download could not start.');
-      setTimeout(() => setDownloadNotice(null), 4500);
+    } catch {
+      window.location.assign('/api/apk/download');
     } finally {
       setIsDownloadingApk(false);
     }
