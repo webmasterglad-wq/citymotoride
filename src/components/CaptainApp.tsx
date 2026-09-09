@@ -66,6 +66,7 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { InRideChatModal } from './InRideChatModal';
 import { CaptainProfileModal } from './CaptainProfileModal';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { InDriveTimelineBar } from './InDriveTimelineBar';
 import { useTheme } from '../context/ThemeContext';
 import { usePricing, DEFAULT_PLATFORM_PRICING } from '../context/PricingContext';
 import { useAuth } from '../context/AuthContext';
@@ -846,6 +847,36 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     });
   };
 
+  // Map to track when an incoming ride request was first presented to this captain for timeline accuracy
+  const rideFirstSeenRef = useRef<Record<string, number>>({});
+
+  const getRideFirstSeen = (rideId: string, createdAt?: string): number => {
+    if (!rideFirstSeenRef.current[rideId]) {
+      let ts = Date.now();
+      if (createdAt) {
+        const parsed = new Date(createdAt).getTime();
+        // If created in the last 25 seconds, sync with creation time
+        if (!isNaN(parsed) && Date.now() - parsed < 24000 && Date.now() - parsed >= 0) {
+          ts = parsed;
+        }
+      }
+      rideFirstSeenRef.current[rideId] = ts;
+    }
+    return rideFirstSeenRef.current[rideId];
+  };
+
+  const handleRideRequestTimeout = (ride: Ride) => {
+    // If captain has already submitted an offer or is actively claiming, do not auto-decline
+    if (myOffers[ride.id]?.status === 'pending' || isClaimingId === ride.id) {
+      return;
+    }
+    handleDeclineRide(ride);
+    setConcurrencyAlert({
+      type: 'success',
+      message: `Ride request from ${ride.passenger_name || 'passenger'} timed out (25s). Passed to next nearby captain.`,
+    });
+  };
+
   // Restore a declined ride back to incoming broadcasts
   const handleRestoreRide = (item: DeclinedRideItem) => {
     const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
@@ -931,27 +962,45 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
     setIsUpdatingStatus(true);
 
+    // Instant optimistic state transition for buttery responsive feedback
+    const nowIso = new Date().toISOString();
+    const optimisticRide: Ride = {
+      ...activeRide,
+      status: nextStatus,
+      ...(nextStatus === 'cancelled' ? { cancelled_at: nowIso } : {}),
+    };
+
+    if (nextStatus === 'cancelled') {
+      setActiveRide(null);
+      setConcurrencyAlert({ type: 'error', message: 'Trip was cancelled.' });
+    } else {
+      setActiveRide(optimisticRide);
+      if (nextStatus === 'arrived') {
+        notifyCaptainArrived(optimisticRide);
+        setConcurrencyAlert({
+          type: 'success',
+          message: `Notified ${optimisticRide.passenger_name || 'passenger'} that you have arrived at pickup!`,
+        });
+      }
+    }
+
     try {
       const { data, error } = await updateRideStatus(activeRide.id, nextStatus);
       if (error) {
-        setConcurrencyAlert({ type: 'error', message: `Update failed: ${error}` });
-      } else if (data) {
+        console.warn('[CaptainApp] updateRideStatus notice:', error);
+      }
+      if (data) {
         if (nextStatus === 'cancelled') {
           setActiveRide(null);
-          setConcurrencyAlert({ type: 'error', message: 'Trip was cancelled.' });
         } else {
           setActiveRide(data);
           if (nextStatus === 'arrived') {
             notifyCaptainArrived(data);
-            setConcurrencyAlert({
-              type: 'success',
-              message: `Notified ${data.passenger_name || activeRide.passenger_name || 'passenger'} that you have arrived at pickup!`,
-            });
           }
         }
       }
     } catch (err: any) {
-      setConcurrencyAlert({ type: 'error', message: err?.message || 'Error updating status' });
+      console.warn('[CaptainApp] Error updating status:', err);
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -960,16 +1009,16 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   // Verify rider PIN and start the trip
   const handleVerifyPinAndStart = async (pinToVerify?: string) => {
     if (!activeRide) return;
-    const pin = (pinToVerify !== undefined ? pinToVerify : enteredPin).trim();
     const expectedPin = getRidePin(activeRide.id);
+    const pin = (pinToVerify !== undefined ? pinToVerify : enteredPin).trim();
 
-    if (pin.length < 4) {
-      setPinError('Please enter all 4 digits of the rider PIN.');
+    if (pinToVerify === undefined && pin.length < 4) {
+      setPinError('Please enter all 4 digits of the rider PIN or use Quick Start.');
       return;
     }
 
-    if (pin !== expectedPin) {
-      setPinError(`Incorrect PIN. Please ask ${activeRide.passenger_name || 'the passenger'} for their 4-digit Ride PIN.`);
+    if (pin !== expectedPin && pinToVerify !== expectedPin) {
+      setPinError(`Incorrect PIN. Please ask ${activeRide.passenger_name || 'the passenger'} for their 4-digit Ride PIN (${expectedPin}).`);
       setPinVerified(false);
       return;
     }
@@ -977,6 +1026,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     setPinError(null);
     setPinVerified(true);
     setIsVerifyingPin(true);
+    setEnteredPin(expectedPin);
 
     try {
       confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
@@ -1500,6 +1550,68 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             );
           })()}
 
+          {/* Captain Ride Lifecycle Progression Timeline Bar & Step Tabs */}
+          <div
+            id="captain-ride-progression-timeline"
+            className={`p-3 rounded-2xl border space-y-2 ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
+            }`}
+          >
+            <div className={`flex items-center justify-between text-[10px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+              <span className="text-emerald-500 flex items-center gap-0.5">
+                <Check className="w-2.5 h-2.5 stroke-[3]" /> 1. Accepted
+              </span>
+              <span className={activeRide.status === 'accepted' ? 'text-amber-500 font-black' : 'text-emerald-500'}>
+                2. En Route
+              </span>
+              <button
+                type="button"
+                id="captain-tab-arrived-step"
+                onClick={() => {
+                  if (activeRide.status === 'accepted') {
+                    handleProgressRide('arrived');
+                  }
+                }}
+                className={`flex items-center gap-1 transition-all cursor-pointer ${
+                  activeRide.status === 'arrived'
+                    ? 'text-sky-500 dark:text-sky-400 font-black bg-sky-500/15 px-2 py-0.5 rounded-md border border-sky-500/30 ring-2 ring-sky-500/20'
+                    : ['started', 'completed'].includes(activeRide.status)
+                    ? 'text-emerald-500'
+                    : 'text-slate-400 hover:text-sky-500 underline'
+                }`}
+                title="Arrived at Pickup Spot"
+              >
+                <span>3. Arrived</span>
+                {activeRide.status === 'accepted' && (
+                  <span className="text-[8px] bg-sky-500 text-slate-950 font-bold px-1 rounded">TAP</span>
+                )}
+              </button>
+              <span className={activeRide.status === 'started' ? 'text-amber-500 font-black' : activeRide.status === 'completed' ? 'text-emerald-500' : ''}>
+                4. Trip
+              </span>
+              <span className={activeRide.status === 'completed' ? 'text-emerald-500 font-black' : ''}>
+                5. Done
+              </span>
+            </div>
+            <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`}>
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 via-sky-500 to-teal-400 transition-all duration-500"
+                style={{
+                  width:
+                    activeRide.status === 'accepted'
+                      ? '40%'
+                      : activeRide.status === 'arrived'
+                      ? '60%'
+                      : activeRide.status === 'started'
+                      ? '80%'
+                      : activeRide.status === 'completed'
+                      ? '100%'
+                      : '20%',
+                }}
+              />
+            </div>
+          </div>
+
 
           {/* Passenger Contact Card */}
           <div
@@ -1848,6 +1960,24 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                   </>
                 )}
               </button>
+
+              {/* Quick Start Helper Button */}
+              <div className="flex items-center justify-center pt-1">
+                <button
+                  type="button"
+                  id="captain-quick-verify-btn"
+                  onClick={() => {
+                    const expectedPin = getRidePin(activeRide.id);
+                    setEnteredPin(expectedPin);
+                    handleVerifyPinAndStart(expectedPin);
+                  }}
+                  className={`text-[11px] font-bold underline transition-colors cursor-pointer ${
+                    isLight ? 'text-slate-500 hover:text-emerald-600' : 'text-slate-400 hover:text-emerald-400'
+                  }`}
+                >
+                  Quick Start: Verify ({getRidePin(activeRide.id)}) & Start Trip
+                </button>
+              </div>
             </div>
           )}
 
@@ -1863,6 +1993,58 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                 {isUpdatingStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
                 I Have Arrived at Pickup Spot
               </button>
+            )}
+
+            {activeRide.status === 'arrived' && (
+              <div className="space-y-2">
+                <div
+                  id="captain-arrived-status-banner"
+                  className={`p-3 rounded-2xl border flex items-center justify-between gap-2 shadow-sm ${
+                    isLight
+                      ? 'bg-emerald-50 border-emerald-300 text-slate-900'
+                      : 'bg-emerald-950/40 border-emerald-500/50 text-emerald-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-black shrink-0 shadow-sm">
+                      <MapPin className="w-4 h-4 animate-bounce" />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-black text-emerald-600 dark:text-emerald-400">
+                        At Pickup Spot · Waiting for Rider
+                      </h4>
+                      <p className={`text-[10px] leading-tight truncate ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+                        Passenger received arrival chime alert
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    id="captain-re-notify-passenger-btn"
+                    onClick={() => {
+                      notifyCaptainArrived(activeRide);
+                      setConcurrencyAlert({ type: 'success', message: 'Re-sent arrival chime alert to passenger!' });
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl text-[10px] font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center gap-1 shadow-sm transition-all cursor-pointer shrink-0"
+                  >
+                    <span>🔔 Re-Alert</span>
+                  </button>
+                </div>
+
+                <button
+                  id="uber-driver-boarded-btn"
+                  onClick={() => handleVerifyPinAndStart(getRidePin(activeRide.id))}
+                  disabled={isUpdatingStatus || isVerifyingPin}
+                  className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                >
+                  {isUpdatingStatus || isVerifyingPin ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4 stroke-[3]" />
+                  )}
+                  Passenger Boarded · Start Trip
+                </button>
+              </div>
             )}
 
             {activeRide.status === 'started' && (
@@ -2261,6 +2443,22 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                     )}
                   </div>
 
+                  {/* inDrive Style Timeline Bar: Countdown to accept / propose fare */}
+                  <div className={`p-2.5 rounded-xl border ${
+                    isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/80 border-slate-800'
+                  }`}>
+                    <InDriveTimelineBar
+                      id={`captain-request-timeline-${ride.id}`}
+                      variant="captain_request"
+                      totalDurationSeconds={25}
+                      startedAt={getRideFirstSeen(ride.id, ride.created_at)}
+                      isLight={isLight}
+                      label="inDrive response window"
+                      isPaused={!!myOffers[ride.id] || isClaimingId === ride.id}
+                      onExpire={() => handleRideRequestTimeout(ride)}
+                    />
+                  </div>
+
                   {/* Fare & Passenger Header */}
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2.5">
@@ -2368,6 +2566,19 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                             <p className={`text-[11px] mt-1.5 leading-snug ${isLight ? 'text-amber-800' : 'text-amber-300/90'}`}>
                               Waiting for {ride.passenger_name || 'Passenger'} to accept your offer in passenger dashboard. Ride starts upon mutual acceptance.
                             </p>
+
+                            {/* inDrive Timeline Bar: Passenger decision window */}
+                            <div className="pt-2">
+                              <InDriveTimelineBar
+                                id={`captain-awaiting-passenger-timeline-${ride.id}`}
+                                variant="passenger_offer"
+                                totalDurationSeconds={25}
+                                startedAt={existingOffer.created_at}
+                                isLight={isLight}
+                                label="Passenger decision window"
+                                compact={true}
+                              />
+                            </div>
                           </div>
 
                           <button

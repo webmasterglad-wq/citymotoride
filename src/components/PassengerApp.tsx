@@ -72,6 +72,7 @@ import { PassengerProfileModal } from './PassengerProfileModal';
 import { FareCalculatorModal } from './FareCalculatorModal';
 import { FareBreakdown, calculateEstimatedRoute, calculateMotoFare } from '../utils/fareCalculator';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { InDriveTimelineBar } from './InDriveTimelineBar';
 import { SERVICE_ZONES, ServiceZone, detectZoneForLocation, resolveLocationCoords, LatLng } from '../utils/geoUtils';
 import { useTheme } from '../context/ThemeContext';
 import { usePricing } from '../context/PricingContext';
@@ -493,11 +494,37 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
           captainName: arrivedRide.captain_name || activeRide.captain_name || 'Your Captain',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         });
+        setActiveRide((prev) => {
+          if (!prev || prev.id !== arrivedRide.id) return prev;
+          return {
+            ...prev,
+            status: 'arrived',
+            captain_name: arrivedRide.captain_name || prev.captain_name,
+            captain_phone: arrivedRide.captain_phone || prev.captain_phone,
+            captain_vehicle: arrivedRide.captain_vehicle || prev.captain_vehicle,
+          };
+        });
       }
     });
 
+    const handleStatusUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (activeRide && detail && detail.rideId === activeRide.id && detail.ride) {
+        setActiveRide(detail.ride);
+        if (detail.status === 'arrived') {
+          playCaptainArrivedChime();
+          setCaptainArrivedNotice({
+            captainName: detail.ride.captain_name || activeRide.captain_name || 'Your Captain',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+        }
+      }
+    };
+    window.addEventListener('motoride_ride_status_updated', handleStatusUpdate);
+
     return () => {
       unsubArrived();
+      window.removeEventListener('motoride_ride_status_updated', handleStatusUpdate);
     };
   }, [activeRide?.id, activeRide?.captain_name]);
 
@@ -528,6 +555,20 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const handleDeclineCaptainOffer = (captainId: string) => {
     if (!activeRide) return;
     declineCaptainOffer(activeRide.id, captainId);
+  };
+
+  // Handle inDrive 25s offer expiration
+  const handleOfferTimeout = (offer: CaptainOffer) => {
+    if (!activeRide) return;
+    // Don't expire if user is currently accepting
+    if (isAcceptingOfferId === offer.id) return;
+    declineCaptainOffer(activeRide.id, offer.captain_id);
+    setSkipNotice(
+      `Offer of ₹${offer.offered_fare} from ${offer.captain_name || 'Captain'} expired (25s). Waiting for other nearby captains...`
+    );
+    setTimeout(() => {
+      setSkipNotice((prev) => (prev?.includes(offer.offered_fare.toString()) ? null : prev));
+    }, 5000);
   };
 
   // Safety PIN generated per ride ID
@@ -1834,6 +1875,22 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                               : 'bg-slate-900 border-emerald-500/40 ring-1 ring-emerald-500/20'
                           }`}
                         >
+                          {/* inDrive Style Timeline Bar: Countdown to accept driver's offer */}
+                          <div className={`p-2.5 rounded-xl border mb-3 ${
+                            isLight ? 'bg-slate-50/90 border-slate-200' : 'bg-slate-950/70 border-slate-800'
+                          }`}>
+                            <InDriveTimelineBar
+                              id={`passenger-offer-timeline-${offer.id}`}
+                              variant="passenger_offer"
+                              totalDurationSeconds={25}
+                              startedAt={offer.created_at}
+                              isLight={isLight}
+                              label="Time to accept driver's offer"
+                              isPaused={isAcceptingOfferId === offer.id}
+                              onExpire={() => handleOfferTimeout(offer)}
+                            />
+                          </div>
+
                           {/* Captain Info & Offered Fare */}
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-2.5 min-w-0">
@@ -1919,26 +1976,43 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               <div className="space-y-3">
                 {/* Searching State Radar Card */}
                 <div
-                  className={`border p-4 rounded-2xl flex items-center gap-3 animate-pulse transition-colors ${
+                  className={`border p-4 rounded-2xl space-y-3 transition-colors ${
                     isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
                   }`}
                 >
-                  <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-500 flex items-center justify-center shrink-0">
-                    <Radio className="w-5 h-5 animate-spin" />
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-500 flex items-center justify-center shrink-0">
+                      <Radio className="w-5 h-5 animate-spin" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                        Broadcasting Request to Captains
+                      </h4>
+                      {skipNotice ? (
+                        <p className="text-[11px] font-bold text-amber-500 animate-pulse">
+                          {skipNotice}
+                        </p>
+                      ) : (
+                        <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                          Nearby drivers are reviewing your request of ₹{activeRide.fare?.toFixed(2) || '14.50'}. Captain fare offers will appear here for mutual acceptance.
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
-                      Broadcasting Request to Captains
-                    </h4>
-                    {skipNotice ? (
-                      <p className="text-[11px] font-bold text-amber-500 animate-pulse">
-                        {skipNotice}
-                      </p>
-                    ) : (
-                      <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                        Nearby drivers are reviewing your request of ₹{activeRide.fare?.toFixed(2) || '14.50'}. Captain fare offers will appear here for mutual acceptance.
-                      </p>
-                    )}
+
+                  {/* inDrive Style Live Broadcast Search Timeline Bar */}
+                  <div className={`p-2.5 rounded-xl border ${
+                    isLight ? 'bg-white border-slate-200' : 'bg-slate-950/80 border-slate-800'
+                  }`}>
+                    <InDriveTimelineBar
+                      id="passenger-search-radar-timeline"
+                      variant="search_radar"
+                      totalDurationSeconds={30}
+                      startedAt={activeRide.created_at}
+                      isLight={isLight}
+                      label="inDrive live driver search cycle"
+                      compact={true}
+                    />
                   </div>
                 </div>
 

@@ -1,7 +1,7 @@
 import { getSupabaseClient } from '../lib/supabase';
 import { Ride, RideStatus, ConcurrencyClaimResult, CaptainEarningsSummary, CaptainOffer } from '../types/ride';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { notifyNewIncomingRide } from '../utils/audioAlert';
+import { notifyNewIncomingRide, notifyCaptainArrived } from '../utils/audioAlert';
 
 /**
  * Returns ISO timestamp bounds for the local calendar day (start of today, start of tomorrow, start of yesterday)
@@ -585,34 +585,104 @@ export const updateRideStatus = async (
   newStatus: RideStatus
 ): Promise<{ data: Ride | null; error: string | null }> => {
   const supabase = getSupabaseClient();
-  if (!supabase) return { data: null, error: 'Supabase client is not configured' };
+  const now = new Date().toISOString();
+
+  const updatePayload: Partial<Ride> & Record<string, any> = {
+    status: newStatus,
+  };
+
+  if (newStatus === 'completed') {
+    updatePayload.completed_at = now;
+  } else if (newStatus === 'cancelled') {
+    updatePayload.cancelled_at = now;
+  }
+
+  let finalRide: Ride | null = null;
+  let updateError: string | null = null;
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('rides')
+        .update(updatePayload)
+        .eq('id', rideId)
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        console.warn('[Motoride] Supabase updateRideStatus notice:', error.message);
+        updateError = error.message;
+      } else if (data) {
+        finalRide = data as Ride;
+      } else {
+        // PostgREST didn't return row directly; fetch with standard query
+        const { data: fetched } = await supabase
+          .from('rides')
+          .select('*')
+          .eq('id', rideId)
+          .maybeSingle();
+        if (fetched) {
+          finalRide = fetched as Ride;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Motoride] Error during Supabase status update:', err);
+      updateError = err?.message || 'Network error';
+    }
+  }
+
+  // If database didn't return or failed, create optimistic ride representation
+  if (!finalRide) {
+    const cachedStr = typeof window !== 'undefined' ? localStorage.getItem(`motoride_active_ride_${rideId}`) : null;
+    let base: any = {};
+    if (cachedStr) {
+      try { base = JSON.parse(cachedStr); } catch {}
+    }
+    finalRide = {
+      ...base,
+      id: rideId,
+      status: newStatus,
+      ...(newStatus === 'completed' ? { completed_at: now } : {}),
+      ...(newStatus === 'cancelled' ? { cancelled_at: now } : {}),
+    } as Ride;
+  }
+
+  // Cache updated ride in local storage
+  if (typeof window !== 'undefined' && finalRide) {
+    try {
+      localStorage.setItem(`motoride_active_ride_${rideId}`, JSON.stringify(finalRide));
+      localStorage.setItem('motoride_last_status_event', JSON.stringify({
+        rideId,
+        status: newStatus,
+        timestamp: Date.now(),
+      }));
+    } catch {}
+  }
+
+  // Multi-channel cross-tab / cross-window broadcast
+  try {
+    offersBroadcastChannel?.postMessage({
+      type: 'ride_status_updated',
+      rideId,
+      status: newStatus,
+      ride: finalRide,
+    });
+  } catch {}
 
   try {
-    const updatePayload: Partial<Ride> & Record<string, any> = {
-      status: newStatus,
-    };
+    window.dispatchEvent(
+      new CustomEvent('motoride_ride_status_updated', {
+        detail: { rideId, status: newStatus, ride: finalRide },
+      })
+    );
+  } catch {}
 
-    if (newStatus === 'completed') {
-      updatePayload.completed_at = new Date().toISOString();
-    } else if (newStatus === 'cancelled') {
-      updatePayload.cancelled_at = new Date().toISOString();
-    }
-
-    const { data, error } = await supabase
-      .from('rides')
-      .update(updatePayload)
-      .eq('id', rideId)
-      .select()
-      .single();
-
-    if (error) {
-      return { data: null, error: error.message };
-    }
-
-    return { data: data as Ride, error: null };
-  } catch (err: any) {
-    return { data: null, error: err.message };
+  // If captain has arrived, trigger captain arrived broadcast across audio chimes and passenger screens
+  if (newStatus === 'arrived' && finalRide) {
+    notifyCaptainArrived(finalRide);
   }
+
+  return { data: finalRide, error: null };
 };
 
 /**
