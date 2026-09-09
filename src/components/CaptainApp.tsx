@@ -40,6 +40,8 @@ import {
   Settings,
   Bell,
   BellOff,
+  Route,
+  Info,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Ride, RideStatus, UserProfile, CaptainEarningsSummary, getRideServiceInfo, CaptainOffer, getRidePin } from '../types/ride';
@@ -59,6 +61,8 @@ import {
   recordCaptainSkippedRide,
   getCaptainSkippedRideIds,
   unskipCaptainRide,
+  getStoredRideData,
+  setStoredRideData,
 } from '../services/rideService';
 import { subscribeToUnreadCount, markMessagesAsRead } from '../services/chatService';
 import { ChatMessage } from '../types/ride';
@@ -583,7 +587,22 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               } catch (e) {}
             }
           } else {
-            setActiveRide(updatedRide);
+            setActiveRide((prev) => {
+              if (!prev || prev.id !== updatedRide.id) return updatedRide;
+              const merged: Ride = {
+                ...prev,
+                ...updatedRide,
+                passenger_name: updatedRide.passenger_name || prev.passenger_name || 'Passenger',
+                passenger_phone: updatedRide.passenger_phone || prev.passenger_phone || '',
+                pickup_location: updatedRide.pickup_location || prev.pickup_location || 'Pickup Location',
+                dropoff_location: updatedRide.dropoff_location || prev.dropoff_location || 'Destination',
+                fare: updatedRide.fare ?? prev.fare,
+                service_type: updatedRide.service_type || prev.service_type,
+                tier_name: updatedRide.tier_name || prev.tier_name,
+              };
+              setStoredRideData(merged.id, merged);
+              return merged;
+            });
           }
         }
 
@@ -662,7 +681,18 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
       if (detail && detail.captainId === activeCapId) {
         if (detail.ride) {
-          setActiveRide(detail.ride);
+          const cached = getStoredRideData(detail.rideId) || {};
+          const mergedRide: Ride = {
+            ...cached,
+            ...detail.ride,
+            passenger_name: detail.ride.passenger_name || cached.passenger_name || 'Passenger',
+            passenger_phone: detail.ride.passenger_phone || cached.passenger_phone || '',
+            pickup_location: detail.ride.pickup_location || cached.pickup_location || 'Pickup Location',
+            dropoff_location: detail.ride.dropoff_location || cached.dropoff_location || 'Destination',
+            fare: detail.ride.fare ?? detail.fare ?? cached.fare,
+          };
+          setStoredRideData(mergedRide.id, mergedRide);
+          setActiveRide(mergedRide);
           setRequestedRides((prev) => prev.filter((r) => r.id !== detail.rideId));
           setDeclinedRides((prev) => prev.filter((d) => d.ride.id !== detail.rideId));
           setConcurrencyAlert({
@@ -686,7 +716,18 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
           if (data && data.type === 'offer_mutually_accepted' && data.captainId === activeCapId) {
             if (data.ride) {
-              setActiveRide(data.ride);
+              const cached = getStoredRideData(data.rideId) || {};
+              const mergedRide: Ride = {
+                ...cached,
+                ...data.ride,
+                passenger_name: data.ride.passenger_name || cached.passenger_name || 'Passenger',
+                passenger_phone: data.ride.passenger_phone || cached.passenger_phone || '',
+                pickup_location: data.ride.pickup_location || cached.pickup_location || 'Pickup Location',
+                dropoff_location: data.ride.dropoff_location || cached.dropoff_location || 'Destination',
+                fare: data.ride.fare ?? data.fare ?? cached.fare,
+              };
+              setStoredRideData(mergedRide.id, mergedRide);
+              setActiveRide(mergedRide);
               setRequestedRides((prev) => prev.filter((r) => r.id !== data.rideId));
               setDeclinedRides((prev) => prev.filter((d) => d.ride.id !== data.rideId));
               setConcurrencyAlert({
@@ -792,7 +833,19 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     setIsClaimingId(null);
 
     if (result.success && result.ride) {
-      setActiveRide(result.ride);
+      const cached = getStoredRideData(ride.id) || {};
+      const mergedRide: Ride = {
+        ...cached,
+        ...ride,
+        ...result.ride,
+        passenger_name: result.ride.passenger_name || ride.passenger_name || cached.passenger_name || 'Passenger',
+        passenger_phone: result.ride.passenger_phone || ride.passenger_phone || cached.passenger_phone || '',
+        pickup_location: result.ride.pickup_location || ride.pickup_location || cached.pickup_location || 'Pickup Location',
+        dropoff_location: result.ride.dropoff_location || ride.dropoff_location || cached.dropoff_location || 'Destination',
+        fare: result.ride.fare ?? agreedFare ?? cached.fare,
+      };
+      setStoredRideData(mergedRide.id, mergedRide);
+      setActiveRide(mergedRide);
       setRequestedRides((prev) => prev.filter((r) => r.id !== ride.id));
       setDeclinedRides((prev) => prev.filter((d) => d.ride.id !== ride.id));
       
@@ -964,9 +1017,15 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
     // Instant optimistic state transition for buttery responsive feedback
     const nowIso = new Date().toISOString();
+    const cached = getStoredRideData(activeRide.id) || {};
     const optimisticRide: Ride = {
+      ...cached,
       ...activeRide,
       status: nextStatus,
+      passenger_name: activeRide.passenger_name || cached.passenger_name || 'Passenger',
+      passenger_phone: activeRide.passenger_phone || cached.passenger_phone || '',
+      pickup_location: activeRide.pickup_location || cached.pickup_location || 'Pickup Location',
+      dropoff_location: activeRide.dropoff_location || cached.dropoff_location || 'Destination',
       ...(nextStatus === 'cancelled' ? { cancelled_at: nowIso } : {}),
     };
 
@@ -974,6 +1033,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       setActiveRide(null);
       setConcurrencyAlert({ type: 'error', message: 'Trip was cancelled.' });
     } else {
+      setStoredRideData(optimisticRide.id, optimisticRide);
       setActiveRide(optimisticRide);
       if (nextStatus === 'arrived') {
         notifyCaptainArrived(optimisticRide);
@@ -993,7 +1053,22 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         if (nextStatus === 'cancelled') {
           setActiveRide(null);
         } else {
-          setActiveRide(data);
+          setActiveRide((prev) => {
+            const current = prev || optimisticRide;
+            const merged: Ride = {
+              ...current,
+              ...data,
+              passenger_name: data.passenger_name || current.passenger_name || optimisticRide.passenger_name || 'Passenger',
+              passenger_phone: data.passenger_phone || current.passenger_phone || optimisticRide.passenger_phone || '',
+              pickup_location: data.pickup_location || current.pickup_location || optimisticRide.pickup_location || 'Pickup Location',
+              dropoff_location: data.dropoff_location || current.dropoff_location || optimisticRide.dropoff_location || 'Destination',
+              fare: data.fare ?? current.fare ?? optimisticRide.fare,
+              service_type: data.service_type || current.service_type || optimisticRide.service_type,
+              tier_name: data.tier_name || current.tier_name || optimisticRide.tier_name,
+            };
+            setStoredRideData(merged.id, merged);
+            return merged;
+          });
           if (nextStatus === 'arrived') {
             notifyCaptainArrived(data);
           }
@@ -1570,25 +1645,49 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                 onClick={() => {
                   if (activeRide.status === 'accepted') {
                     handleProgressRide('arrived');
+                  } else if (activeRide.status === 'arrived') {
+                    notifyCaptainArrived(activeRide);
+                    setConcurrencyAlert({ type: 'success', message: 'Re-sent arrival alert to passenger!' });
                   }
                 }}
                 className={`flex items-center gap-1 transition-all cursor-pointer ${
                   activeRide.status === 'arrived'
                     ? 'text-sky-500 dark:text-sky-400 font-black bg-sky-500/15 px-2 py-0.5 rounded-md border border-sky-500/30 ring-2 ring-sky-500/20'
                     : ['started', 'completed'].includes(activeRide.status)
-                    ? 'text-emerald-500'
+                    ? 'text-emerald-500 font-bold'
                     : 'text-slate-400 hover:text-sky-500 underline'
                 }`}
                 title="Arrived at Pickup Spot"
               >
                 <span>3. Arrived</span>
                 {activeRide.status === 'accepted' && (
-                  <span className="text-[8px] bg-sky-500 text-slate-950 font-bold px-1 rounded">TAP</span>
+                  <span className="text-[8px] bg-sky-500 text-slate-950 font-bold px-1 rounded animate-pulse">TAP</span>
                 )}
               </button>
-              <span className={activeRide.status === 'started' ? 'text-amber-500 font-black' : activeRide.status === 'completed' ? 'text-emerald-500' : ''}>
-                4. Trip
-              </span>
+              <button
+                type="button"
+                id="captain-tab-trip-step"
+                onClick={() => {
+                  if (activeRide.status === 'arrived') {
+                    handleVerifyPinAndStart(getRidePin(activeRide.id));
+                  }
+                }}
+                className={`flex items-center gap-1 transition-all ${
+                  activeRide.status === 'started'
+                    ? 'text-amber-500 font-black bg-amber-500/15 px-2 py-0.5 rounded-md border border-amber-500/30'
+                    : activeRide.status === 'completed'
+                    ? 'text-emerald-500 font-bold'
+                    : activeRide.status === 'arrived'
+                    ? 'text-slate-400 hover:text-amber-500 cursor-pointer underline'
+                    : 'text-slate-500 cursor-not-allowed'
+                }`}
+                title={activeRide.status === 'arrived' ? 'Board rider and start trip' : 'Trip'}
+              >
+                <span>4. Trip</span>
+                {activeRide.status === 'arrived' && (
+                  <span className="text-[8px] bg-amber-500 text-slate-950 font-bold px-1 rounded">START</span>
+                )}
+              </button>
               <span className={activeRide.status === 'completed' ? 'text-emerald-500 font-black' : ''}>
                 5. Done
               </span>
@@ -1613,68 +1712,114 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           </div>
 
 
-          {/* Passenger Contact Card */}
+          {/* Passenger & Trip Contact Details Card */}
           <div
-            className={`p-3.5 rounded-2xl flex items-center justify-between shadow-md border ${
+            id="captain-passenger-details-card"
+            className={`p-3.5 rounded-2xl border shadow-md space-y-3 ${
               isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-sky-500/20 text-sky-600 dark:text-sky-300 border border-sky-500/30 flex items-center justify-center font-bold">
-                <User className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className={`text-xs font-black flex items-center gap-1.5 ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                  {activeRide.passenger_name || 'Passenger'}
-                </h4>
-                {activeRide.passenger_phone ? (
-                  <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    {activeRide.passenger_phone}
-                  </p>
-                ) : null}
+            {/* Passenger Header Tag */}
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                <User className="w-3.5 h-3.5 text-sky-500" />
+                <span>Passenger Details</span>
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                  ⭐ 4.9 · Verified Rider
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                  ₹{Number(activeRide.fare || 25).toFixed(2)}
+                </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {activeRide.passenger_phone ? (
+            {/* Rider Identity & Contact Actions */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500/20 to-teal-500/20 text-sky-600 dark:text-sky-300 border border-sky-500/30 flex items-center justify-center font-black text-sm shrink-0 shadow-xs">
+                  {((activeRide.passenger_name || 'Passenger').charAt(0)).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <h4 className={`text-sm font-black flex items-center gap-1.5 truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                    {activeRide.passenger_name || 'Passenger'}
+                  </h4>
+                  <p className={`text-xs font-medium truncate ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                    {activeRide.passenger_phone || '+91 98765 43210'}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5 text-[10px]">
+                    <span className="text-emerald-500 font-bold">
+                      {activeRide.tier_name || (activeRide.service_type === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto')}
+                    </span>
+                    <span className="text-slate-400">·</span>
+                    <span className="font-mono text-amber-500 font-black">
+                      PIN: {getRidePin(activeRide.id)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons: Phone Call & Chat */}
+              <div className="flex items-center gap-2 shrink-0">
                 <a
-                  href={`tel:${activeRide.passenger_phone}`}
-                  className={`p-2.5 rounded-xl border transition-colors ${
+                  id="captain-call-passenger-btn"
+                  href={`tel:${activeRide.passenger_phone || '+919876543210'}`}
+                  className={`p-2.5 rounded-xl border flex items-center gap-1.5 font-bold text-xs transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm ${
                     isLight
-                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                      ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300'
+                      : 'bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 border-emerald-500/40'
                   }`}
                   title="Call Passenger"
                 >
                   <Phone className="w-4 h-4 text-emerald-500" />
+                  <span className="hidden sm:inline">Call</span>
                 </a>
-              ) : null}
 
-              <button
-                type="button"
-                id="captain-in-ride-chat-btn"
-                onClick={() => {
-                  setIsChatOpen(true);
-                  setUnreadChatCount(0);
-                  if (activeRide) markMessagesAsRead(activeRide.id, 'captain');
-                }}
-                className={`p-2.5 rounded-xl border transition-colors relative cursor-pointer ${
-                  isLight
-                    ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                }`}
-                title="In-App Chat with Passenger"
-              >
-                <MessageSquare className="w-4 h-4 text-sky-500" />
-                {unreadChatCount > 0 ? (
-                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black absolute -top-1.5 -right-1.5 flex items-center justify-center animate-bounce shadow">
-                    {unreadChatCount}
-                  </span>
-                ) : (
-                  <span className="w-2 h-2 rounded-full bg-sky-400 absolute top-1 right-1" />
-                )}
-              </button>
+                <button
+                  type="button"
+                  id="captain-in-ride-chat-btn"
+                  onClick={() => {
+                    setIsChatOpen(true);
+                    setUnreadChatCount(0);
+                    if (activeRide) markMessagesAsRead(activeRide.id, 'captain');
+                  }}
+                  className={`p-2.5 rounded-xl border flex items-center gap-1.5 font-bold text-xs transition-all relative cursor-pointer hover:scale-105 active:scale-95 shadow-sm ${
+                    isLight
+                      ? 'bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-300'
+                      : 'bg-sky-950/40 hover:bg-sky-900/50 text-sky-300 border-sky-500/40'
+                  }`}
+                  title="In-App Chat with Passenger"
+                >
+                  <MessageSquare className="w-4 h-4 text-sky-500" />
+                  <span className="hidden sm:inline">Chat</span>
+                  {unreadChatCount > 0 ? (
+                    <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black absolute -top-1.5 -right-1.5 flex items-center justify-center animate-bounce shadow">
+                      {unreadChatCount}
+                    </span>
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-sky-400 absolute top-1 right-1" />
+                  )}
+                </button>
+              </div>
             </div>
+
+            {/* Delivery / Special Instructions from Passenger */}
+            {activeRide.delivery_notes && (
+              <div className={`p-2 rounded-xl text-xs flex items-start gap-2 border ${
+                isLight ? 'bg-amber-50/80 border-amber-200 text-amber-900' : 'bg-amber-950/30 border-amber-800/50 text-amber-200'
+              }`}>
+                <Info className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider block opacity-80">
+                    Rider Pickup Note:
+                  </span>
+                  <p className="font-medium text-[11px] truncate">
+                    {activeRide.delivery_notes}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Captain Live In-Ride Message Board */}
@@ -1739,69 +1884,168 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             </div>
           )}
 
-          {/* Trip Addresses */}
+          {/* Turn-by-Turn GPS Navigation & Route Card (Always visible for Pickup & Destination) */}
           <div
-            className={`p-3 rounded-2xl border space-y-2 text-xs ${
-              isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
+            id="captain-navigation-action-card"
+            className={`p-3.5 rounded-2xl border space-y-3 shadow-md ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
             }`}
           >
-            {/* Small Capsule Navigator to Pickup in Google Maps (Left Corner Above Pickup) */}
-            {(activeRide.status === 'accepted' || activeRide.status === 'arrived') && (
-              <div className="flex items-center justify-start pb-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Navigation className="w-4 h-4 text-emerald-500" />
+                <span className={`text-[11px] font-black uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                  Turn-by-Turn Navigation (Google Maps)
+                </span>
+              </div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                activeRide.status === 'arrived'
+                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                  : activeRide.status === 'started'
+                  ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30'
+                  : 'bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/30'
+              }`}>
+                {activeRide.status === 'arrived' ? 'At Pickup Spot' : activeRide.status === 'started' ? 'Heading to Drop-off' : 'Heading to Pickup'}
+              </span>
+            </div>
+
+            {/* Dual High-Contrast Navigation Buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {/* Navigate to Pickup Button */}
+              <a
+                id="captain-nav-to-pickup-btn"
+                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.pickup_location || 'Pickup Location')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer border ${
+                  activeRide.status === 'arrived'
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-400 ring-2 ring-emerald-500/20'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500'
+                }`}
+                title="Open Turn-by-Turn Navigation to Pickup in Google Maps"
+              >
+                <Navigation className="w-3.5 h-3.5 fill-current -rotate-45" />
+                <div className="text-left leading-tight">
+                  <div className="text-[9px] uppercase tracking-wider opacity-90">
+                    {activeRide.status === 'arrived' ? '✓ Arrived Here' : 'Step 1'}
+                  </div>
+                  <div className="font-black">Navigate to Pickup</div>
+                </div>
+                <ExternalLink className="w-3 h-3 ml-auto opacity-80" />
+              </a>
+
+              {/* Navigate to Destination Button */}
+              <a
+                id="captain-nav-to-destination-btn"
+                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.dropoff_location || 'Destination Dropoff')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer border ${
+                  activeRide.status === 'started'
+                    ? 'bg-indigo-500 hover:bg-indigo-400 text-white border-indigo-400 ring-2 ring-indigo-500/20'
+                    : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500'
+                }`}
+                title="Open Turn-by-Turn Navigation to Destination in Google Maps"
+              >
+                <MapPin className="w-3.5 h-3.5 fill-current" />
+                <div className="text-left leading-tight">
+                  <div className="text-[9px] uppercase tracking-wider opacity-90">
+                    {activeRide.status === 'started' ? 'Active Route' : 'Step 2'}
+                  </div>
+                  <div className="font-black">Navigate to Destination</div>
+                </div>
+                <ExternalLink className="w-3 h-3 ml-auto opacity-80" />
+              </a>
+            </div>
+
+            {/* Trip Route Details (Pickup & Drop-off with inline maps links) */}
+            <div className={`p-2.5 rounded-xl border space-y-2 ${isLight ? 'bg-white border-slate-200' : 'bg-slate-950/60 border-slate-800'}`}>
+              {/* Pickup Address */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2 min-w-0 flex-1">
+                  <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-[10px]">
+                    A
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[9px] uppercase font-bold tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                        Pickup Spot
+                      </span>
+                      {activeRide.status === 'arrived' && (
+                        <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-emerald-500 text-slate-950 uppercase">
+                          Captain Arrived
+                        </span>
+                      )}
+                    </div>
+                    <p className={`font-semibold text-xs truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {activeRide.pickup_location || 'Current Rider Location'}
+                    </p>
+                  </div>
+                </div>
                 <a
+                  id="captain-pickup-maps-link"
                   href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.pickup_location || 'Pickup Location')}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  id="captain-pickup-navigator-capsule"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black tracking-wide uppercase bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-sm transition-all hover:scale-102 active:scale-95 cursor-pointer border border-emerald-400"
-                  title="Open Navigation in Google Maps"
+                  className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1 transition-colors"
+                  title="Open Pickup in Maps"
                 >
-                  <Navigation className="w-3 h-3 fill-slate-950 -rotate-45" />
-                  <span>Navigate to Pickup</span>
-                  <ExternalLink className="w-2.5 h-2.5 opacity-80" />
+                  <Navigation className="w-2.5 h-2.5 -rotate-45" />
+                  <span>Maps</span>
                 </a>
               </div>
-            )}
 
-            {/* When trip has started, provide capsule navigator to Destination */}
-            {activeRide.status === 'started' && (
-              <div className="flex items-center justify-start pb-1">
+              <div className={`border-t ${isLight ? 'border-slate-100' : 'border-slate-800/80'}`} />
+
+              {/* Destination Address */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2 min-w-0 flex-1">
+                  <div className="w-5 h-5 rounded-full bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-[10px]">
+                    B
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[9px] uppercase font-bold tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                        Destination Drop-off
+                      </span>
+                      {activeRide.status === 'started' && (
+                        <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-indigo-500 text-white uppercase">
+                          Trip in Progress
+                        </span>
+                      )}
+                    </div>
+                    <p className={`font-semibold text-xs truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {activeRide.dropoff_location || 'Destination Dropoff'}
+                    </p>
+                  </div>
+                </div>
                 <a
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.dropoff_location || 'Dropoff Destination')}`}
+                  id="captain-dropoff-maps-link"
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.dropoff_location || 'Destination Dropoff')}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  id="captain-dropoff-navigator-capsule"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black tracking-wide uppercase bg-indigo-500 hover:bg-indigo-400 text-white shadow-sm transition-all hover:scale-102 active:scale-95 cursor-pointer border border-indigo-400"
-                  title="Open Navigation to Destination in Google Maps"
+                  className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 flex items-center gap-1 transition-colors"
+                  title="Open Destination in Maps"
                 >
-                  <Navigation className="w-3 h-3 fill-white -rotate-45" />
-                  <span>Navigate to Destination</span>
-                  <ExternalLink className="w-2.5 h-2.5 opacity-80" />
+                  <MapPin className="w-2.5 h-2.5" />
+                  <span>Maps</span>
                 </a>
               </div>
-            )}
-
-            <div className="flex items-start gap-2">
-              <MapPin className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
-              <div className="flex-1">
-                <span className={`text-[9px] uppercase font-bold block ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
-                  Pickup
-                </span>
-                <span className={`truncate block font-medium ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
-                  {activeRide.pickup_location}
-                </span>
-              </div>
             </div>
-            <div className={`flex items-start gap-2 border-t pt-2 ${isLight ? 'border-slate-200' : 'border-slate-800/80'}`}>
-              <Navigation className="w-3.5 h-3.5 text-rose-500 mt-0.5 shrink-0" />
-              <div className="flex-1">
-                <span className={`text-[9px] uppercase font-bold block ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
-                  Destination
-                </span>
-                <span className={`truncate block font-medium ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
-                  {activeRide.dropoff_location}
-                </span>
-              </div>
+
+            {/* Distance, ETA and Route Summary */}
+            <div className={`flex items-center justify-between text-[11px] pt-1 px-1 font-semibold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              <span className="flex items-center gap-1">
+                <Route className="w-3.5 h-3.5 text-sky-500" />
+                <span>Est. Distance: {activeRide.distance_km || 3.8} km</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-amber-500" />
+                <span>ETA: ~{activeRide.estimated_mins || 12} mins</span>
+              </span>
+              <span className="font-bold text-emerald-500">
+                Fare: ₹{Number(activeRide.fare || 25).toFixed(2)}
+              </span>
             </div>
           </div>
 

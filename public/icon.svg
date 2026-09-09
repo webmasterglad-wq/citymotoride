@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="112" fill="#0f172a" />
+  <circle cx="256" cy="256" r="190" fill="#f59e0b" />
+  <circle cx="256" cy="256" r="140" fill="#0f172a" />
+  <!-- MotoRide MR typography & bike emblem -->
+  <path d="M190 320L190 200L230 270L270 200L270 320" stroke="#f59e0b" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M295 200H335C355 200 370 215 370 235C370 255 355 270 335 270H295V320" stroke="#10b981" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M335 270L365 320" stroke="#10b981" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

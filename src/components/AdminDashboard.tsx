@@ -2752,8 +2752,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
               <p className={`text-xs max-w-2xl leading-relaxed ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                 Upload the real, official MotoRide Android APK build file here. Once uploaded, the real binary file is
                 connected directly to the <strong>"MotoRide Mobile App"</strong> button positioned in the top right side last corner
-                of the signed-out Passenger and Captain portals. When passengers or captains
-                click the button, their browser immediately starts downloading the real file with no extra pages or text.
+                of the signed-out Passenger and Captain portals.
               </p>
             </div>
 
@@ -2767,6 +2766,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onOpenSqlModal }
                 <span>Test Real APK Download</span>
               </button>
             )}
+          </div>
+
+          {/* Android Installation & Troubleshooting Notice */}
+          <div
+            className={`p-4 rounded-2xl border text-xs leading-relaxed flex items-start gap-3 ${
+              isLight ? 'bg-amber-50/80 border-amber-200 text-amber-950' : 'bg-amber-950/30 border-amber-800/50 text-amber-200'
+            }`}
+          >
+            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-amber-900 dark:text-amber-100">
+                Android APK Installation &amp; "Cannot install app on your device" Error Notice:
+              </p>
+              <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90">
+                1. <strong>Signed Binary Required</strong>: Android OS requires genuine compiled APKs (with signed Dalvik/ART bytecode). Do not upload placeholder or text-based mock archives.
+                <br />
+                2. <strong>Android Settings</strong>: To install downloaded APKs, Android users must enable <em>"Install unknown apps"</em> for their browser (Chrome/Files) in Android Device Settings.
+                <br />
+                3. <strong>1-Tap PWA Install</strong>: For instant zero-error installation, users can also use <em>"Install MotoRide on Device"</em> (PWA) directly from their mobile browser!
+              </p>
+            </div>
           </div>
 
           {/* Action Notification */}

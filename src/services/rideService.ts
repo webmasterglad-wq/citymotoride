@@ -146,6 +146,24 @@ export const getStoredRideTier = (rideId: string): { tier: string; tierName: str
   }
 };
 
+export const getStoredRideData = (rideId: string): Partial<Ride> | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(`motoride_active_ride_${rideId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const setStoredRideData = (rideId: string, ride: Partial<Ride>) => {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = getStoredRideData(rideId) || {};
+    localStorage.setItem(`motoride_active_ride_${rideId}`, JSON.stringify({ ...existing, ...ride }));
+  } catch {}
+};
+
 export const createRideBooking = async (
   params: CreateRideParams
 ): Promise<{ data: Ride | null; error: string | null }> => {
@@ -209,9 +227,16 @@ export const createRideBooking = async (
       setStoredRideTier(resData.id, chosenServiceType, chosenTierName);
       const enrichedRide: Ride = {
         ...resData,
+        passenger_name: resData.passenger_name || params.passenger_name || 'Passenger',
+        passenger_phone: resData.passenger_phone || params.passenger_phone || '',
+        pickup_location: resData.pickup_location || params.pickup_location,
+        dropoff_location: resData.dropoff_location || params.dropoff_location,
+        fare: resData.fare ?? params.fare,
         service_type: chosenServiceType,
         tier_name: chosenTierName,
+        delivery_notes: params.delivery_notes || undefined,
       };
+      setStoredRideData(resData.id, enrichedRide);
       notifyNewIncomingRide(enrichedRide);
       return {
         data: enrichedRide,
@@ -228,9 +253,16 @@ export const createRideBooking = async (
     setStoredRideTier(resData.id, chosenServiceType, chosenTierName);
     const enrichedRide: Ride = {
       ...resData,
+      passenger_name: resData.passenger_name || params.passenger_name || 'Passenger',
+      passenger_phone: resData.passenger_phone || params.passenger_phone || '',
+      pickup_location: resData.pickup_location || params.pickup_location,
+      dropoff_location: resData.dropoff_location || params.dropoff_location,
+      fare: resData.fare ?? params.fare,
       service_type: resData.service_type || chosenServiceType,
       tier_name: chosenTierName,
+      delivery_notes: params.delivery_notes || undefined,
     };
+    setStoredRideData(resData.id, enrichedRide);
     notifyNewIncomingRide(enrichedRide);
     return {
       data: enrichedRide,
@@ -507,6 +539,16 @@ export const claimRideAtomic = async (
           await supabase.from('rides').update(updates).eq('id', rideId);
           finalRide = { ...finalRide, ...updates };
         } catch {}
+        const cached = getStoredRideData(rideId) || {};
+        finalRide = {
+          ...cached,
+          ...finalRide,
+          passenger_name: finalRide.passenger_name || cached.passenger_name || 'Passenger',
+          passenger_phone: finalRide.passenger_phone || cached.passenger_phone || '',
+          pickup_location: finalRide.pickup_location || cached.pickup_location || 'Pickup Location',
+          dropoff_location: finalRide.dropoff_location || cached.dropoff_location || 'Destination',
+        };
+        setStoredRideData(rideId, finalRide);
         return {
           success: true,
           message: 'Ride claimed successfully!',
@@ -564,10 +606,22 @@ export const claimRideAtomic = async (
       };
     }
 
+    const cached = getStoredRideData(rideId) || {};
+    const finalRide: Ride = {
+      ...cached,
+      ...(data as Ride),
+      passenger_name: (data as Ride).passenger_name || cached.passenger_name || 'Passenger',
+      passenger_phone: (data as Ride).passenger_phone || cached.passenger_phone || '',
+      pickup_location: (data as Ride).pickup_location || cached.pickup_location || 'Pickup Location',
+      dropoff_location: (data as Ride).dropoff_location || cached.dropoff_location || 'Destination',
+      fare: (data as Ride).fare ?? cached.fare,
+    };
+    setStoredRideData(rideId, finalRide);
+
     return {
       success: true,
       message: 'Ride successfully accepted!',
-      ride: data as Ride,
+      ride: finalRide,
     };
   } catch (err: any) {
     return {
@@ -597,6 +651,7 @@ export const updateRideStatus = async (
     updatePayload.cancelled_at = now;
   }
 
+  const cached = getStoredRideData(rideId) || {};
   let finalRide: Ride | null = null;
   let updateError: string | null = null;
 
@@ -613,7 +668,18 @@ export const updateRideStatus = async (
         console.warn('[Motoride] Supabase updateRideStatus notice:', error.message);
         updateError = error.message;
       } else if (data) {
-        finalRide = data as Ride;
+        finalRide = {
+          ...cached,
+          ...(data as Ride),
+          passenger_name: (data as Ride).passenger_name || cached.passenger_name || 'Passenger',
+          passenger_phone: (data as Ride).passenger_phone || cached.passenger_phone || '',
+          pickup_location: (data as Ride).pickup_location || cached.pickup_location || 'Pickup Location',
+          dropoff_location: (data as Ride).dropoff_location || cached.dropoff_location || 'Destination',
+          fare: (data as Ride).fare ?? cached.fare,
+          service_type: (data as Ride).service_type || cached.service_type,
+          tier_name: (data as Ride).tier_name || cached.tier_name,
+          delivery_notes: (data as Ride).delivery_notes || cached.delivery_notes,
+        } as Ride;
       } else {
         // PostgREST didn't return row directly; fetch with standard query
         const { data: fetched } = await supabase
@@ -622,7 +688,18 @@ export const updateRideStatus = async (
           .eq('id', rideId)
           .maybeSingle();
         if (fetched) {
-          finalRide = fetched as Ride;
+          finalRide = {
+            ...cached,
+            ...(fetched as Ride),
+            passenger_name: (fetched as Ride).passenger_name || cached.passenger_name || 'Passenger',
+            passenger_phone: (fetched as Ride).passenger_phone || cached.passenger_phone || '',
+            pickup_location: (fetched as Ride).pickup_location || cached.pickup_location || 'Pickup Location',
+            dropoff_location: (fetched as Ride).dropoff_location || cached.dropoff_location || 'Destination',
+            fare: (fetched as Ride).fare ?? cached.fare,
+            service_type: (fetched as Ride).service_type || cached.service_type,
+            tier_name: (fetched as Ride).tier_name || cached.tier_name,
+            delivery_notes: (fetched as Ride).delivery_notes || cached.delivery_notes,
+          } as Ride;
         }
       }
     } catch (err: any) {
@@ -631,32 +708,37 @@ export const updateRideStatus = async (
     }
   }
 
-  // If database didn't return or failed, create optimistic ride representation
+  // If database didn't return or failed, create optimistic ride representation merging cached details
   if (!finalRide) {
-    const cachedStr = typeof window !== 'undefined' ? localStorage.getItem(`motoride_active_ride_${rideId}`) : null;
-    let base: any = {};
-    if (cachedStr) {
-      try { base = JSON.parse(cachedStr); } catch {}
-    }
     finalRide = {
-      ...base,
+      ...cached,
       id: rideId,
       status: newStatus,
+      passenger_name: cached.passenger_name || 'Passenger',
+      passenger_phone: cached.passenger_phone || '',
+      pickup_location: cached.pickup_location || 'Pickup Location',
+      dropoff_location: cached.dropoff_location || 'Destination',
+      fare: cached.fare ?? 25,
+      service_type: cached.service_type,
+      tier_name: cached.tier_name,
+      delivery_notes: cached.delivery_notes,
       ...(newStatus === 'completed' ? { completed_at: now } : {}),
       ...(newStatus === 'cancelled' ? { cancelled_at: now } : {}),
     } as Ride;
   }
 
-  // Cache updated ride in local storage
-  if (typeof window !== 'undefined' && finalRide) {
-    try {
-      localStorage.setItem(`motoride_active_ride_${rideId}`, JSON.stringify(finalRide));
-      localStorage.setItem('motoride_last_status_event', JSON.stringify({
-        rideId,
-        status: newStatus,
-        timestamp: Date.now(),
-      }));
-    } catch {}
+  // Persist updated ride in local storage
+  if (finalRide) {
+    setStoredRideData(rideId, finalRide);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('motoride_last_status_event', JSON.stringify({
+          rideId,
+          status: newStatus,
+          timestamp: Date.now(),
+        }));
+      } catch {}
+    }
   }
 
   // Multi-channel cross-tab / cross-window broadcast
@@ -786,11 +868,19 @@ export const subscribeToCaptainRealtime = (callbacks: {
         if (payload.new) {
           const raw = payload.new as Ride;
           const cached = getStoredRideTier(raw.id);
+          const cachedRide = getStoredRideData(raw.id) || {};
           const enriched: Ride = {
+            ...cachedRide,
             ...raw,
-            service_type: raw.service_type || cached?.tier || (raw.ride_tier as any) || 'moto_comfort',
-            tier_name: raw.tier_name || cached?.tierName || (raw.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
+            passenger_name: raw.passenger_name || cachedRide.passenger_name || 'Passenger',
+            passenger_phone: raw.passenger_phone || cachedRide.passenger_phone || '',
+            pickup_location: raw.pickup_location || cachedRide.pickup_location || 'Pickup Location',
+            dropoff_location: raw.dropoff_location || cachedRide.dropoff_location || 'Destination',
+            fare: raw.fare ?? cachedRide.fare,
+            service_type: raw.service_type || cachedRide.service_type || cached?.tier || (raw.ride_tier as any) || 'moto_comfort',
+            tier_name: raw.tier_name || cachedRide.tier_name || cached?.tierName || (raw.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
           };
+          setStoredRideData(raw.id, enriched);
           callbacks.onInsert(enriched);
         }
       }
@@ -806,11 +896,19 @@ export const subscribeToCaptainRealtime = (callbacks: {
         if (payload.new) {
           const raw = payload.new as Ride;
           const cached = getStoredRideTier(raw.id);
+          const cachedRide = getStoredRideData(raw.id) || {};
           const enriched: Ride = {
+            ...cachedRide,
             ...raw,
-            service_type: raw.service_type || cached?.tier || (raw.ride_tier as any) || 'moto_comfort',
-            tier_name: raw.tier_name || cached?.tierName || (raw.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
+            passenger_name: raw.passenger_name || cachedRide.passenger_name || 'Passenger',
+            passenger_phone: raw.passenger_phone || cachedRide.passenger_phone || '',
+            pickup_location: raw.pickup_location || cachedRide.pickup_location || 'Pickup Location',
+            dropoff_location: raw.dropoff_location || cachedRide.dropoff_location || 'Destination',
+            fare: raw.fare ?? cachedRide.fare,
+            service_type: raw.service_type || cachedRide.service_type || cached?.tier || (raw.ride_tier as any) || 'moto_comfort',
+            tier_name: raw.tier_name || cachedRide.tier_name || cached?.tierName || (raw.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
           };
+          setStoredRideData(raw.id, enriched);
           callbacks.onUpdate(enriched);
         }
       }

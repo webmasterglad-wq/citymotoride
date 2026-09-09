@@ -37,6 +37,7 @@ import {
   subscribeToApkUpdates,
   ApkMetadata,
 } from '../services/apkService';
+import { MobileAppInstallModal } from './MobileAppInstallModal';
 
 interface ConnectionStatusBannerProps {
   onOpenSqlModal: () => void;
@@ -67,6 +68,7 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
   const [apkMeta, setApkMeta] = useState<ApkMetadata | null>(() => getStoredApkMetadata());
   const [isDownloadingApk, setIsDownloadingApk] = useState(false);
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+  const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
 
   useEffect(() => {
     setApkMeta(getStoredApkMetadata());
@@ -316,9 +318,9 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
                 <button
                   type="button"
                   id="top-right-last-corner-motoride-mobile-app-btn"
-                  onClick={handleDownloadMobileApp}
+                  onClick={() => setIsMobileModalOpen(true)}
                   disabled={isDownloadingApk}
-                  title="MotoRide Mobile App APK Download"
+                  title="MotoRide Mobile App Installation & APK"
                   className={`group relative inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-black transition-all duration-150 shadow-sm cursor-pointer select-none active:scale-95 ${
                     isLight
                       ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white border-emerald-400 shadow-emerald-500/20'
@@ -453,6 +455,15 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
           </form>
         </div>
       )}
+
+      {/* Mobile App Install & APK Modal */}
+      <MobileAppInstallModal
+        isOpen={isMobileModalOpen}
+        onClose={() => setIsMobileModalOpen(false)}
+        apkMeta={apkMeta}
+        onOpenAdmin={() => onChangeView('admin')}
+        isLight={isLight}
+      />
     </div>
   );
 };
