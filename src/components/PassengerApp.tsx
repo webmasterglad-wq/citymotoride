@@ -507,6 +507,30 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       }
     });
 
+    let passBroadcastChannel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        passBroadcastChannel = new BroadcastChannel('motoride_offers_bus');
+        passBroadcastChannel.onmessage = (msgEvent: MessageEvent) => {
+          const data = msgEvent.data;
+          if (data && data.type === 'ride_status_updated' && activeRide && data.rideId === activeRide.id && data.ride) {
+            setActiveRide(data.ride);
+            if (data.status === 'arrived') {
+              playCaptainArrivedChime();
+              setCaptainArrivedNotice({
+                captainName: data.ride.captain_name || activeRide.captain_name || 'Your Captain',
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              });
+            } else if (data.status === 'completed') {
+              try {
+                confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
+              } catch (e) {}
+            }
+          }
+        };
+      }
+    } catch {}
+
     const handleStatusUpdate = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (activeRide && detail && detail.rideId === activeRide.id && detail.ride) {
@@ -517,6 +541,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             captainName: detail.ride.captain_name || activeRide.captain_name || 'Your Captain',
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           });
+        } else if (detail.status === 'completed') {
+          try {
+            confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
+          } catch (e) {}
         }
       }
     };
@@ -524,6 +552,9 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
     return () => {
       unsubArrived();
+      if (passBroadcastChannel) {
+        passBroadcastChannel.close();
+      }
       window.removeEventListener('motoride_ride_status_updated', handleStatusUpdate);
     };
   }, [activeRide?.id, activeRide?.captain_name]);
