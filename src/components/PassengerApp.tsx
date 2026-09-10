@@ -38,6 +38,8 @@ import {
   Bell,
   Sparkles,
   Zap,
+  ExternalLink,
+  Route,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -230,6 +232,15 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [selectedTags, setSelectedTags] = useState<string[]>(['Safe Driving', 'Clean Helmet']);
   const [feedbackComment, setFeedbackComment] = useState<string>('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  const activeRideRef = useRef<Ride | null>(null);
+
+  useEffect(() => {
+    activeRideRef.current = activeRide;
+    if (activeRide?.id && activeRide.status === 'completed') {
+      const alreadyRated = localStorage.getItem(`motoride_rating_${activeRide.id}`);
+      setReviewSubmitted(!!alreadyRated);
+    }
+  }, [activeRide?.id, activeRide?.status]);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const headerAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -513,15 +524,18 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
         passBroadcastChannel = new BroadcastChannel('motoride_offers_bus');
         passBroadcastChannel.onmessage = (msgEvent: MessageEvent) => {
           const data = msgEvent.data;
-          if (data && data.type === 'ride_status_updated' && activeRide && data.rideId === activeRide.id && data.ride) {
-            setActiveRide(data.ride);
+          const currentRide = activeRideRef.current;
+          if (data && data.type === 'ride_status_updated' && currentRide && data.rideId === currentRide.id) {
+            const updated = data.ride || { ...currentRide, status: data.status };
+            setActiveRide(updated);
             if (data.status === 'arrived') {
               playCaptainArrivedChime();
               setCaptainArrivedNotice({
-                captainName: data.ride.captain_name || activeRide.captain_name || 'Your Captain',
+                captainName: updated.captain_name || currentRide.captain_name || 'Your Captain',
                 time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               });
             } else if (data.status === 'completed') {
+              setReviewSubmitted(false);
               try {
                 confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
               } catch (e) {}
@@ -533,15 +547,18 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
     const handleStatusUpdate = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (activeRide && detail && detail.rideId === activeRide.id && detail.ride) {
-        setActiveRide(detail.ride);
+      const currentRide = activeRideRef.current;
+      if (currentRide && detail && detail.rideId === currentRide.id) {
+        const updated = detail.ride || { ...currentRide, status: detail.status };
+        setActiveRide(updated);
         if (detail.status === 'arrived') {
           playCaptainArrivedChime();
           setCaptainArrivedNotice({
-            captainName: detail.ride.captain_name || activeRide.captain_name || 'Your Captain',
+            captainName: updated.captain_name || currentRide.captain_name || 'Your Captain',
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           });
         } else if (detail.status === 'completed') {
+          setReviewSubmitted(false);
           try {
             confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
           } catch (e) {}
@@ -722,6 +739,67 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       setErrorMessage(err?.message || 'Failed to book ride');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Advance or switch ride lifecycle step from the interactive timeline tabs
+  const handleStepTabClick = async (targetStatus: RideStatus) => {
+    if (!activeRide) return;
+
+    if (targetStatus === 'arrived') {
+      playCaptainArrivedChime();
+      setCaptainArrivedNotice({
+        captainName: activeRide.captain_name || 'Your Captain',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+      const updated: Ride = { ...activeRide, status: 'arrived' };
+      setActiveRide(updated);
+      try {
+        await updateRideStatus(activeRide.id, 'arrived');
+      } catch (e) {
+        console.warn('Update arrived status error:', e);
+      }
+    } else if (targetStatus === 'started') {
+      const updated: Ride = { ...activeRide, status: 'started' };
+      setActiveRide(updated);
+      try {
+        await updateRideStatus(activeRide.id, 'started');
+      } catch (e) {
+        console.warn('Update started status error:', e);
+      }
+    } else if (targetStatus === 'completed') {
+      // Promptly display rating form to rate the captain
+      setReviewSubmitted(false);
+      try {
+        confetti({ particleCount: 80, spread: 90, origin: { y: 0.5 } });
+      } catch (e) {}
+      const updated: Ride = {
+        ...activeRide,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      };
+      setActiveRide(updated);
+      try {
+        await updateRideStatus(activeRide.id, 'completed');
+      } catch (e) {
+        console.warn('Update completed status error:', e);
+      }
+    } else if (targetStatus === 'accepted') {
+      const updated: Ride = { ...activeRide, status: 'accepted' };
+      setActiveRide(updated);
+      try {
+        await updateRideStatus(activeRide.id, 'accepted');
+      } catch (e) {
+        console.warn('Update accepted status error:', e);
+      }
+    } else if (targetStatus === 'requested') {
+      const updated: Ride = { ...activeRide, status: 'requested' };
+      setActiveRide(updated);
+      try {
+        await updateRideStatus(activeRide.id, 'requested');
+      } catch (e) {
+        console.warn('Update requested status error:', e);
+      }
     }
   };
 
@@ -1421,6 +1499,31 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               </div>
             </div>
 
+            {/* Live Navigator for Pickup and Dropoff Preview */}
+            {pickup.trim() && dropoff.trim() && (
+              <a
+                id="passenger-preview-route-btn"
+                href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(dropoff)}&travelmode=two-wheeler`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`w-full py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-colors ${
+                  isLight
+                    ? 'bg-emerald-50/70 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                    : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/40'
+                }`}
+                title="Preview route from Pickup to Dropoff in Google Maps"
+              >
+                <div className="flex items-center gap-2">
+                  <Navigation className="w-3.5 h-3.5 text-emerald-500 -rotate-45" />
+                  <span>Preview Route on Google Maps (Pickup & Dropoff)</span>
+                </div>
+                <div className="flex items-center gap-1 text-[10px] opacity-75">
+                  <span>~{estimatedMins || 8} min</span>
+                  <ExternalLink className="w-3 h-3" />
+                </div>
+              </a>
+            )}
+
             {/* Main Booking Action Button */}
             <button
               id="indrive-book-ride-btn"
@@ -1511,6 +1614,274 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               </div>
             );
           })()}
+
+          {/* Interactive Stepper Progress Tabs Bar */}
+          <div
+            id="passenger-ride-progression-timeline"
+            className={`p-3 rounded-2xl border space-y-2 transition-colors ${
+              isLight ? 'bg-slate-50 border-slate-200 shadow-sm' : 'bg-slate-900/80 border-slate-800 shadow-md'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-1 overflow-x-auto pb-0.5 text-[11px] font-bold">
+              {/* 1. Match */}
+              <button
+                type="button"
+                id="passenger-tab-match-step"
+                onClick={() => handleStepTabClick('requested')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all cursor-pointer ${
+                  activeRide.status === 'requested'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm ring-2 ring-amber-500/20'
+                    : 'text-emerald-500 hover:bg-emerald-500/10'
+                }`}
+                title="Matching with Captains"
+              >
+                <span>1. Match</span>
+              </button>
+
+              {/* 2. En Route */}
+              <button
+                type="button"
+                id="passenger-tab-enroute-step"
+                onClick={() => handleStepTabClick('accepted')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all cursor-pointer ${
+                  activeRide.status === 'accepted'
+                    ? 'bg-sky-500 text-slate-950 font-black shadow-sm ring-2 ring-sky-500/20'
+                    : ['arrived', 'started', 'completed'].includes(activeRide.status)
+                    ? 'text-emerald-500 hover:bg-emerald-500/10'
+                    : isLight ? 'text-slate-500 hover:text-sky-600' : 'text-slate-400 hover:text-sky-400'
+                }`}
+                title="Captain En Route to Pickup"
+              >
+                <span>2. En Route</span>
+              </button>
+
+              {/* 3. Arrived (Captain Arrived) */}
+              <button
+                type="button"
+                id="passenger-tab-arrived-step"
+                onClick={() => handleStepTabClick('arrived')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all cursor-pointer ${
+                  activeRide.status === 'arrived'
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-sm ring-2 ring-emerald-500/20 animate-pulse'
+                    : ['started', 'completed'].includes(activeRide.status)
+                    ? 'text-emerald-500 hover:bg-emerald-500/10'
+                    : 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 underline decoration-dotted'
+                }`}
+                title="Captain Arrived at Pickup Spot"
+              >
+                <span>3. Arrived</span>
+                {activeRide.status === 'accepted' && (
+                  <span className="text-[9px] bg-emerald-400 text-slate-950 font-black px-1 rounded">TAP</span>
+                )}
+              </button>
+
+              {/* 4. Trip */}
+              <button
+                type="button"
+                id="passenger-tab-trip-step"
+                onClick={() => handleStepTabClick('started')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all cursor-pointer ${
+                  activeRide.status === 'started'
+                    ? 'bg-indigo-500 text-white font-black shadow-sm ring-2 ring-indigo-500/20 animate-pulse'
+                    : activeRide.status === 'completed'
+                    ? 'text-emerald-500 hover:bg-emerald-500/10'
+                    : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 underline decoration-dotted'
+                }`}
+                title="Trip in Progress to Destination"
+              >
+                <span>4. Trip</span>
+                {activeRide.status === 'arrived' && (
+                  <span className="text-[9px] bg-indigo-500 text-white font-black px-1 rounded">START</span>
+                )}
+              </button>
+
+              {/* 5. Done */}
+              <button
+                type="button"
+                id="passenger-tab-done-step"
+                onClick={() => handleStepTabClick('completed')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl transition-all cursor-pointer ${
+                  activeRide.status === 'completed'
+                    ? 'bg-emerald-600 text-white font-black shadow-sm ring-2 ring-emerald-500/30'
+                    : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 underline decoration-dotted'
+                }`}
+                title="Trip Completed & Rate Captain"
+              >
+                <span>5. Done</span>
+                {['started', 'arrived'].includes(activeRide.status) && (
+                  <span className="text-[9px] bg-amber-400 text-slate-950 font-black px-1 rounded">RATE</span>
+                )}
+              </button>
+            </div>
+
+            {/* Progress Bar Track */}
+            <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`}>
+              <div
+                className={`h-full transition-all duration-500 ${
+                  activeRide.status === 'cancelled'
+                    ? 'bg-rose-500 w-full'
+                    : activeRide.status === 'requested'
+                    ? 'bg-amber-500 w-1/5 animate-pulse'
+                    : activeRide.status === 'accepted'
+                    ? 'bg-sky-500 w-2/5'
+                    : activeRide.status === 'arrived'
+                    ? 'bg-emerald-500 w-3/5'
+                    : activeRide.status === 'started'
+                    ? 'bg-indigo-500 w-4/5'
+                    : 'bg-emerald-500 w-full'
+                }`}
+              />
+            </div>
+          </div>
+
+          {/* Live Route Navigator Card (Pickup & Dropoff) */}
+          <div
+            id="passenger-route-navigator-card"
+            className={`p-3.5 rounded-2xl border space-y-3 shadow-md transition-colors ${
+              isLight ? 'bg-slate-50 border-slate-200 shadow-slate-100' : 'bg-slate-900/90 border-slate-800 shadow-xl'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Navigation className="w-4 h-4 text-emerald-500 -rotate-45" />
+                <span className={`text-[11px] font-black uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                  Route Navigator (Google Maps)
+                </span>
+              </div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                activeRide.status === 'arrived'
+                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                  : activeRide.status === 'started'
+                  ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30'
+                  : activeRide.status === 'completed'
+                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                  : 'bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/30'
+              }`}>
+                {activeRide.status === 'arrived'
+                  ? 'Captain At Pickup'
+                  : activeRide.status === 'started'
+                  ? 'En Route to Dropoff'
+                  : activeRide.status === 'completed'
+                  ? 'Arrived at Destination'
+                  : 'Heading to Pickup'}
+              </span>
+            </div>
+
+            {/* Main 1-Click Navigator: Opens Google Maps Directions with Origin=Pickup & Destination=Dropoff */}
+            <a
+              id="passenger-main-route-navigator-btn"
+              href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(activeRide.pickup_location || pickup || 'Pickup Location')}&destination=${encodeURIComponent(activeRide.dropoff_location || dropoff || 'Destination')}&travelmode=two-wheeler`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 px-3.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 hover:from-emerald-400 hover:to-sky-400 text-slate-950 font-black rounded-xl text-xs sm:text-sm flex items-center justify-between shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+              title="Open Turn-by-Turn Navigation for Pickup to Dropoff in Google Maps"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-slate-950 text-emerald-400 flex items-center justify-center shrink-0 shadow-sm">
+                  <Navigation className="w-4 h-4 fill-current -rotate-45" />
+                </div>
+                <div className="text-left leading-tight">
+                  <div className="text-[9px] uppercase tracking-wider opacity-85">
+                    Live Route Directions
+                  </div>
+                  <div className="text-xs sm:text-sm font-black">
+                    Open Navigator (Pickup & Dropoff)
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 bg-slate-950/20 px-2 py-1 rounded-lg text-[10px] font-bold">
+                <span>Google Maps</span>
+                <ExternalLink className="w-3 h-3" />
+              </div>
+            </a>
+
+            {/* Route Addresses Details Card */}
+            <div className={`p-2.5 rounded-xl border space-y-2 ${isLight ? 'bg-white border-slate-200' : 'bg-slate-950/70 border-slate-800'}`}>
+              {/* Pickup Point */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs">
+                    A
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[9px] uppercase font-bold tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                        Pickup Spot
+                      </span>
+                      {activeRide.status === 'arrived' && (
+                        <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-emerald-500 text-slate-950 uppercase">
+                          Captain Waiting Here
+                        </span>
+                      )}
+                    </div>
+                    <p className={`font-bold text-xs truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {activeRide.pickup_location || pickup || 'Current Rider Location'}
+                    </p>
+                  </div>
+                </div>
+                <a
+                  id="passenger-pickup-maps-link"
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.pickup_location || pickup || 'Pickup Location')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1 transition-colors"
+                  title="Open Pickup Spot in Google Maps"
+                >
+                  <Navigation className="w-2.5 h-2.5 -rotate-45" />
+                  <span>Pickup</span>
+                </a>
+              </div>
+
+              <div className={`border-t ${isLight ? 'border-slate-100' : 'border-slate-800/80'}`} />
+
+              {/* Destination Dropoff */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                  <div className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs">
+                    B
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[9px] uppercase font-bold tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                        Destination Dropoff
+                      </span>
+                      {activeRide.status === 'started' && (
+                        <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-indigo-500 text-white uppercase">
+                          En Route Here
+                        </span>
+                      )}
+                    </div>
+                    <p className={`font-bold text-xs truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {activeRide.dropoff_location || dropoff || 'Destination Dropoff'}
+                    </p>
+                  </div>
+                </div>
+                <a
+                  id="passenger-dropoff-maps-link"
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.dropoff_location || dropoff || 'Destination Dropoff')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 flex items-center gap-1 transition-colors"
+                  title="Open Destination in Google Maps"
+                >
+                  <MapPin className="w-2.5 h-2.5" />
+                  <span>Dropoff</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Route Metrics Summary */}
+            <div className={`flex items-center justify-between text-[11px] pt-0.5 px-1 font-semibold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              <span className="flex items-center gap-1">
+                <Route className="w-3.5 h-3.5 text-sky-500" />
+                <span>Est. Distance: {activeRide.distance_km || distanceKm || 3.8} km</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-amber-500" />
+                <span>ETA: ~{activeRide.estimated_mins || estimatedMins || 9} mins</span>
+              </span>
+            </div>
+          </div>
 
           {/* Top Prominent Rating & Review Section when ride is completed */}
           {activeRide.status === 'completed' && !reviewSubmitted && (
@@ -1678,6 +2049,14 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               <p className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                 You rated {activeRide.captain_name || 'Captain'} {ratingStars} ★ {tipAmount > 0 ? `with a ₹${tipAmount} tip` : ''}.
               </p>
+              <button
+                type="button"
+                id="edit-rating-btn"
+                onClick={() => setReviewSubmitted(false)}
+                className="mt-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 underline hover:text-emerald-500 cursor-pointer"
+              >
+                Change Rating or Feedback
+              </button>
             </div>
           )}
 
@@ -2106,38 +2485,6 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               </div>
             );
           })()}
-
-          {/* Stepper Progress Bar */}
-          <div
-            className={`p-3 rounded-2xl border space-y-1.5 transition-colors ${
-              isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
-            }`}
-          >
-            <div className={`flex items-center justify-between text-[10px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              <span className={activeRide.status === 'requested' ? 'text-amber-500' : 'text-emerald-500'}>1. Match</span>
-              <span className={activeRide.status === 'accepted' ? 'text-amber-500' : ['arrived', 'started', 'completed'].includes(activeRide.status) ? 'text-emerald-500' : ''}>2. En Route</span>
-              <span className={activeRide.status === 'arrived' ? 'text-amber-500' : ['started', 'completed'].includes(activeRide.status) ? 'text-emerald-500' : ''}>3. Arrived</span>
-              <span className={activeRide.status === 'started' ? 'text-amber-500' : activeRide.status === 'completed' ? 'text-emerald-500' : ''}>4. Trip</span>
-              <span className={activeRide.status === 'completed' ? 'text-emerald-500' : ''}>5. Done</span>
-            </div>
-            <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`}>
-              <div
-                className={`h-full transition-all duration-500 ${
-                  activeRide.status === 'cancelled'
-                    ? 'bg-rose-500 w-full'
-                    : activeRide.status === 'requested'
-                    ? 'bg-amber-500 w-1/5 animate-pulse'
-                    : activeRide.status === 'accepted'
-                    ? 'bg-sky-500 w-2/5'
-                    : activeRide.status === 'arrived'
-                    ? 'bg-indigo-500 w-3/5'
-                    : activeRide.status === 'started'
-                    ? 'bg-purple-500 w-4/5'
-                    : 'bg-emerald-500 w-full'
-                }`}
-              />
-            </div>
-          </div>
 
           {/* Action Footer */}
           <div className="pt-1">
