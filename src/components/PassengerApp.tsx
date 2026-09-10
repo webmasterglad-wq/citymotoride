@@ -228,7 +228,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   }, [activeRide?.id]);
   const [isSafetyOpen, setIsSafetyOpen] = useState(false);
   const [ratingStars, setRatingStars] = useState<number>(5);
-  const [tipAmount, setTipAmount] = useState<number>(2);
+  const [tipAmount, setTipAmount] = useState<number>(0);
   const [selectedTags, setSelectedTags] = useState<string[]>(['Safe Driving', 'Clean Helmet']);
   const [feedbackComment, setFeedbackComment] = useState<string>('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
@@ -236,10 +236,6 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
   useEffect(() => {
     activeRideRef.current = activeRide;
-    if (activeRide?.id && activeRide.status === 'completed') {
-      const alreadyRated = localStorage.getItem(`motoride_rating_${activeRide.id}`);
-      setReviewSubmitted(!!alreadyRated);
-    }
   }, [activeRide?.id, activeRide?.status]);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -746,22 +742,40 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const handleStepTabClick = async (targetStatus: RideStatus) => {
     if (!activeRide) return;
 
+    const defaultCaptain = {
+      captain_id: activeRide.captain_id || 'cap_1',
+      captain_name: activeRide.captain_name || 'Vikram Singh (Captain)',
+      captain_vehicle: activeRide.captain_vehicle || 'Honda Activa 6G • MH 02 AB 1234',
+      captain_phone: activeRide.captain_phone || '+91 98765 43210',
+      captain_rating: activeRide.captain_rating || 4.96,
+    };
+
     if (targetStatus === 'arrived') {
       playCaptainArrivedChime();
       setCaptainArrivedNotice({
-        captainName: activeRide.captain_name || 'Your Captain',
+        captainName: defaultCaptain.captain_name,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
-      const updated: Ride = { ...activeRide, status: 'arrived' };
+      const updated: Ride = {
+        ...activeRide,
+        ...defaultCaptain,
+        status: 'arrived',
+      };
       setActiveRide(updated);
+      activeRideRef.current = updated;
       try {
         await updateRideStatus(activeRide.id, 'arrived');
       } catch (e) {
         console.warn('Update arrived status error:', e);
       }
     } else if (targetStatus === 'started') {
-      const updated: Ride = { ...activeRide, status: 'started' };
+      const updated: Ride = {
+        ...activeRide,
+        ...defaultCaptain,
+        status: 'started',
+      };
       setActiveRide(updated);
+      activeRideRef.current = updated;
       try {
         await updateRideStatus(activeRide.id, 'started');
       } catch (e) {
@@ -771,22 +785,32 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       // Promptly display rating form to rate the captain
       setReviewSubmitted(false);
       try {
+        localStorage.removeItem(`motoride_rating_${activeRide.id}`);
+      } catch (e) {}
+      try {
         confetti({ particleCount: 80, spread: 90, origin: { y: 0.5 } });
       } catch (e) {}
       const updated: Ride = {
         ...activeRide,
+        ...defaultCaptain,
         status: 'completed',
         completed_at: new Date().toISOString(),
       };
       setActiveRide(updated);
+      activeRideRef.current = updated;
       try {
         await updateRideStatus(activeRide.id, 'completed');
       } catch (e) {
         console.warn('Update completed status error:', e);
       }
     } else if (targetStatus === 'accepted') {
-      const updated: Ride = { ...activeRide, status: 'accepted' };
+      const updated: Ride = {
+        ...activeRide,
+        ...defaultCaptain,
+        status: 'accepted',
+      };
       setActiveRide(updated);
+      activeRideRef.current = updated;
       try {
         await updateRideStatus(activeRide.id, 'accepted');
       } catch (e) {
@@ -795,6 +819,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     } else if (targetStatus === 'requested') {
       const updated: Ride = { ...activeRide, status: 'requested' };
       setActiveRide(updated);
+      activeRideRef.current = updated;
       try {
         await updateRideStatus(activeRide.id, 'requested');
       } catch (e) {
@@ -1499,31 +1524,6 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               </div>
             </div>
 
-            {/* Live Navigator for Pickup and Dropoff Preview */}
-            {pickup.trim() && dropoff.trim() && (
-              <a
-                id="passenger-preview-route-btn"
-                href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(pickup)}&destination=${encodeURIComponent(dropoff)}&travelmode=two-wheeler`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`w-full py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-colors ${
-                  isLight
-                    ? 'bg-emerald-50/70 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
-                    : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/40'
-                }`}
-                title="Preview route from Pickup to Dropoff in Google Maps"
-              >
-                <div className="flex items-center gap-2">
-                  <Navigation className="w-3.5 h-3.5 text-emerald-500 -rotate-45" />
-                  <span>Preview Route on Google Maps (Pickup & Dropoff)</span>
-                </div>
-                <div className="flex items-center gap-1 text-[10px] opacity-75">
-                  <span>~{estimatedMins || 8} min</span>
-                  <ExternalLink className="w-3 h-3" />
-                </div>
-              </a>
-            )}
-
             {/* Main Booking Action Button */}
             <button
               id="indrive-book-ride-btn"
@@ -1734,332 +1734,6 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             </div>
           </div>
 
-          {/* Live Route Navigator Card (Pickup & Dropoff) */}
-          <div
-            id="passenger-route-navigator-card"
-            className={`p-3.5 rounded-2xl border space-y-3 shadow-md transition-colors ${
-              isLight ? 'bg-slate-50 border-slate-200 shadow-slate-100' : 'bg-slate-900/90 border-slate-800 shadow-xl'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Navigation className="w-4 h-4 text-emerald-500 -rotate-45" />
-                <span className={`text-[11px] font-black uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
-                  Route Navigator (Google Maps)
-                </span>
-              </div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                activeRide.status === 'arrived'
-                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                  : activeRide.status === 'started'
-                  ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30'
-                  : activeRide.status === 'completed'
-                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                  : 'bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/30'
-              }`}>
-                {activeRide.status === 'arrived'
-                  ? 'Captain At Pickup'
-                  : activeRide.status === 'started'
-                  ? 'En Route to Dropoff'
-                  : activeRide.status === 'completed'
-                  ? 'Arrived at Destination'
-                  : 'Heading to Pickup'}
-              </span>
-            </div>
-
-            {/* Main 1-Click Navigator: Opens Google Maps Directions with Origin=Pickup & Destination=Dropoff */}
-            <a
-              id="passenger-main-route-navigator-btn"
-              href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(activeRide.pickup_location || pickup || 'Pickup Location')}&destination=${encodeURIComponent(activeRide.dropoff_location || dropoff || 'Destination')}&travelmode=two-wheeler`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3 px-3.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 hover:from-emerald-400 hover:to-sky-400 text-slate-950 font-black rounded-xl text-xs sm:text-sm flex items-center justify-between shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-              title="Open Turn-by-Turn Navigation for Pickup to Dropoff in Google Maps"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-slate-950 text-emerald-400 flex items-center justify-center shrink-0 shadow-sm">
-                  <Navigation className="w-4 h-4 fill-current -rotate-45" />
-                </div>
-                <div className="text-left leading-tight">
-                  <div className="text-[9px] uppercase tracking-wider opacity-85">
-                    Live Route Directions
-                  </div>
-                  <div className="text-xs sm:text-sm font-black">
-                    Open Navigator (Pickup & Dropoff)
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 bg-slate-950/20 px-2 py-1 rounded-lg text-[10px] font-bold">
-                <span>Google Maps</span>
-                <ExternalLink className="w-3 h-3" />
-              </div>
-            </a>
-
-            {/* Route Addresses Details Card */}
-            <div className={`p-2.5 rounded-xl border space-y-2 ${isLight ? 'bg-white border-slate-200' : 'bg-slate-950/70 border-slate-800'}`}>
-              {/* Pickup Point */}
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs">
-                    A
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`text-[9px] uppercase font-bold tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                        Pickup Spot
-                      </span>
-                      {activeRide.status === 'arrived' && (
-                        <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-emerald-500 text-slate-950 uppercase">
-                          Captain Waiting Here
-                        </span>
-                      )}
-                    </div>
-                    <p className={`font-bold text-xs truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                      {activeRide.pickup_location || pickup || 'Current Rider Location'}
-                    </p>
-                  </div>
-                </div>
-                <a
-                  id="passenger-pickup-maps-link"
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.pickup_location || pickup || 'Pickup Location')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1 transition-colors"
-                  title="Open Pickup Spot in Google Maps"
-                >
-                  <Navigation className="w-2.5 h-2.5 -rotate-45" />
-                  <span>Pickup</span>
-                </a>
-              </div>
-
-              <div className={`border-t ${isLight ? 'border-slate-100' : 'border-slate-800/80'}`} />
-
-              {/* Destination Dropoff */}
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                  <div className="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 mt-0.5 font-black text-xs">
-                    B
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`text-[9px] uppercase font-bold tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                        Destination Dropoff
-                      </span>
-                      {activeRide.status === 'started' && (
-                        <span className="text-[8px] font-black px-1.5 py-0.2 rounded bg-indigo-500 text-white uppercase">
-                          En Route Here
-                        </span>
-                      )}
-                    </div>
-                    <p className={`font-bold text-xs truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                      {activeRide.dropoff_location || dropoff || 'Destination Dropoff'}
-                    </p>
-                  </div>
-                </div>
-                <a
-                  id="passenger-dropoff-maps-link"
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.dropoff_location || dropoff || 'Destination Dropoff')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 flex items-center gap-1 transition-colors"
-                  title="Open Destination in Google Maps"
-                >
-                  <MapPin className="w-2.5 h-2.5" />
-                  <span>Dropoff</span>
-                </a>
-              </div>
-            </div>
-
-            {/* Route Metrics Summary */}
-            <div className={`flex items-center justify-between text-[11px] pt-0.5 px-1 font-semibold ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-              <span className="flex items-center gap-1">
-                <Route className="w-3.5 h-3.5 text-sky-500" />
-                <span>Est. Distance: {activeRide.distance_km || distanceKm || 3.8} km</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-amber-500" />
-                <span>ETA: ~{activeRide.estimated_mins || estimatedMins || 9} mins</span>
-              </span>
-            </div>
-          </div>
-
-          {/* Top Prominent Rating & Review Section when ride is completed */}
-          {activeRide.status === 'completed' && !reviewSubmitted && (
-            <div
-              className={`p-4 border-2 rounded-2xl space-y-3.5 animate-in zoom-in-95 shadow-xl ${
-                isLight ? 'bg-gradient-to-b from-amber-50 to-emerald-50/70 border-emerald-400 text-slate-900' : 'bg-gradient-to-b from-slate-900 to-emerald-950/40 border-emerald-500/60 text-slate-100'
-              }`}
-            >
-              <div className="text-center space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500 text-slate-950 font-black text-xs shadow-sm">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Ride Completed · Rate Captain</span>
-                </div>
-                <h3 className={`text-base font-black ${isLight ? 'text-slate-950' : 'text-emerald-200'}`}>
-                  How was your ride with {activeRide.captain_name || 'your Captain'}?
-                </h3>
-                <p className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                  Please rate your captain to finalize your trip summary
-                </p>
-              </div>
-
-              {/* Star Rating Selector */}
-              <div className="flex flex-col items-center justify-center gap-1.5 py-2">
-                <div className="flex items-center justify-center gap-2 sm:gap-3">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setRatingStars(star)}
-                      className="p-1.5 transition-transform hover:scale-125 active:scale-95 cursor-pointer focus:outline-none"
-                      title={`${star} Star${star > 1 ? 's' : ''}`}
-                    >
-                      <Star
-                        className={`w-9 h-9 sm:w-10 sm:h-10 transition-all ${
-                          star <= ratingStars
-                            ? 'fill-amber-400 text-amber-400 drop-shadow-md scale-110'
-                            : isLight
-                            ? 'text-slate-300 hover:text-amber-300'
-                            : 'text-slate-700 hover:text-amber-400/50'
-                        }`}
-                      />
-                    </button>
-                  ))}
-                </div>
-                <span className="text-xs font-black text-amber-500">
-                  {ratingStars === 5
-                    ? '★★★★★ 5.0 · Exceptional Experience!'
-                    : ratingStars === 4
-                    ? '★★★★☆ 4.0 · Great Trip'
-                    : ratingStars === 3
-                    ? '★★★☆☆ 3.0 · Average Experience'
-                    : ratingStars === 2
-                    ? '★★☆☆☆ 2.0 · Needs Improvement'
-                    : '★☆☆☆☆ 1.0 · Poor Experience'}
-                </span>
-              </div>
-
-              {/* Feedback Quick Compliment Chips */}
-              <div className="space-y-1.5">
-                <span className={`text-[10px] font-bold uppercase tracking-wider block text-center ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Compliments & Feedback
-                </span>
-                <div className="flex flex-wrap gap-1.5 justify-center">
-                  {[
-                    'Safe Driving',
-                    'Clean Helmet',
-                    'Smooth Navigation',
-                    'Polite Captain',
-                    'On-Time Pickup',
-                    'Great Route',
-                  ].map((tag) => {
-                    const isSelected = selectedTags.includes(tag);
-                    return (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => {
-                          setSelectedTags((prev) =>
-                            isSelected ? prev.filter((t) => t !== tag) : [...prev, tag]
-                          );
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm'
-                            : isLight
-                            ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                            : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
-                        }`}
-                      >
-                        {isSelected ? `✓ ${tag}` : `+ ${tag}`}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Add Driver Tip */}
-              <div className="space-y-1 text-center pt-1">
-                <span className={`text-[10px] font-bold uppercase ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Add a Captain Tip (Optional)
-                </span>
-                <div className="flex items-center justify-center gap-2">
-                  {[0, 10, 20, 50, 100].map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      onClick={() => setTipAmount(amt)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
-                        tipAmount === amt
-                          ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md font-black'
-                          : isLight
-                          ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                          : 'bg-slate-900 text-slate-300 border-slate-700'
-                      }`}
-                    >
-                      {amt === 0 ? 'No Tip' : `+₹${amt}`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Feedback Note */}
-              <div>
-                <input
-                  type="text"
-                  placeholder="Leave a note for the captain (optional)..."
-                  value={feedbackComment || ''}
-                  onChange={(e) => setFeedbackComment(e.target.value)}
-                  className={`w-full px-3.5 py-2.5 text-xs rounded-xl border focus:outline-none focus:border-emerald-500 ${
-                    isLight
-                      ? 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
-                      : 'bg-slate-900 border-slate-700 text-slate-100 placeholder:text-slate-500'
-                  }`}
-                />
-              </div>
-
-              {/* Submit Feedback and Complete */}
-              <button
-                type="button"
-                onClick={handleSubmitRating}
-                disabled={isSubmitting}
-                className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs sm:text-sm shadow-lg shadow-emerald-500/20 transition-all cursor-pointer flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Star className="w-4 h-4 fill-slate-950 text-slate-950" />
-                )}
-                <span>Submit {ratingStars}-Star Rating & Finish Ride</span>
-              </button>
-            </div>
-          )}
-
-          {/* Post-Review Thank You Card */}
-          {activeRide.status === 'completed' && reviewSubmitted && (
-            <div
-              className={`p-4 border rounded-2xl space-y-2 text-center animate-in zoom-in-95 ${
-                isLight ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
-              }`}
-            >
-              <div className="w-10 h-10 mx-auto rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center font-black">
-                <Check className="w-6 h-6 stroke-[3]" />
-              </div>
-              <h4 className="font-black text-sm">Thank you for rating your Captain!</h4>
-              <p className={`text-[11px] ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                You rated {activeRide.captain_name || 'Captain'} {ratingStars} ★ {tipAmount > 0 ? `with a ₹${tipAmount} tip` : ''}.
-              </p>
-              <button
-                type="button"
-                id="edit-rating-btn"
-                onClick={() => setReviewSubmitted(false)}
-                className="mt-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 underline hover:text-emerald-500 cursor-pointer"
-              >
-                Change Rating or Feedback
-              </button>
-            </div>
-          )}
-
           {/* Captain Arrived Announcement Banner */}
           {(activeRide.status === 'arrived' || captainArrivedNotice) && (
             <div
@@ -2112,8 +1786,57 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             </div>
           )}
 
+          {/* Trip in Progress Announcement Banner */}
+          {activeRide.status === 'started' && (
+            <div
+              id="passenger-trip-in-progress-banner"
+              className={`p-4 rounded-2xl border-2 shadow-lg animate-in fade-in duration-300 ${
+                isLight
+                  ? 'bg-gradient-to-r from-indigo-50 via-sky-50 to-emerald-50 border-indigo-400 text-slate-900'
+                  : 'bg-gradient-to-r from-indigo-950/60 via-slate-900 to-emerald-950/40 border-indigo-500/60 text-slate-100'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-2xl bg-indigo-500 text-white flex items-center justify-center font-black text-xl shadow-md shrink-0 animate-bounce">
+                    🏍️
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                        Trip In Progress
+                      </span>
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
+                    </div>
+                    <h4 className="text-sm font-black truncate mt-0.5">
+                      En route to {activeRide.dropoff_location || dropoff || 'Destination'}
+                    </h4>
+                    <p className={`text-[11px] mt-0.5 truncate ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                      Riding safely with {activeRide.captain_name || 'Vikram Singh (Captain)'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-indigo-200/50 dark:border-indigo-800/40 flex items-center justify-between">
+                <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                  Reached your destination?
+                </span>
+                <button
+                  type="button"
+                  id="passenger-complete-trip-btn"
+                  onClick={() => handleStepTabClick('completed')}
+                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 text-xs font-black shadow-md flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Complete & Rate Captain</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Captain Card (Uber Driver Profile Style) */}
-          {activeRide.captain_id ? (
+          {(activeRide.captain_id || ['accepted', 'arrived', 'started', 'completed'].includes(activeRide.status)) ? (
             <div
               className={`border p-3.5 rounded-2xl space-y-3 shadow-lg transition-colors ${
                 isLight ? 'bg-white border-slate-200 shadow-slate-100' : 'bg-slate-900 border-slate-800'
