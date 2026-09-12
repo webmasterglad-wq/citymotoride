@@ -11,3 +11,13 @@
   display: none !important;
 }
 
+/* Reset Leaflet DivIcon default square border for custom markers */
+.custom-live-passenger-marker,
+.custom-pickup-marker,
+.custom-dropoff-marker,
+.custom-moto-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+

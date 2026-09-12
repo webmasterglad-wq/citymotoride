@@ -465,43 +465,53 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
         }).addTo(map);
       }
 
-      // Clean Standard Blue Live Location Marker with Pulse Radar and optional Avatar
+      // Clean Passenger Location Marker with custom icon from p1.jpg, pulse radar, and directional indicator
+      const iconUrl = passengerAvatarUrl || '/passenger-icon.svg';
+
       const userLocationIcon = L.divIcon({
         className: 'custom-live-passenger-marker',
         html: `
-          <div class="relative flex items-center justify-center select-none cursor-pointer" style="width: 32px; height: 32px;">
+          <div class="relative flex items-center justify-center select-none cursor-pointer" style="width: 44px; height: 44px;">
             <!-- Outer Pulsing Radar Ring -->
-            <div class="absolute inset-0 rounded-full bg-blue-500/35 animate-ping"></div>
+            <div class="absolute inset-0 rounded-full bg-blue-500/30 animate-ping pointer-events-none"></div>
             <!-- Middle Halo Ring -->
-            <div class="absolute w-6 h-6 rounded-full bg-blue-500/20 border border-blue-400/40"></div>
-            <!-- Core Pin / Avatar -->
-            <div class="relative w-5 h-5 rounded-full bg-blue-600 border-2 border-white shadow-lg flex items-center justify-center overflow-hidden">
-              ${
-                passengerAvatarUrl
-                  ? `<img src="${passengerAvatarUrl}" class="w-full h-full object-cover" />`
-                  : `<div class="w-2 h-2 rounded-full bg-white"></div>`
-              }
+            <div class="absolute w-10 h-10 rounded-full bg-blue-400/20 border border-blue-400/50 pointer-events-none"></div>
+            <!-- Core Passenger Marker with Requested Icon -->
+            <div class="relative w-8 h-8 rounded-full border-2 border-white shadow-xl flex items-center justify-center overflow-hidden bg-white hover:scale-110 transition-transform">
+              <img
+                src="${iconUrl}"
+                alt="Passenger"
+                class="w-full h-full object-cover"
+                onerror="this.src='/passenger-icon.svg'"
+              />
             </div>
             <!-- Heading Direction indicator if moving -->
             ${
               passengerLiveHeading !== undefined && passengerLiveHeading >= 0
-                ? `<div class="absolute -top-1 w-2 h-2 border-t-2 border-r-2 border-blue-500 origin-bottom pointer-events-none" style="transform: rotate(${passengerLiveHeading}deg) translateY(-8px);"></div>`
+                ? `<div class="absolute -top-1 w-2.5 h-2.5 border-t-2 border-r-2 border-blue-600 origin-bottom pointer-events-none" style="transform: rotate(${passengerLiveHeading}deg) translateY(-13px);"></div>`
                 : ''
             }
           </div>
         `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        iconSize: [44, 44],
+        iconAnchor: [22, 22],
       });
 
       const popupContent = `
-        <div class="p-1 min-w-[210px] font-sans text-slate-900">
-          <div class="flex items-center justify-between gap-2 mb-1.5 border-b border-slate-100 pb-1">
-            <div class="font-bold text-xs text-blue-600 flex items-center gap-1">
-              <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-              <span>📍 Your Real-Time GPS</span>
+        <div class="p-1.5 min-w-[210px] font-sans text-slate-900">
+          <div class="flex items-center gap-2 mb-2 border-b border-slate-100 pb-2">
+            <div class="w-8 h-8 rounded-full overflow-hidden border border-blue-200 shadow-sm shrink-0 bg-white">
+              <img src="${iconUrl}" class="w-full h-full object-cover" alt="Passenger" />
             </div>
-            <span class="text-[9px] font-mono text-slate-400 font-semibold">±${accuracy}m</span>
+            <div class="min-w-0 flex-1">
+              <div class="font-bold text-xs text-blue-700 flex items-center justify-between">
+                <span>Passenger Location</span>
+                <span class="text-[9px] font-mono text-slate-400">±${accuracy}m</span>
+              </div>
+              <div class="text-[11px] text-slate-700 font-semibold truncate">
+                ${passengerName || 'Passenger'}
+              </div>
+            </div>
           </div>
           <div class="text-[12px] text-slate-900 font-bold mb-0.5">
             ${nearestLandmark || 'Current GPS Location'}
@@ -530,6 +540,12 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
         passengerLiveMarkerRef.current.setLatLng([lat, lng]);
         passengerLiveMarkerRef.current.setIcon(userLocationIcon);
         passengerLiveMarkerRef.current.setPopupContent(popupContent);
+        passengerLiveMarkerRef.current.setTooltipContent(`
+          <div class="px-2 py-0.5 text-[10px] font-black text-blue-700 bg-white/95 rounded-full shadow-md border border-blue-200/90 flex items-center gap-1 whitespace-nowrap pointer-events-none">
+            <span class="w-1.5 h-1.5 rounded-full bg-blue-600 animate-ping"></span>
+            <span>${nearestLandmark ? nearestLandmark.split(',')[0] : 'You are here'}</span>
+          </div>
+        `);
       } else {
         const marker = L.marker([lat, lng], { icon: userLocationIcon, zIndexOffset: 1000 }).addTo(map);
         marker.bindPopup(popupContent);
@@ -542,7 +558,7 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
         `, {
           permanent: true,
           direction: 'top',
-          offset: [0, -16],
+          offset: [0, -18],
           className: 'live-location-tooltip',
         });
         passengerLiveMarkerRef.current = marker;

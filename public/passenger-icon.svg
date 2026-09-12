@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <!-- Background Sky Blue Gradient -->
+    <linearGradient id="p1BgGrad" x1="18%" y1="12%" x2="82%" y2="88%">
+      <stop offset="0%" stop-color="#edf7ff" />
+      <stop offset="35%" stop-color="#cfe7fe" />
+      <stop offset="70%" stop-color="#b2dbfd" />
+      <stop offset="100%" stop-color="#99ceff" />
+    </linearGradient>
+
+    <!-- Figure Blue Gradient -->
+    <linearGradient id="p1FigureGrad" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#2d87d4" />
+      <stop offset="45%" stop-color="#2678c4" />
+      <stop offset="100%" stop-color="#1d61a8" />
+    </linearGradient>
+
+    <!-- Subtle drop shadow on the passenger silhouette -->
+    <filter id="p1Shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="#174f85" flood-opacity="0.18" />
+    </filter>
+  </defs>
+
+  <!-- Circular Outer Disc -->
+  <circle cx="128" cy="128" r="128" fill="url(#p1BgGrad)" />
+
+  <!-- Passenger Silhouette Group -->
+  <g filter="url(#p1Shadow)">
+    <!-- Head -->
+    <circle cx="128" cy="82" r="37.5" fill="url(#p1FigureGrad)" />
+
+    <!-- Torso / Shoulders -->
+    <path
+      d="M 95 129 
+         C 107 127, 149 127, 161 129 
+         C 181 132, 190 146, 189 173 
+         L 187 199 
+         C 186 208, 178 213, 167 213 
+         L 89 213 
+         C 78 213, 70 208, 69 199 
+         L 67 173 
+         C 66 146, 75 132, 95 129 Z"
+      fill="url(#p1FigureGrad)"
+    />
+  </g>
+</svg>
