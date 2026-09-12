@@ -10,7 +10,7 @@ import {
   Radio,
   Navigation,
 } from 'lucide-react';
-import { LatLng, resolveLocationCoords } from '../utils/geoUtils';
+import { LatLng, resolveLocationCoords, calculateDistanceKm } from '../utils/geoUtils';
 import { useTheme } from '../context/ThemeContext';
 import { Ride } from '../types/ride';
 
@@ -43,6 +43,33 @@ type MapLayerType = 'streets' | 'satellite' | 'terrain';
 
 // Regional Default Center
 const DEFAULT_CENTER: LatLng = { lat: 30.7180, lng: 76.7650 };
+
+// Helper to generate realistic city road waypoints between Pickup (A) and Drop-off (B)
+function generateRealisticRoute(p1: LatLng, p2: LatLng): [number, number][] {
+  if (!p1 || !p2) return [];
+  if (p1.lat === p2.lat && p1.lng === p2.lng) {
+    return [[p1.lat, p1.lng]];
+  }
+
+  const dLat = p2.lat - p1.lat;
+  const dLng = p2.lng - p1.lng;
+
+  // Multi-step arterial road simulation following urban grid/avenues
+  const segments = 6;
+  const points: [number, number][] = [[p1.lat, p1.lng]];
+
+  for (let i = 1; i < segments; i++) {
+    const fraction = i / segments;
+    // Slight road curving offset mimicking urban arterial grid curves
+    const wave = Math.sin(fraction * Math.PI) * 0.0014 * (i % 2 === 0 ? 1 : -0.8);
+    const lat = p1.lat + dLat * fraction + (Math.abs(dLng) > Math.abs(dLat) ? wave : 0);
+    const lng = p1.lng + dLng * fraction + (Math.abs(dLat) >= Math.abs(dLng) ? wave : 0);
+    points.push([Number(lat.toFixed(6)), Number(lng.toFixed(6))]);
+  }
+
+  points.push([p2.lat, p2.lng]);
+  return points;
+}
 
 export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
   pickupLocation,
@@ -77,6 +104,8 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
   const dropoffMarkerRef = useRef<L.Marker | null>(null);
   const captainMarkerRef = useRef<L.Marker | null>(null);
   const routePolylineRef = useRef<L.Polyline | null>(null);
+  const routeCasingRef = useRef<L.Polyline | null>(null);
+  const routeMidpointMarkerRef = useRef<L.Marker | null>(null);
   const nearbyCaptainsGroupRef = useRef<L.LayerGroup | null>(null);
 
   // Passenger Live GPS Refs
@@ -102,6 +131,12 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
     if (dropoffLocation) return resolveLocationCoords(dropoffLocation);
     return null;
   }, [dropoffCoords, activeRide?.dropoff_location, dropoffLocation]);
+
+  // Sync latest values into refs for event listeners
+  const resolvedPickupRef = useRef<LatLng | null>(null);
+  resolvedPickupRef.current = resolvedPickup;
+  const onSelectCoordsRef = useRef(onSelectCoords);
+  onSelectCoordsRef.current = onSelectCoords;
 
   // Google Maps Tile URL based on selected layer type
   const getGoogleTileUrl = (type: MapLayerType) => {
@@ -164,8 +199,9 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
 
     // Map Click
     map.on('click', (e: L.LeafletMouseEvent) => {
-      if (onSelectCoords) {
-        onSelectCoords({ lat: e.latlng.lat, lng: e.latlng.lng }, resolvedPickup ? 'dropoff' : 'pickup');
+      if (onSelectCoordsRef.current) {
+        const targetType = resolvedPickupRef.current ? 'dropoff' : 'pickup';
+        onSelectCoordsRef.current({ lat: e.latlng.lat, lng: e.latlng.lng }, targetType);
       }
     });
 
@@ -179,6 +215,14 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
     return () => {
       map.remove();
       mapInstanceRef.current = null;
+      pickupMarkerRef.current = null;
+      dropoffMarkerRef.current = null;
+      routePolylineRef.current = null;
+      routeCasingRef.current = null;
+      routeMidpointMarkerRef.current = null;
+      captainMarkerRef.current = null;
+      passengerLiveMarkerRef.current = null;
+      passengerAccuracyCircleRef.current = null;
     };
   }, []);
 
@@ -303,63 +347,145 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
     });
   }, [resolvedPickup]);
 
-  // Update Pickup & Dropoff Markers and Polyline Route
+  // Update Pickup (A) & Dropoff (B) Markers and Polyline Route
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    // 1. Pickup Marker
+    // 1. Pickup (A) Marker
     if (resolvedPickup) {
+      const pickupLabel = pickupLocation ? pickupLocation.split(',')[0].trim() : 'Pickup Point';
       const pickupIcon = L.divIcon({
         className: 'custom-pickup-marker',
         html: `
-          <div class="relative flex items-center justify-center">
-            <div class="absolute w-10 h-10 rounded-full bg-emerald-500/30 animate-ping"></div>
-            <div class="w-9 h-9 rounded-2xl bg-emerald-500 border-2 border-white text-slate-950 font-black text-sm flex items-center justify-center shadow-xl">
-              A
+          <div class="relative flex flex-col items-center group cursor-pointer select-none">
+            <!-- Pulsing Outer Radar Ring -->
+            <div class="absolute -top-1 w-12 h-12 rounded-full bg-emerald-500/25 animate-ping pointer-events-none"></div>
+            <!-- Pin Badge with prominent 'A' -->
+            <div class="relative w-9 h-9 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 border-2 border-white text-white font-black text-sm flex items-center justify-center shadow-xl transition-transform hover:scale-110">
+              <span class="text-white drop-shadow-xs font-black tracking-tight text-[15px]">A</span>
             </div>
-            <div class="absolute -bottom-1 w-2 h-2 bg-emerald-600 rotate-45"></div>
+            <!-- Pointer needle -->
+            <div class="w-0 h-0 border-x-[5px] border-x-transparent border-t-[7px] border-t-emerald-700 -mt-0.5"></div>
+            <!-- Ground shadow -->
+            <div class="w-3.5 h-1 bg-black/35 rounded-full blur-[1px] mt-0.5"></div>
           </div>
         `,
-        iconSize: [36, 36],
-        iconAnchor: [18, 36],
+        iconSize: [44, 52],
+        iconAnchor: [22, 46],
       });
+
+      const pickupTooltipContent = `
+        <div class="px-2.5 py-1 text-[11px] font-black text-slate-900 bg-white/95 rounded-xl shadow-xl border border-emerald-500/80 flex items-center gap-1.5 whitespace-nowrap pointer-events-none backdrop-blur-xs">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300 animate-pulse"></span>
+          <span class="text-emerald-700 font-extrabold">Pickup (A)</span>
+          <span class="text-slate-600 font-semibold max-w-[140px] truncate">${pickupLabel}</span>
+        </div>
+      `;
+
+      const pickupPopupContent = `
+        <div class="p-1 min-w-[200px] font-sans text-slate-900">
+          <div class="flex items-center gap-2 mb-1.5 border-b border-slate-100 pb-1.5">
+            <div class="w-7 h-7 rounded-xl bg-emerald-600 text-white font-black text-xs flex items-center justify-center shadow-sm shrink-0">A</div>
+            <div>
+              <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Pickup Location</div>
+              <div class="text-xs font-bold text-slate-900 leading-tight">${pickupLabel}</div>
+            </div>
+          </div>
+          <div class="text-[11px] text-slate-600 mb-1.5 leading-relaxed">${pickupLocation || 'Selected pickup location'}</div>
+          <div class="text-[9px] font-mono text-slate-400">GPS: ${resolvedPickup.lat.toFixed(5)}, ${resolvedPickup.lng.toFixed(5)}</div>
+        </div>
+      `;
 
       if (pickupMarkerRef.current) {
         pickupMarkerRef.current.setLatLng([resolvedPickup.lat, resolvedPickup.lng]);
+        pickupMarkerRef.current.setIcon(pickupIcon);
+        pickupMarkerRef.current.setPopupContent(pickupPopupContent);
+        pickupMarkerRef.current.setTooltipContent(pickupTooltipContent);
       } else {
-        pickupMarkerRef.current = L.marker([resolvedPickup.lat, resolvedPickup.lng], { icon: pickupIcon })
-          .bindPopup(`<strong>Pickup Location:</strong><br>${pickupLocation || 'Selected Pickup Point'}`)
-          .addTo(map);
+        const marker = L.marker([resolvedPickup.lat, resolvedPickup.lng], {
+          icon: pickupIcon,
+          zIndexOffset: 800,
+        }).addTo(map);
+
+        marker.bindPopup(pickupPopupContent);
+        marker.bindTooltip(pickupTooltipContent, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -38],
+          className: 'pickup-tooltip',
+        });
+        pickupMarkerRef.current = marker;
       }
     } else if (pickupMarkerRef.current) {
       map.removeLayer(pickupMarkerRef.current);
       pickupMarkerRef.current = null;
     }
 
-    // 2. Dropoff Marker
+    // 2. Dropoff (B) Marker
     if (resolvedDropoff) {
+      const dropoffLabel = dropoffLocation ? dropoffLocation.split(',')[0].trim() : 'Drop-off Destination';
       const dropoffIcon = L.divIcon({
         className: 'custom-dropoff-marker',
         html: `
-          <div class="relative flex items-center justify-center">
-            <div class="absolute w-10 h-10 rounded-full bg-rose-500/30 animate-pulse"></div>
-            <div class="w-9 h-9 rounded-2xl bg-rose-600 border-2 border-white text-white font-black text-sm flex items-center justify-center shadow-xl">
-              B
+          <div class="relative flex flex-col items-center group cursor-pointer select-none">
+            <!-- Pulsing Outer Radar Ring -->
+            <div class="absolute -top-1 w-12 h-12 rounded-full bg-rose-500/25 animate-ping pointer-events-none"></div>
+            <!-- Pin Badge with prominent 'B' -->
+            <div class="relative w-9 h-9 rounded-2xl bg-gradient-to-br from-rose-500 to-rose-700 border-2 border-white text-white font-black text-sm flex items-center justify-center shadow-xl transition-transform hover:scale-110">
+              <span class="text-white drop-shadow-xs font-black tracking-tight text-[15px]">B</span>
             </div>
-            <div class="absolute -bottom-1 w-2 h-2 bg-rose-700 rotate-45"></div>
+            <!-- Pointer needle -->
+            <div class="w-0 h-0 border-x-[5px] border-x-transparent border-t-[7px] border-t-rose-700 -mt-0.5"></div>
+            <!-- Ground shadow -->
+            <div class="w-3.5 h-1 bg-black/35 rounded-full blur-[1px] mt-0.5"></div>
           </div>
         `,
-        iconSize: [36, 36],
-        iconAnchor: [18, 36],
+        iconSize: [44, 52],
+        iconAnchor: [22, 46],
       });
+
+      const dropoffTooltipContent = `
+        <div class="px-2.5 py-1 text-[11px] font-black text-slate-900 bg-white/95 rounded-xl shadow-xl border border-rose-500/80 flex items-center gap-1.5 whitespace-nowrap pointer-events-none backdrop-blur-xs">
+          <span class="w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-rose-300 animate-pulse"></span>
+          <span class="text-rose-700 font-extrabold">Drop-off (B)</span>
+          <span class="text-slate-600 font-semibold max-w-[140px] truncate">${dropoffLabel}</span>
+        </div>
+      `;
+
+      const dropoffPopupContent = `
+        <div class="p-1 min-w-[200px] font-sans text-slate-900">
+          <div class="flex items-center gap-2 mb-1.5 border-b border-slate-100 pb-1.5">
+            <div class="w-7 h-7 rounded-xl bg-rose-600 text-white font-black text-xs flex items-center justify-center shadow-sm shrink-0">B</div>
+            <div>
+              <div class="text-[10px] font-bold uppercase tracking-wider text-rose-600">Drop-off Destination</div>
+              <div class="text-xs font-bold text-slate-900 leading-tight">${dropoffLabel}</div>
+            </div>
+          </div>
+          <div class="text-[11px] text-slate-600 mb-1.5 leading-relaxed">${dropoffLocation || 'Selected drop-off destination'}</div>
+          <div class="text-[9px] font-mono text-slate-400">GPS: ${resolvedDropoff.lat.toFixed(5)}, ${resolvedDropoff.lng.toFixed(5)}</div>
+        </div>
+      `;
 
       if (dropoffMarkerRef.current) {
         dropoffMarkerRef.current.setLatLng([resolvedDropoff.lat, resolvedDropoff.lng]);
+        dropoffMarkerRef.current.setIcon(dropoffIcon);
+        dropoffMarkerRef.current.setPopupContent(dropoffPopupContent);
+        dropoffMarkerRef.current.setTooltipContent(dropoffTooltipContent);
       } else {
-        dropoffMarkerRef.current = L.marker([resolvedDropoff.lat, resolvedDropoff.lng], { icon: dropoffIcon })
-          .bindPopup(`<strong>Dropoff Location:</strong><br>${dropoffLocation || 'Selected Dropoff Point'}`)
-          .addTo(map);
+        const marker = L.marker([resolvedDropoff.lat, resolvedDropoff.lng], {
+          icon: dropoffIcon,
+          zIndexOffset: 800,
+        }).addTo(map);
+
+        marker.bindPopup(dropoffPopupContent);
+        marker.bindTooltip(dropoffTooltipContent, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -38],
+          className: 'dropoff-tooltip',
+        });
+        dropoffMarkerRef.current = marker;
       }
     } else if (dropoffMarkerRef.current) {
       map.removeLayer(dropoffMarkerRef.current);
@@ -406,39 +532,91 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
       captainMarkerRef.current = null;
     }
 
-    // 4. Route Polyline
+    // 4. Route Polyline (Dual-Layer: Contrast Casing + Vibrant Emerald Stroke + Midpoint Badge)
     if (resolvedPickup && resolvedDropoff) {
-      // Calculate realistic waypoint interpolation along roads
-      const p1 = resolvedPickup;
-      const p2 = resolvedDropoff;
-      const midLat = (p1.lat + p2.lat) / 2 + 0.001;
-      const midLng = (p1.lng + p2.lng) / 2 - 0.001;
+      const routePoints = generateRealisticRoute(resolvedPickup, resolvedDropoff);
+      const rawDistanceKm = calculateDistanceKm(resolvedPickup, resolvedDropoff);
+      const distanceKm = (rawDistanceKm * 1.25).toFixed(1);
+      const estMinutes = Math.max(3, Math.round((parseFloat(distanceKm) / 32) * 60));
 
-      const routePoints: [number, number][] = [
-        [p1.lat, p1.lng],
-        [midLat, midLng],
-        [p2.lat, p2.lng],
-      ];
+      // Layer 1: Casing dark border
+      if (routeCasingRef.current) {
+        routeCasingRef.current.setLatLngs(routePoints);
+      } else {
+        routeCasingRef.current = L.polyline(routePoints, {
+          color: '#064e3b',
+          weight: 8,
+          opacity: 0.65,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }).addTo(map);
+      }
 
+      // Layer 2: Main vibrant emerald polyline
       if (routePolylineRef.current) {
         routePolylineRef.current.setLatLngs(routePoints);
       } else {
-        const polyline = L.polyline(routePoints, {
-          color: '#10b981', // Emerald
-          weight: 6,
-          opacity: 0.85,
+        routePolylineRef.current = L.polyline(routePoints, {
+          color: '#10b981',
+          weight: 5,
+          opacity: 0.95,
+          lineCap: 'round',
           lineJoin: 'round',
-          dashArray: '8, 8',
         }).addTo(map);
-        routePolylineRef.current = polyline;
       }
 
+      // Layer 3: Midpoint Route Distance & ETA Indicator
+      const midIdx = Math.floor(routePoints.length / 2);
+      const midCoord = routePoints[midIdx];
+      const midIcon = L.divIcon({
+        className: 'custom-midpoint-marker',
+        html: `
+          <div class="px-2.5 py-1 rounded-full bg-slate-950/90 text-white text-[10px] font-black border border-emerald-400/60 shadow-xl flex items-center gap-1.5 whitespace-nowrap pointer-events-none backdrop-blur-xs">
+            <span class="text-emerald-400 font-extrabold">A ➔ B</span>
+            <span>${distanceKm} km</span>
+            <span class="text-slate-400">·</span>
+            <span class="text-amber-300 font-extrabold">~${estMinutes}m</span>
+          </div>
+        `,
+        iconSize: [120, 26],
+        iconAnchor: [60, 13],
+      });
+
+      if (routeMidpointMarkerRef.current) {
+        routeMidpointMarkerRef.current.setLatLng(midCoord);
+        routeMidpointMarkerRef.current.setIcon(midIcon);
+      } else {
+        routeMidpointMarkerRef.current = L.marker(midCoord, {
+          icon: midIcon,
+          interactive: false,
+          zIndexOffset: 450,
+        }).addTo(map);
+      }
+
+      // Frame bounds to include Pickup (A), Dropoff (B), and Polyline
       fitMapBounds();
-    } else if (routePolylineRef.current) {
-      map.removeLayer(routePolylineRef.current);
-      routePolylineRef.current = null;
+    } else {
+      if (routePolylineRef.current) {
+        map.removeLayer(routePolylineRef.current);
+        routePolylineRef.current = null;
+      }
+      if (routeCasingRef.current) {
+        map.removeLayer(routeCasingRef.current);
+        routeCasingRef.current = null;
+      }
+      if (routeMidpointMarkerRef.current) {
+        map.removeLayer(routeMidpointMarkerRef.current);
+        routeMidpointMarkerRef.current = null;
+      }
+
+      // If only one location is selected, center on it
+      if (resolvedPickup && !resolvedDropoff) {
+        map.flyTo([resolvedPickup.lat, resolvedPickup.lng], 15, { animate: true });
+      } else if (resolvedDropoff && !resolvedPickup) {
+        map.flyTo([resolvedDropoff.lat, resolvedDropoff.lng], 15, { animate: true });
+      }
     }
-  }, [resolvedPickup, resolvedDropoff, activeRide?.status]);
+  }, [resolvedPickup, resolvedDropoff, pickupLocation, dropoffLocation, activeRide?.status]);
 
   // 5. Update Passenger Real-Time Live Location Marker
   useEffect(() => {

@@ -1210,7 +1210,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[11px] font-bold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
-                    <span>Pickup Location</span>
+                    <span>Pickup Location (A)</span>
                   </span>
                   {liveGPS.coords && (
                     <div className="flex items-center gap-1.5">
@@ -1251,8 +1251,8 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-600 flex items-center justify-center text-[10px] font-black shrink-0">
-                    ●
+                  <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0">
+                    A
                   </div>
                   <div className="flex-1">
                     <GoogleLocationSearchInput
@@ -1303,12 +1303,12 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[11px] font-bold flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
                     <span className="w-2 h-2 rounded-full bg-rose-500 ring-2 ring-rose-500/20" />
-                    <span>Drop-off Destination</span>
+                    <span>Drop-off Destination (B)</span>
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-md bg-rose-500/20 border border-rose-500/50 text-rose-500 flex items-center justify-center text-[10px] font-black shrink-0">
-                    ■
+                  <div className="w-6 h-6 rounded-lg bg-rose-600 text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0">
+                    B
                   </div>
                   <div className="flex-1">
                     <GoogleLocationSearchInput
@@ -1374,13 +1374,19 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                       <Navigation className="w-4 h-4" />
                     </div>
                     <div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-black text-xs text-emerald-700 dark:text-emerald-400">
                           {hasRoute ? `${distanceKm} km` : '— km'}
                         </span>
                         <span className="text-[10px] font-semibold text-slate-500">
                           {hasRoute ? `(~${estimatedMins} mins)` : '(Awaiting locations)'}
                         </span>
+                        {hasRoute && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-extrabold flex items-center gap-1 border border-emerald-500/30">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            Route Polyline (A ➔ B)
+                          </span>
+                        )}
                         {isAccurateRoute && (
                           <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold">
                             ROAD GPS

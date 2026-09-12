@@ -1,13 +1,19 @@
 @import "tailwindcss";
 
-/* Clean Leaflet Tooltip for Live Location Marker */
-.leaflet-tooltip.live-location-tooltip {
+/* Clean Leaflet Tooltip for Live Location Marker and Route/Pickup/Dropoff markers */
+.leaflet-tooltip.live-location-tooltip,
+.leaflet-tooltip.pickup-tooltip,
+.leaflet-tooltip.dropoff-tooltip,
+.leaflet-tooltip.route-midpoint-tooltip {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
 }
-.leaflet-tooltip.live-location-tooltip::before {
+.leaflet-tooltip.live-location-tooltip::before,
+.leaflet-tooltip.pickup-tooltip::before,
+.leaflet-tooltip.dropoff-tooltip::before,
+.leaflet-tooltip.route-midpoint-tooltip::before {
   display: none !important;
 }
 
@@ -15,6 +21,7 @@
 .custom-live-passenger-marker,
 .custom-pickup-marker,
 .custom-dropoff-marker,
+.custom-midpoint-marker,
 .custom-moto-marker {
   background: transparent !important;
   border: none !important;
