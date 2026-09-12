@@ -10,7 +10,7 @@ import {
   Radio,
   Navigation,
 } from 'lucide-react';
-import { LatLng, resolveLocationCoords, calculateDistanceKm } from '../utils/geoUtils';
+import { LatLng, resolveLocationCoords, strictResolveLocationCoords, calculateDistanceKm } from '../utils/geoUtils';
 import { useTheme } from '../context/ThemeContext';
 import { Ride } from '../types/ride';
 
@@ -117,18 +117,26 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
   const [showTraffic, setShowTraffic] = useState<boolean>(true);
   const [zoomLevel, setZoomLevel] = useState<number>(13);
 
-  // Resolved coordinates
+  // Resolved coordinates: ONLY resolve if passenger has explicitly provided coordinates or a confirmed exact location
   const resolvedPickup = useMemo(() => {
     if (pickupCoords && pickupCoords.lat && pickupCoords.lng) return pickupCoords;
-    if (activeRide?.pickup_location) return resolveLocationCoords(activeRide.pickup_location);
-    if (pickupLocation) return resolveLocationCoords(pickupLocation);
+    if (activeRide?.pickup_location) {
+      return strictResolveLocationCoords(activeRide.pickup_location) || resolveLocationCoords(activeRide.pickup_location);
+    }
+    if (pickupLocation && pickupLocation.trim()) {
+      return strictResolveLocationCoords(pickupLocation);
+    }
     return null;
   }, [pickupCoords, activeRide?.pickup_location, pickupLocation]);
 
   const resolvedDropoff = useMemo(() => {
     if (dropoffCoords && dropoffCoords.lat && dropoffCoords.lng) return dropoffCoords;
-    if (activeRide?.dropoff_location) return resolveLocationCoords(activeRide.dropoff_location);
-    if (dropoffLocation) return resolveLocationCoords(dropoffLocation);
+    if (activeRide?.dropoff_location) {
+      return strictResolveLocationCoords(activeRide.dropoff_location) || resolveLocationCoords(activeRide.dropoff_location);
+    }
+    if (dropoffLocation && dropoffLocation.trim()) {
+      return strictResolveLocationCoords(dropoffLocation);
+    }
     return null;
   }, [dropoffCoords, activeRide?.dropoff_location, dropoffLocation]);
 
@@ -154,16 +162,16 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
     }
   };
 
-  // Initialize Map
+  // Initialize Map: Always center on passenger's real-time live GPS location
   useEffect(() => {
     if (!mapContainerRef.current) return;
     if (mapInstanceRef.current) return;
 
-    const initialCenter = resolvedPickup || DEFAULT_CENTER;
+    const initialCenter = passengerLiveLocation || resolvedPickup || DEFAULT_CENTER;
 
     const map = L.map(mapContainerRef.current, {
       center: [initialCenter.lat, initialCenter.lng],
-      zoom: 13,
+      zoom: 15,
       zoomControl: false,
       attributionControl: false,
     });
@@ -313,8 +321,8 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
 
     group.clearLayers();
 
-    // Center point
-    const center = resolvedPickup || DEFAULT_CENTER;
+    // Center point: always prioritize passenger's live GPS location, or resolvedPickup if passenger manually set it
+    const center = resolvedPickup || passengerLiveLocation || DEFAULT_CENTER;
 
     // Generate 4-5 nearby simulated moto drivers
     const nearbyOffsets = [
@@ -345,7 +353,7 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
       const marker = L.marker([center.lat + item.dLat, center.lng + item.dLng], { icon: motoIcon });
       group.addLayer(marker);
     });
-  }, [resolvedPickup]);
+  }, [resolvedPickup, passengerLiveLocation]);
 
   // Update Pickup (A) & Dropoff (B) Markers and Polyline Route
   useEffect(() => {
@@ -609,14 +617,16 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
         routeMidpointMarkerRef.current = null;
       }
 
-      // If only one location is selected, center on it
+      // If only one location is selected, center on it. Otherwise keep centered on passenger's real-time live GPS!
       if (resolvedPickup && !resolvedDropoff) {
         map.flyTo([resolvedPickup.lat, resolvedPickup.lng], 15, { animate: true });
       } else if (resolvedDropoff && !resolvedPickup) {
         map.flyTo([resolvedDropoff.lat, resolvedDropoff.lng], 15, { animate: true });
+      } else if (!resolvedPickup && !resolvedDropoff && passengerLiveLocation) {
+        map.flyTo([passengerLiveLocation.lat, passengerLiveLocation.lng], 15, { animate: true });
       }
     }
-  }, [resolvedPickup, resolvedDropoff, pickupLocation, dropoffLocation, activeRide?.status]);
+  }, [resolvedPickup, resolvedDropoff, pickupLocation, dropoffLocation, activeRide?.status, passengerLiveLocation]);
 
   // 5. Update Passenger Real-Time Live Location Marker
   useEffect(() => {
@@ -742,10 +752,18 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
         passengerLiveMarkerRef.current = marker;
       }
 
-      // Initial auto-center on passenger live GPS if no pickup already chosen
-      if (!hasCenteredOnLiveGpsRef.current && !resolvedPickup) {
-        hasCenteredOnLiveGpsRef.current = true;
-        map.flyTo([lat, lng], 15, { duration: 1.0 });
+      // Always keep map centered on passenger's real-time live GPS until passenger manually selects locations
+      if (!resolvedPickup && !resolvedDropoff) {
+        if (!hasCenteredOnLiveGpsRef.current) {
+          hasCenteredOnLiveGpsRef.current = true;
+          map.setView([lat, lng], 15);
+        } else {
+          const center = map.getCenter();
+          const dist = Math.hypot(center.lat - lat, center.lng - lng);
+          if (dist > 0.0004) {
+            map.panTo([lat, lng], { animate: true, duration: 0.6 });
+          }
+        }
       }
     } else {
       if (passengerAccuracyCircleRef.current) {

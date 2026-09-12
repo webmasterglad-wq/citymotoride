@@ -433,6 +433,54 @@ export function resolveLocationCoords(
 }
 
 /**
+ * Strict resolution: ONLY returns coordinates if:
+ * 1. Direct lat,lng coordinates are explicitly in the text
+ * 2. Exact match in KNOWN_LOCATIONS
+ * 3. Exact match in clean KNOWN_LOCATIONS
+ * 4. Exact match with service zone name
+ * Returns null for unselected or arbitrary partial typing so no false markers appear on the map.
+ */
+export function strictResolveLocationCoords(address?: string | null): LatLng | null {
+  if (!address || !address.trim()) return null;
+  const trimmed = address.trim();
+
+  // 1. Direct regex coordinate extraction (e.g., "30.7398, 76.7827" or "Current GPS (30.7398, 76.7827)")
+  const coordRegex = /(-?\d{1,2}\.\d+)[,\s]+(-?\d{1,3}\.\d+)/;
+  const match = trimmed.match(coordRegex);
+  if (match) {
+    const lat = parseFloat(match[1]);
+    const lng = parseFloat(match[2]);
+    if (!isNaN(lat) && !isNaN(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return {
+        lat: Number(lat.toFixed(6)),
+        lng: Number(lng.toFixed(6)),
+      };
+    }
+  }
+
+  // 2. Exact match in KNOWN_LOCATIONS
+  if (KNOWN_LOCATIONS[trimmed]) {
+    return KNOWN_LOCATIONS[trimmed];
+  }
+
+  // 3. Clean address of suffixes like " (Live GPS)" or " (Near GPS)"
+  const cleanAddress = trimmed.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+  if (cleanAddress && KNOWN_LOCATIONS[cleanAddress]) {
+    return KNOWN_LOCATIONS[cleanAddress];
+  }
+
+  // 4. Exact match with SERVICE_ZONES names
+  const targetLower = (cleanAddress || trimmed).toLowerCase();
+  for (const zone of Object.values(SERVICE_ZONES)) {
+    if (targetLower === zone.id.toLowerCase() || targetLower === zone.name.toLowerCase()) {
+      return zone.center;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Identifies which Service Zone a given address or coordinate belongs to.
  */
 export function detectZoneForLocation(location: string | LatLng): ServiceZone {

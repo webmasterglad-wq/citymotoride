@@ -51,10 +51,31 @@ function getCompassDirection(deg: number): string {
 
 export function usePassengerLiveGPS(initialCoords?: LatLng | null) {
   const [coords, setCoords] = useState<LatLng>(() => {
-    return initialCoords || TRICITY_HUBS.sector17.coords; // Sector 17 Plaza Default
+    if (initialCoords && initialCoords.lat && initialCoords.lng) {
+      return initialCoords;
+    }
+    // Check if user has previously granted and stored their real GPS location
+    try {
+      const savedGps = localStorage.getItem('motoride_passenger_last_gps');
+      if (savedGps) {
+        const parsed = JSON.parse(savedGps);
+        if (parsed && typeof parsed.lat === 'number' && typeof parsed.lng === 'number') {
+          return { lat: Number(parsed.lat.toFixed(6)), lng: Number(parsed.lng.toFixed(6)) };
+        }
+      }
+    } catch {
+      // Ignore parse error
+    }
+    return TRICITY_HUBS.sector17.coords; // Sector 17 Plaza Default until GPS fix arrives
   });
 
-  const [hasDeviceFix, setHasDeviceFix] = useState<boolean>(false);
+  const [hasDeviceFix, setHasDeviceFix] = useState<boolean>(() => {
+    try {
+      return Boolean(localStorage.getItem('motoride_passenger_last_gps'));
+    } catch {
+      return false;
+    }
+  });
   const [heading, setHeading] = useState<number>(0);
   const [speed, setSpeed] = useState<number>(0);
   const [accuracy, setAccuracy] = useState<number>(10); // ±10m
@@ -145,9 +166,15 @@ export function usePassengerLiveGPS(initialCoords?: LatLng | null) {
 
       setIsSimulating(false);
       setLastUpdated(Date.now());
+
+      try {
+        localStorage.setItem('motoride_passenger_last_gps', JSON.stringify(newCoords));
+      } catch {
+        // ignore
+      }
     };
 
-    // First attempt: Fast high-accuracy query with graceful fallback
+    // First attempt: Instant cached or fast high-accuracy query
     navigator.geolocation.getCurrentPosition(
       handleSuccess,
       (err) => {
@@ -157,7 +184,7 @@ export function usePassengerLiveGPS(initialCoords?: LatLng | null) {
           return;
         }
 
-        // Second attempt: Standard accuracy (WiFi/cell/network)
+        // Second attempt: Standard accuracy (WiFi/cell/network/cached)
         navigator.geolocation.getCurrentPosition(
           handleSuccess,
           (lowErr) => {
@@ -168,10 +195,10 @@ export function usePassengerLiveGPS(initialCoords?: LatLng | null) {
               setStatus('error');
             }
           },
-          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
         );
       },
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 120000 }
     );
 
     // Continuous watchPosition for live location updates

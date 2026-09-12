@@ -78,7 +78,7 @@ import { FareCalculatorModal } from './FareCalculatorModal';
 import { FareBreakdown, calculateEstimatedRoute, calculateMotoFare } from '../utils/fareCalculator';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { InDriveTimelineBar } from './InDriveTimelineBar';
-import { SERVICE_ZONES, ServiceZone, detectZoneForLocation, resolveLocationCoords, LatLng } from '../utils/geoUtils';
+import { SERVICE_ZONES, ServiceZone, detectZoneForLocation, resolveLocationCoords, strictResolveLocationCoords, LatLng } from '../utils/geoUtils';
 import { useTheme } from '../context/ThemeContext';
 import { usePricing } from '../context/PricingContext';
 import { useAuth } from '../context/AuthContext';
@@ -1271,7 +1271,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                         if (coords) {
                           setPickupCoords(coords);
                         } else if (val && val.trim() !== '') {
-                          setPickupCoords(resolveLocationCoords(val));
+                          setPickupCoords(strictResolveLocationCoords(val));
                         } else {
                           setPickupCoords(null);
                         }
@@ -1324,7 +1324,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                         if (coords) {
                           setDropoffCoords(coords);
                         } else if (val && val.trim() !== '') {
-                          setDropoffCoords(resolveLocationCoords(val));
+                          setDropoffCoords(strictResolveLocationCoords(val));
                         } else {
                           setDropoffCoords(null);
                         }
