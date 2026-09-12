@@ -8,8 +8,9 @@ import {
   Minus,
   Locate,
   Radio,
+  Navigation,
 } from 'lucide-react';
-import { LatLng, SERVICE_ZONES, resolveLocationCoords } from '../utils/geoUtils';
+import { LatLng, resolveLocationCoords } from '../utils/geoUtils';
 import { useTheme } from '../context/ThemeContext';
 import { Ride } from '../types/ride';
 
@@ -29,11 +30,9 @@ interface GoogleMapBackgroundProps {
   passengerLiveAccuracy?: number;
   passengerLiveStatus?: string;
   isSimulating?: boolean;
-  isOutsideServiceArea?: boolean;
   onToggleSimulation?: () => void;
   onUseLiveLocationAsPickup?: (coords: LatLng, address: string) => void;
   onRetryGPS?: () => void;
-  onTeleportToTricity?: (hubKey?: string) => void;
   passengerAvatarUrl?: string;
   passengerName?: string;
   nearestLandmark?: string;
@@ -42,7 +41,7 @@ interface GoogleMapBackgroundProps {
 
 type MapLayerType = 'streets' | 'satellite' | 'terrain';
 
-// Tricity Regional Default Center (between Chandigarh, Mohali, Panchkula & Zirakpur)
+// Regional Default Center
 const DEFAULT_CENTER: LatLng = { lat: 30.7180, lng: 76.7650 };
 
 export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
@@ -60,11 +59,9 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
   passengerLiveAccuracy = 12,
   passengerLiveStatus = 'active',
   isSimulating = false,
-  isOutsideServiceArea = false,
   onToggleSimulation,
   onUseLiveLocationAsPickup,
   onRetryGPS,
-  onTeleportToTricity,
   passengerAvatarUrl,
   passengerName = 'You',
   nearestLandmark,
@@ -89,7 +86,6 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
 
   const [mapLayer, setMapLayer] = useState<MapLayerType>('streets');
   const [showTraffic, setShowTraffic] = useState<boolean>(true);
-  const [activeZone, setActiveZone] = useState<string>('chandigarh');
   const [zoomLevel, setZoomLevel] = useState<number>(13);
 
   // Resolved coordinates
@@ -460,43 +456,71 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
         passengerAccuracyCircleRef.current = L.circle([lat, lng], {
           radius: Math.max(10, accuracy),
           color: '#3b82f6',
-          weight: 1,
-          opacity: 0.35,
+          weight: 1.5,
+          opacity: 0.45,
           fillColor: '#3b82f6',
           fillOpacity: 0.08,
         }).addTo(map);
       }
 
-      // Clean Standard Blue Location Marker Dot
+      // Clean Standard Blue Live Location Marker with Pulse Radar and optional Avatar
       const userLocationIcon = L.divIcon({
         className: 'custom-live-passenger-marker',
         html: `
-          <div class="relative flex items-center justify-center w-6 h-6 select-none">
-            <div class="absolute w-6 h-6 rounded-full bg-blue-500/25 animate-ping"></div>
-            <div class="relative w-4 h-4 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center">
-              <div class="w-1.5 h-1.5 rounded-full bg-white"></div>
+          <div class="relative flex items-center justify-center select-none cursor-pointer" style="width: 32px; height: 32px;">
+            <!-- Outer Pulsing Radar Ring -->
+            <div class="absolute inset-0 rounded-full bg-blue-500/35 animate-ping"></div>
+            <!-- Middle Halo Ring -->
+            <div class="absolute w-6 h-6 rounded-full bg-blue-500/20 border border-blue-400/40"></div>
+            <!-- Core Pin / Avatar -->
+            <div class="relative w-5 h-5 rounded-full bg-blue-600 border-2 border-white shadow-lg flex items-center justify-center overflow-hidden">
+              ${
+                passengerAvatarUrl
+                  ? `<img src="${passengerAvatarUrl}" class="w-full h-full object-cover" />`
+                  : `<div class="w-2 h-2 rounded-full bg-white"></div>`
+              }
             </div>
+            <!-- Heading Direction indicator if moving -->
+            ${
+              passengerLiveHeading !== undefined && passengerLiveHeading >= 0
+                ? `<div class="absolute -top-1 w-2 h-2 border-t-2 border-r-2 border-blue-500 origin-bottom pointer-events-none" style="transform: rotate(${passengerLiveHeading}deg) translateY(-8px);"></div>`
+                : ''
+            }
           </div>
         `,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
       });
 
       const popupContent = `
-        <div class="p-1 min-w-[190px] font-sans text-slate-900">
-          <div class="font-bold text-xs text-blue-600 mb-1">📍 Your Location</div>
-          <div class="text-[11px] text-slate-800 font-semibold mb-0.5">
-            ${nearestLandmark || 'Current Location'}
+        <div class="p-1 min-w-[210px] font-sans text-slate-900">
+          <div class="flex items-center justify-between gap-2 mb-1.5 border-b border-slate-100 pb-1">
+            <div class="font-bold text-xs text-blue-600 flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+              <span>📍 Your Real-Time GPS</span>
+            </div>
+            <span class="text-[9px] font-mono text-slate-400 font-semibold">±${accuracy}m</span>
+          </div>
+          <div class="text-[12px] text-slate-900 font-bold mb-0.5">
+            ${nearestLandmark || 'Current GPS Location'}
           </div>
           <div class="text-[10px] text-slate-500 font-mono mb-2">
             ${lat.toFixed(5)}, ${lng.toFixed(5)}
           </div>
-          <button
-            class="w-full py-1.5 px-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] rounded-lg cursor-pointer shadow-xs transition-colors"
-            onclick="window.dispatchEvent(new CustomEvent('motoride-set-live-pickup'))"
-          >
-            📍 Set as Pickup Point
-          </button>
+          <div class="flex items-center gap-1.5">
+            <button
+              class="flex-1 py-1.5 px-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] rounded-lg cursor-pointer shadow-xs transition-colors"
+              onclick="window.dispatchEvent(new CustomEvent('motoride-set-live-pickup'))"
+            >
+              Set as Pickup
+            </button>
+            <button
+              class="py-1.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] rounded-lg cursor-pointer border border-blue-200 transition-colors"
+              onclick="window.dispatchEvent(new CustomEvent('motoride-center-on-gps'))"
+            >
+              Center
+            </button>
+          </div>
         </div>
       `;
 
@@ -507,6 +531,18 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
       } else {
         const marker = L.marker([lat, lng], { icon: userLocationIcon, zIndexOffset: 1000 }).addTo(map);
         marker.bindPopup(popupContent);
+        // Bind permanent clean floating tooltip so location is immediately visible on map
+        marker.bindTooltip(`
+          <div class="px-2 py-0.5 text-[10px] font-black text-blue-700 bg-white/95 rounded-full shadow-md border border-blue-200/90 flex items-center gap-1 whitespace-nowrap pointer-events-none">
+            <span class="w-1.5 h-1.5 rounded-full bg-blue-600 animate-ping"></span>
+            <span>${nearestLandmark ? nearestLandmark.split(',')[0] : 'You are here'}</span>
+          </div>
+        `, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -16],
+          className: 'live-location-tooltip',
+        });
         passengerLiveMarkerRef.current = marker;
       }
 
@@ -528,11 +564,25 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
   }, [
     passengerLiveLocation,
     passengerLiveAccuracy,
+    passengerLiveHeading,
+    passengerAvatarUrl,
     nearestLandmark,
     resolvedPickup,
   ]);
 
-  // Listen to custom event from popup
+  // Center on Passenger Live GPS
+  const handleCenterOnPassengerGPS = () => {
+    const map = mapInstanceRef.current;
+    if (!map || !passengerLiveLocation) return;
+    map.flyTo([passengerLiveLocation.lat, passengerLiveLocation.lng], 16, {
+      duration: 0.8,
+    });
+    if (passengerLiveMarkerRef.current) {
+      passengerLiveMarkerRef.current.openPopup();
+    }
+  };
+
+  // Listen to custom events from popup or external dashboard triggers
   useEffect(() => {
     const handleSetLivePickup = () => {
       if (passengerLiveLocation && onUseLiveLocationAsPickup) {
@@ -540,19 +590,18 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
         onUseLiveLocationAsPickup(passengerLiveLocation, placeName);
       }
     };
-    window.addEventListener('motoride-set-live-pickup', handleSetLivePickup);
-    return () => window.removeEventListener('motoride-set-live-pickup', handleSetLivePickup);
-  }, [passengerLiveLocation, nearestLandmark, onUseLiveLocationAsPickup]);
+    const handleCenterGPS = () => {
+      handleCenterOnPassengerGPS();
+    };
 
-  // Jump to specific Tricity Service Zone
-  const handleJumpToZone = (zoneKey: string) => {
-    const zone = SERVICE_ZONES[zoneKey];
-    if (!zone || !mapInstanceRef.current) return;
-    setActiveZone(zoneKey);
-    mapInstanceRef.current.flyTo([zone.center.lat, zone.center.lng], zone.zoom || 13, {
-      duration: 1.2,
-    });
-  };
+    window.addEventListener('motoride-set-live-pickup', handleSetLivePickup);
+    window.addEventListener('motoride-center-on-gps', handleCenterGPS);
+
+    return () => {
+      window.removeEventListener('motoride-set-live-pickup', handleSetLivePickup);
+      window.removeEventListener('motoride-center-on-gps', handleCenterGPS);
+    };
+  }, [passengerLiveLocation, nearestLandmark, onUseLiveLocationAsPickup]);
 
   // Zoom controls
   const handleZoomIn = () => mapInstanceRef.current?.zoomIn();
@@ -568,7 +617,7 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
 
       {/* Floating Top Controls Bar on Map */}
       <div className="absolute top-4 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
-        {/* Left: Active Service Zone & Live Traffic Badge */}
+        {/* Left: Map Branding & Live Traffic Badge & My Location Pill */}
         <div className="flex items-center gap-2 pointer-events-auto">
           <div
             className={`px-3 py-1.5 rounded-2xl border shadow-lg backdrop-blur-md flex items-center gap-2 text-xs font-bold transition-all ${
@@ -583,9 +632,30 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
             </span>
             <span>Google Maps</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 uppercase font-black tracking-wider">
-              Tricity Live
+              Live
             </span>
           </div>
+
+          {/* Passenger Current GPS Location pill on map */}
+          {passengerLiveLocation && (
+            <button
+              type="button"
+              id="map-my-location-pill-btn"
+              onClick={handleCenterOnPassengerGPS}
+              className={`px-2.5 py-1.5 rounded-xl border shadow-md backdrop-blur-md flex items-center gap-1.5 text-xs font-bold cursor-pointer transition-all hover:scale-105 active:scale-95 ${
+                isLight
+                  ? 'bg-white/90 hover:bg-white text-blue-600 border-blue-200 shadow-blue-500/10'
+                  : 'bg-slate-900/90 hover:bg-slate-800 text-blue-400 border-blue-900/60 shadow-black/40'
+              }`}
+              title="Click to center map on your real-time GPS location"
+            >
+              <Navigation className="w-3.5 h-3.5 text-blue-500 fill-blue-500/20" />
+              <span className="max-w-[130px] truncate hidden sm:inline">
+                {nearestLandmark ? nearestLandmark.split(',')[0] : 'My Location'}
+              </span>
+              <span className="sm:hidden text-[11px]">GPS</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -630,6 +700,23 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
             ))}
           </div>
 
+          {/* Dedicated Recenter on My Real-Time GPS Button */}
+          {passengerLiveLocation && (
+            <button
+              type="button"
+              id="map-locate-my-gps-btn"
+              onClick={handleCenterOnPassengerGPS}
+              className={`p-2 rounded-xl border shadow-md backdrop-blur-md text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95 ${
+                isLight
+                  ? 'bg-white/90 hover:bg-blue-50 text-blue-600 border-blue-200 shadow-blue-500/10'
+                  : 'bg-slate-950/85 hover:bg-blue-950/60 text-blue-400 border-blue-900/60 shadow-black/40'
+              }`}
+              title="Center Map on My Real-Time GPS Location"
+            >
+              <Navigation className="w-4 h-4 text-blue-500 fill-blue-500/20" />
+            </button>
+          )}
+
           {/* Recenter Bounds Button */}
           <button
             type="button"
@@ -672,26 +759,6 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
             </button>
           </div>
         </div>
-      </div>
-
-      {/* Floating Quick Region Selector Pills on Map (Visible when booking or when sheet is dropped down) */}
-      <div className="absolute top-18 left-4 right-4 z-10 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 pointer-events-auto">
-        {Object.entries(SERVICE_ZONES).map(([key, zone]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => handleJumpToZone(key)}
-            className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border whitespace-nowrap shadow-sm backdrop-blur-md transition-all cursor-pointer ${
-              activeZone === key
-                ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-md'
-                : isLight
-                ? 'bg-white/85 text-slate-700 border-slate-200/80 hover:bg-white'
-                : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:bg-slate-900'
-            }`}
-          >
-            📍 {zone.name}
-          </button>
-        ))}
       </div>
 
       {/* Official Google Maps Watermark & Attribution Footer */}

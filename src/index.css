@@ -1,2 +1,13 @@
 @import "tailwindcss";
 
+/* Clean Leaflet Tooltip for Live Location Marker */
+.leaflet-tooltip.live-location-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.leaflet-tooltip.live-location-tooltip::before {
+  display: none !important;
+}
+

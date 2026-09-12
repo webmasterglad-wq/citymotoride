@@ -920,11 +920,9 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
         passengerLiveAccuracy={liveGPS.accuracy}
         passengerLiveStatus={liveGPS.status}
         isSimulating={liveGPS.isSimulating}
-        isOutsideServiceArea={liveGPS.isOutsideServiceArea}
         onToggleSimulation={liveGPS.toggleSimulation}
         onUseLiveLocationAsPickup={handleUseLiveLocationAsPickup}
         onRetryGPS={liveGPS.retryGPS}
-        onTeleportToTricity={(hub) => liveGPS.teleportToTricity(hub as any)}
         passengerAvatarUrl={currentUser.avatar_url}
         passengerName={currentUser.name}
         nearestLandmark={liveGPS.nearestLandmark}
@@ -1015,6 +1013,35 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
         {/* Action Controls */}
         <div className="pointer-events-auto flex items-center gap-1.5">
+          {/* Real-time GPS Location Status in Passenger Dashboard Header */}
+          {liveGPS.coords && (
+            <button
+              type="button"
+              id="header-live-gps-pill-btn"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('motoride-center-on-gps'));
+              }}
+              className={`px-2.5 py-1.5 rounded-xl border shadow-md backdrop-blur-xl flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95 ${
+                isLight
+                  ? 'bg-white/90 hover:bg-blue-50 text-blue-600 border-blue-200/80 shadow-blue-500/10'
+                  : 'bg-slate-950/85 hover:bg-blue-950/60 text-blue-400 border-blue-900/60 shadow-black/40'
+              }`}
+              title="Click to view and center your real-time GPS location on the map"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+              </span>
+              <Navigation className="w-3.5 h-3.5 text-blue-500 fill-blue-500/20" />
+              <span className="hidden sm:inline max-w-[120px] truncate">
+                {liveGPS.nearestLandmark ? liveGPS.nearestLandmark.split(',')[0] : 'Live GPS'}
+              </span>
+              <span className="text-[10px] text-blue-500 font-normal hidden lg:inline">
+                (Show Map)
+              </span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setIsCalculatorModalOpen(true)}
@@ -1186,26 +1213,41 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                     <span>Pickup Location</span>
                   </span>
                   {liveGPS.coords && (
-                    <button
-                      type="button"
-                      id="pickup-use-live-gps-btn"
-                      onClick={() => {
-                        handleUseLiveLocationAsPickup(
-                          liveGPS.coords,
-                          liveGPS.nearestLandmark
-                            ? `${liveGPS.nearestLandmark} (Live GPS)`
-                            : `${liveGPS.coords.lat.toFixed(4)}, ${liveGPS.coords.lng.toFixed(4)}`
-                        );
-                      }}
-                      className="text-[10px] font-black text-cyan-600 dark:text-cyan-400 hover:text-cyan-500 flex items-center gap-1.5 cursor-pointer bg-cyan-500/10 hover:bg-cyan-500/20 px-2 py-0.5 rounded-full border border-cyan-500/25 transition-all active:scale-95"
-                      title="Set pickup to current real-time GPS coordinates"
-                    >
-                      <span className="relative flex h-1.5 w-1.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500"></span>
-                      </span>
-                      <span>Use Live GPS ({liveGPS.nearestLandmark || 'Tricity'})</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        id="pickup-show-live-gps-on-map-btn"
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('motoride-center-on-gps'));
+                        }}
+                        className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-500 flex items-center gap-1 cursor-pointer bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/25 transition-all active:scale-95"
+                        title="Show and center real-time GPS location on the map"
+                      >
+                        <Navigation className="w-2.5 h-2.5 text-blue-500 fill-blue-500/20" />
+                        <span>Show on Map</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        id="pickup-use-live-gps-btn"
+                        onClick={() => {
+                          handleUseLiveLocationAsPickup(
+                            liveGPS.coords,
+                            liveGPS.nearestLandmark
+                              ? `${liveGPS.nearestLandmark} (Live GPS)`
+                              : `${liveGPS.coords.lat.toFixed(4)}, ${liveGPS.coords.lng.toFixed(4)}`
+                          );
+                        }}
+                        className="text-[10px] font-black text-cyan-600 dark:text-cyan-400 hover:text-cyan-500 flex items-center gap-1.5 cursor-pointer bg-cyan-500/10 hover:bg-cyan-500/20 px-2 py-0.5 rounded-full border border-cyan-500/25 transition-all active:scale-95"
+                        title="Set pickup to current real-time GPS coordinates"
+                      >
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500"></span>
+                        </span>
+                        <span>Use Live GPS ({liveGPS.nearestLandmark ? liveGPS.nearestLandmark.split(',')[0] : 'Tricity'})</span>
+                      </button>
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -2140,6 +2182,37 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                   Safety
                 </button>
               </div>
+
+              {/* Real-Time Live GPS Tracking Indicator */}
+              {liveGPS.coords && (
+                <div
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs ${
+                    isLight
+                      ? 'bg-blue-50/90 border border-blue-100 text-blue-900'
+                      : 'bg-blue-950/40 border border-blue-900/50 text-blue-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="relative flex h-2 w-2 shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    <span className="text-[11px] truncate">
+                      <strong>Live GPS:</strong> {liveGPS.nearestLandmark || 'Current Location'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent('motoride-center-on-gps'));
+                    }}
+                    className="text-[10px] font-black text-blue-600 dark:text-blue-400 hover:underline shrink-0 flex items-center gap-1 cursor-pointer ml-2"
+                  >
+                    <Navigation className="w-2.5 h-2.5 fill-blue-500/20" />
+                    <span>Show on Map</span>
+                  </button>
+                </div>
+              )}
 
               {/* Passenger Dashboard Message Board */}
               {latestCaptainMsg && (
