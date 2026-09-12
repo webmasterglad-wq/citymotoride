@@ -238,7 +238,9 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    const bottomPadding = isSheetCollapsed ? 120 : 380;
+    const bottomPadding = isSheetCollapsed
+      ? 100
+      : Math.max(220, Math.round(window.innerHeight * 0.46));
 
     if (resolvedPickup && resolvedDropoff) {
       const bounds = L.latLngBounds(

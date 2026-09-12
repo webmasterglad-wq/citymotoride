@@ -1079,7 +1079,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
         className={`absolute bottom-0 left-0 right-0 z-20 w-full max-w-lg sm:max-w-xl mx-auto transition-transform duration-300 ease-in-out flex flex-col pointer-events-auto ${
           isWindowCollapsed
             ? 'translate-y-[calc(100%-82px)]'
-            : 'translate-y-0 max-h-[84vh] sm:max-h-[80vh]'
+            : 'translate-y-0 h-[50vh] max-h-[50vh]'
         }`}
       >
         {/* Center Button to Drop Down / Expand Window Style */}
@@ -1095,13 +1095,13 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 ? 'bg-slate-900/95 hover:bg-slate-900 text-white border-slate-700/80 shadow-slate-900/30'
                 : 'bg-white/95 hover:bg-white text-slate-950 border-white/50 shadow-black/50'
             }`}
-            title={isWindowCollapsed ? "Expand Passenger Booking Window" : "Drop Down Window to View Full Google Map"}
+            title={isWindowCollapsed ? "Expand Passenger Booking Window (Half Screen)" : "Drop Down Window to View Full Google Map"}
           >
             {isWindowCollapsed ? (
               <>
                 <ChevronUp className="w-4 h-4 stroke-[3]" />
-                <span>Expand Booking Window</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-700 animate-ping" />
+                <span>Expand Booking</span>
+                <span className="text-[10px] font-semibold opacity-80">(Half Page)</span>
               </>
             ) : (
               <>
@@ -1115,7 +1115,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
         {/* Window Container Box */}
         <div
-          className={`w-full border-t border-x rounded-t-3xl shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl transition-colors duration-200 ${
+          className={`w-full h-full border-t border-x rounded-t-3xl shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl transition-colors duration-200 ${
             isLight
               ? 'bg-white/95 border-slate-200 text-slate-900 shadow-slate-900/20'
               : 'bg-[#07090e]/95 border-slate-800 text-slate-100 shadow-black/80'
@@ -1137,7 +1137,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                       {pickup ? pickup.split(',')[0] : 'Choose Pickup'} → {dropoff ? dropoff.split(',')[0] : 'Choose Dropoff'}
                     </p>
                     <p className="text-[10px] text-emerald-600 font-bold">
-                      Estimated ₹{displayFare.toFixed(0)} · Click center button or here to open booking
+                      Estimated ₹{displayFare.toFixed(0)} · Click to open booking (half page)
                     </p>
                   </div>
                 </div>
@@ -1170,12 +1170,12 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 }}
                 className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs shrink-0 shadow-sm cursor-pointer"
               >
-                Open Window
+                Open Booking
               </button>
             </div>
           ) : (
-            /* If Window is Expanded: Full Scrollable Booking Page / Active Ride Content */
-            <div className="overflow-y-auto max-h-[calc(84vh-35px)] sm:max-h-[calc(80vh-35px)] scrollbar-thin">
+            /* If Window is Expanded: Scrollable Booking Page / Active Ride Content capped at Half Page */
+            <div className="overflow-y-auto flex-1 max-h-[calc(50vh-35px)] scrollbar-thin">
               {/* Database Error Banner */}
               {errorMessage && (
                 <div className="m-3 p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 text-xs flex items-center justify-between gap-2 animate-in fade-in">
