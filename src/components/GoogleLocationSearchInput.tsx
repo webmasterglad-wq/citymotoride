@@ -36,6 +36,9 @@ interface GoogleLocationSearchInputProps {
   placeholder?: string;
   onChange: (value: string, coords?: LatLng) => void;
   referenceCoords?: LatLng | null;
+  currentGpsCoords?: LatLng | null;
+  currentGpsLabel?: string;
+  onUseCurrentGps?: (coords: LatLng, address: string) => void;
   className?: string;
   required?: boolean;
 }
@@ -357,6 +360,9 @@ export const GoogleLocationSearchInput: React.FC<GoogleLocationSearchInputProps>
   placeholder,
   onChange,
   referenceCoords,
+  currentGpsCoords,
+  currentGpsLabel,
+  onUseCurrentGps,
   className = '',
   required = false,
 }) => {
@@ -427,50 +433,102 @@ export const GoogleLocationSearchInput: React.FC<GoogleLocationSearchInputProps>
   };
 
   const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser');
+    // 1. If live GPS coordinates are already provided from the passenger live GPS hook, apply instantly!
+    if (currentGpsCoords) {
+      const address = currentGpsLabel
+        ? `${currentGpsLabel} (Live GPS)`
+        : `Current GPS (${currentGpsCoords.lat.toFixed(4)}, ${currentGpsCoords.lng.toFixed(4)})`;
+
+      setQuery(address);
+      if (onUseCurrentGps) {
+        onUseCurrentGps(currentGpsCoords, address);
+      } else {
+        onChange(address, currentGpsCoords);
+      }
+      setIsOpen(false);
+      return;
+    }
+
+    // 2. Otherwise request from browser geolocation
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      console.warn('Geolocation is not supported by your browser');
       return;
     }
 
     setIsLocating(true);
+
+    const applyLocation = (lat: number, lng: number) => {
+      setIsLocating(false);
+      const userCoords: LatLng = { lat, lng };
+
+      let closestPlace = EXTENDED_SEARCH_DATABASE[0];
+      let minDistance = Infinity;
+
+      EXTENDED_SEARCH_DATABASE.forEach((p) => {
+        const dist = calculateDistanceKm(userCoords, p.coords);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestPlace = p;
+        }
+      });
+
+      const address = minDistance < 1.5
+        ? `${closestPlace.name} (Near GPS)`
+        : `Current GPS (${userCoords.lat.toFixed(4)}, ${userCoords.lng.toFixed(4)})`;
+
+      setQuery(address);
+      if (onUseCurrentGps) {
+        onUseCurrentGps(userCoords, address);
+      } else {
+        onChange(address, userCoords);
+      }
+      setIsOpen(false);
+    };
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setIsLocating(false);
-        const userCoords: LatLng = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        };
-
-        // Find closest known landmark in our database
-        let closestPlace = EXTENDED_SEARCH_DATABASE[0];
-        let minDistance = Infinity;
-
-        EXTENDED_SEARCH_DATABASE.forEach((p) => {
-          const dist = calculateDistanceKm(userCoords, p.coords);
-          if (dist < minDistance) {
-            minDistance = dist;
-            closestPlace = p;
-          }
-        });
-
-        const address = minDistance < 1.5
-          ? `Current Location (Near ${closestPlace.name})`
-          : `Current GPS Location (${userCoords.lat.toFixed(4)}, ${userCoords.lng.toFixed(4)})`;
-
-        setQuery(address);
-        onChange(address, userCoords);
-        setIsOpen(false);
+        applyLocation(Number(pos.coords.latitude.toFixed(6)), Number(pos.coords.longitude.toFixed(6)));
       },
       (err) => {
-        setIsLocating(false);
-        console.warn('Geolocation error:', err.message);
-        // Fallback to Sector 17 Plaza Chandigarh
-        const fallback = EXTENDED_SEARCH_DATABASE[1];
-        setQuery(fallback.name);
-        onChange(fallback.name, fallback.coords);
-        setIsOpen(false);
+        console.info('High-accuracy geolocation attempt timed out, falling back to standard:', err.message);
+        navigator.geolocation.getCurrentPosition(
+          (lowPos) => {
+            applyLocation(Number(lowPos.coords.latitude.toFixed(6)), Number(lowPos.coords.longitude.toFixed(6)));
+          },
+          (lowErr) => {
+            console.warn('Hardware geolocation failed, attempting Device IP lookup:', lowErr.message);
+            // Fall back to passenger real-time device IP geolocation
+            fetch('/api/geoip')
+              .then((res) => res.json())
+              .then((data) => {
+                if (data && typeof data.lat === 'number' && typeof data.lng === 'number') {
+                  const ipCoords: LatLng = { lat: Number(data.lat.toFixed(6)), lng: Number(data.lng.toFixed(6)) };
+                  const ipAddress = `${data.city || 'My Location'}, ${data.region || ''} (Device IP: ${data.ip || ''})`;
+                  setQuery(ipAddress);
+                  if (onUseCurrentGps) {
+                    onUseCurrentGps(ipCoords, ipAddress);
+                  } else {
+                    onChange(ipAddress, ipCoords);
+                  }
+                  setIsLocating(false);
+                  setIsOpen(false);
+                } else {
+                  throw new Error('No valid IP coordinates');
+                }
+              })
+              .catch(() => {
+                setIsLocating(false);
+                // Default to Sector 17 Plaza Chandigarh
+                const fallback = EXTENDED_SEARCH_DATABASE[1];
+                setQuery(`${fallback.name} (Tricity Hub)`);
+                onChange(fallback.name, fallback.coords);
+                setIsOpen(false);
+              });
+          },
+          { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+        );
       },
-      { timeout: 8000, enableHighAccuracy: true }
+      { timeout: 5000, enableHighAccuracy: true, maximumAge: 15000 }
     );
   };
 

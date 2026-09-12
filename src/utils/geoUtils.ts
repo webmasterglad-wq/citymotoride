@@ -366,7 +366,8 @@ export const KNOWN_LOCATIONS: Record<string, LatLng> = {
 
 /**
  * Resolves address string to LatLng coordinate.
- * Falls back to hashing algorithm inside Tricity bounds.
+ * Accurately parses raw lat,lng strings, extracts coordinates from parentheses,
+ * handles landmark suffixes, and falls back to hashing inside Tricity bounds.
  */
 export function resolveLocationCoords(
   address: string,
@@ -374,27 +375,48 @@ export function resolveLocationCoords(
 ): LatLng {
   if (!address) return fallbackOrigin;
 
-  // Exact match
+  // 1. Direct regex coordinate extraction: e.g. "30.7398, 76.7827" or "Current GPS (30.7398, 76.7827)"
+  const coordRegex = /(-?\d{1,2}\.\d+)[,\s]+(-?\d{1,3}\.\d+)/;
+  const match = address.match(coordRegex);
+  if (match) {
+    const lat = parseFloat(match[1]);
+    const lng = parseFloat(match[2]);
+    if (!isNaN(lat) && !isNaN(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      return {
+        lat: Number(lat.toFixed(6)),
+        lng: Number(lng.toFixed(6)),
+      };
+    }
+  }
+
+  // 2. Exact match in KNOWN_LOCATIONS
   if (KNOWN_LOCATIONS[address]) {
     return KNOWN_LOCATIONS[address];
   }
 
-  // Partial match
-  const lower = address.toLowerCase();
+  // 3. Clean address of suffixes like " (Live GPS)" or " (Near GPS)"
+  const cleanAddress = address.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+  if (cleanAddress && KNOWN_LOCATIONS[cleanAddress]) {
+    return KNOWN_LOCATIONS[cleanAddress];
+  }
+
+  // 4. Partial match in KNOWN_LOCATIONS
+  const targetLower = (cleanAddress || address).toLowerCase();
   for (const [key, coords] of Object.entries(KNOWN_LOCATIONS)) {
-    if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) {
+    const keyLower = key.toLowerCase();
+    if (targetLower.includes(keyLower) || keyLower.includes(targetLower)) {
       return coords;
     }
   }
 
-  // Check if matches any zone name
+  // 5. Check if matches any zone name
   for (const zone of Object.values(SERVICE_ZONES)) {
-    if (lower.includes(zone.id) || lower.includes(zone.name.toLowerCase())) {
+    if (targetLower.includes(zone.id) || targetLower.includes(zone.name.toLowerCase())) {
       return zone.center;
     }
   }
 
-  // Deterministic pseudo-random offset based on address text hash around Tricity center
+  // 6. Deterministic pseudo-random offset based on address text hash around Tricity center
   let hash = 0;
   for (let i = 0; i < address.length; i++) {
     hash = (hash << 5) - hash + address.charCodeAt(i);
@@ -499,6 +521,33 @@ export function interpolateCoords(from: LatLng, to: LatLng, fraction: number): L
  */
 export function generateNearbyBikes(_center: LatLng, _count = 5): Array<{ id: string; name: string; position: LatLng; heading: number }> {
   return [];
+}
+
+/**
+ * Finds the closest recognized landmark/hub to the provided coordinates.
+ */
+export function findNearestLandmark(coords: LatLng): { name: string; distanceKm: number; isOutsideServiceArea: boolean } {
+  let closestName = 'Tricity Area';
+  let minDistance = Infinity;
+
+  for (const [name, loc] of Object.entries(KNOWN_LOCATIONS)) {
+    const d = calculateDistanceKm(coords, loc);
+    if (d < minDistance) {
+      minDistance = d;
+      closestName = name;
+    }
+  }
+
+  const isOutside = minDistance > 35;
+  if (isOutside) {
+    return {
+      name: `Device GPS (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`,
+      distanceKm: Number(minDistance.toFixed(1)),
+      isOutsideServiceArea: true,
+    };
+  }
+
+  return { name: closestName, distanceKm: Number(minDistance.toFixed(2)), isOutsideServiceArea: false };
 }
 
 /**

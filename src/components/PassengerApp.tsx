@@ -22,6 +22,8 @@ import {
   CreditCard,
   Check,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Radio,
   SlidersHorizontal,
   Flame,
@@ -40,6 +42,7 @@ import {
   Zap,
   ExternalLink,
   Route,
+  Globe,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -80,6 +83,8 @@ import { useTheme } from '../context/ThemeContext';
 import { usePricing } from '../context/PricingContext';
 import { useAuth } from '../context/AuthContext';
 import { GoogleLocationSearchInput } from './GoogleLocationSearchInput';
+import { GoogleMapBackground } from './GoogleMapBackground';
+import { usePassengerLiveGPS } from '../hooks/usePassengerLiveGPS';
 
 interface PassengerAppProps {
   passengerUser?: UserProfile;
@@ -147,6 +152,20 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [dropoff, setDropoff] = useState<string>('');
   const [pickupCoords, setPickupCoords] = useState<LatLng | null>(null);
   const [dropoffCoords, setDropoffCoords] = useState<LatLng | null>(null);
+
+  // Real-Time Live GPS Tracker
+  const liveGPS = usePassengerLiveGPS(pickupCoords);
+
+  const handleUseLiveLocationAsPickup = (coords?: LatLng, address?: string) => {
+    const targetCoords = coords || liveGPS.coords;
+    const targetAddress =
+      address ||
+      (liveGPS.nearestLandmark
+        ? `${liveGPS.nearestLandmark} (Current Location)`
+        : `Current Location (${targetCoords.lat.toFixed(4)}, ${targetCoords.lng.toFixed(4)})`);
+    setPickupCoords(targetCoords);
+    setPickup(targetAddress);
+  };
   const [selectedTier, setSelectedTier] = useState<string>('moto_comfort');
   const [bookingMode] = useState<'indrive'>('indrive');
   const [customBidFare, setCustomBidFare] = useState<number>(0);
@@ -227,6 +246,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     };
   }, [activeRide?.id]);
   const [isSafetyOpen, setIsSafetyOpen] = useState(false);
+  const [isWindowCollapsed, setIsWindowCollapsed] = useState<boolean>(false);
   const [ratingStars, setRatingStars] = useState<number>(5);
   const [tipAmount, setTipAmount] = useState<number>(0);
   const [selectedTags, setSelectedTags] = useState<string[]>(['Safe Driving', 'Clean Helmet']);
@@ -269,7 +289,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       return;
     }
 
-    const route = calculateEstimatedRoute(pickup, dropoff);
+    const route = calculateEstimatedRoute(pickupCoords || pickup, dropoffCoords || dropoff);
     const tierObj = RIDE_TIERS.find((t) => t.id === selectedTier) || RIDE_TIERS[0];
     
     setDistanceKm(route.distanceKm);
@@ -291,7 +311,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       setCustomBidFare(breakdown.totalFare);
       setCustomBidInput(breakdown.totalFare.toFixed(0));
     }
-  }, [pickup, dropoff, selectedTier, pricing, hasUserModifiedBid]);
+  }, [pickup, dropoff, pickupCoords, dropoffCoords, selectedTier, pricing, hasUserModifiedBid]);
 
   // Handler when map directions engine computes precise road route
   const handleRouteCalculated = (newDistKm: number, newDurMins: number) => {
@@ -884,18 +904,44 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   return (
     <div
       id="uber-passenger-root"
-      className={`w-full max-w-md sm:max-w-lg mx-auto border rounded-3xl overflow-hidden flex flex-col font-sans transition-colors duration-200 ${
-        isLight
-          ? 'bg-white border-slate-200 text-slate-900 shadow-xl'
-          : 'bg-[#07090e] border-slate-800 text-slate-100 shadow-2xl'
-      }`}
+      className="relative w-full h-full min-h-[580px] flex flex-col overflow-hidden font-sans select-none"
     >
-      {/* Top Mobile Status Header Bar */}
-      <div
-        className={`px-4 py-3 border-b flex items-center justify-between transition-colors duration-200 ${
-          isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0b0f19] border-slate-800'
-        }`}
-      >
+      {/* 1. Full-screen Google Map Background Layer */}
+      <GoogleMapBackground
+        pickupLocation={pickup}
+        dropoffLocation={dropoff}
+        pickupCoords={pickupCoords}
+        dropoffCoords={dropoffCoords}
+        activeRide={activeRide}
+        isSheetCollapsed={isWindowCollapsed}
+        passengerLiveLocation={liveGPS.coords}
+        passengerLiveHeading={liveGPS.heading}
+        passengerLiveSpeed={liveGPS.speed}
+        passengerLiveAccuracy={liveGPS.accuracy}
+        passengerLiveStatus={liveGPS.status}
+        isSimulating={liveGPS.isSimulating}
+        isOutsideServiceArea={liveGPS.isOutsideServiceArea}
+        onToggleSimulation={liveGPS.toggleSimulation}
+        onUseLiveLocationAsPickup={handleUseLiveLocationAsPickup}
+        onRetryGPS={liveGPS.retryGPS}
+        onTeleportToTricity={(hub) => liveGPS.teleportToTricity(hub as any)}
+        passengerAvatarUrl={currentUser.avatar_url}
+        passengerName={currentUser.name}
+        nearestLandmark={liveGPS.nearestLandmark}
+        compassDirection={liveGPS.compassDirection}
+        onSelectCoords={(coords, type) => {
+          if (type === 'pickup') {
+            setPickupCoords(coords);
+            setPickup(`${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`);
+          } else {
+            setDropoffCoords(coords);
+            setDropoff(`${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`);
+          }
+        }}
+      />
+
+      {/* 2. Top Floating Header Bar */}
+      <div className="absolute top-2.5 left-3 right-3 sm:left-6 sm:right-6 z-20 pointer-events-none flex items-center justify-between">
         {/* Hidden file input for fast avatar upload from header */}
         <input
           ref={headerAvatarInputRef}
@@ -906,7 +952,14 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
           id="passenger-header-avatar-input"
         />
 
-        <div className="flex items-center gap-2.5">
+        {/* Profile Card */}
+        <div
+          className={`pointer-events-auto px-3 py-1.5 rounded-2xl border shadow-lg backdrop-blur-xl flex items-center gap-2.5 transition-all ${
+            isLight
+              ? 'bg-white/90 border-slate-200/80 text-slate-900 shadow-slate-200/50'
+              : 'bg-slate-950/85 border-slate-800 text-slate-100 shadow-black/50'
+          }`}
+        >
           <div className="relative group">
             <button
               onClick={() => setIsProfileOpen(true)}
@@ -918,10 +971,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                   src={currentUser.avatar_url}
                   alt={currentUser.name}
                   referrerPolicy="no-referrer"
-                  className="w-9 h-9 rounded-xl object-cover border border-emerald-500/50 shadow-md group-hover:scale-105 transition-transform"
+                  className="w-8 h-8 rounded-xl object-cover border border-emerald-500/50 shadow-sm group-hover:scale-105 transition-transform"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center font-black text-sm shadow-md group-hover:scale-105 transition-transform">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center font-black text-xs shadow-sm group-hover:scale-105 transition-transform">
                   {currentUser.name.charAt(0)}
                 </div>
               )}
@@ -945,43 +998,174 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
           <div>
             <div className="flex items-center gap-1.5">
-              <span className={`font-black text-sm tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+              <span className={`font-black text-xs tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
                 {currentUser.name}
               </span>
+              <span className="text-amber-500 font-bold text-[10px] flex items-center gap-0.5">
+                ★ {currentUser.rating || 4.94}
+              </span>
             </div>
-            <p className={`text-[11px] flex items-center gap-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+            <p className={`text-[10px] flex items-center gap-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               <span className={isLight ? 'text-slate-600' : 'text-slate-300'}>
                 Verified Rider
-              </span>
-              <span className="text-amber-500 font-bold flex items-center gap-0.5">
-                <Star className="w-2.5 h-2.5 fill-amber-400 inline" /> {currentUser.rating || 4.94}
               </span>
             </p>
           </div>
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2">
-        </div>
-      </div>
+        <div className="pointer-events-auto flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setIsCalculatorModalOpen(true)}
+            className={`p-2 rounded-xl border shadow-md backdrop-blur-xl transition-all cursor-pointer hover:scale-105 active:scale-95 ${
+              isLight
+                ? 'bg-white/90 hover:bg-white text-slate-800 border-slate-200'
+                : 'bg-slate-950/85 hover:bg-slate-900 text-slate-200 border-slate-800'
+            }`}
+            title="Fare & Distance Estimator"
+          >
+            <Calculator className="w-4 h-4 text-emerald-500" />
+          </button>
 
-      {/* Database Error Banner */}
-      {errorMessage && (
-        <div className="m-3 p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 text-xs flex items-center justify-between gap-2 animate-in fade-in">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
-            <span className="leading-tight">{errorMessage}</span>
-          </div>
-          {(errorMessage.includes('SQL') || errorMessage.includes('missing')) && onOpenSqlModal && (
+          {activeRide && (
             <button
-              onClick={onOpenSqlModal}
-              className="px-2.5 py-1 bg-amber-500 text-slate-950 rounded-lg text-xs font-bold shrink-0"
+              type="button"
+              onClick={() => setIsSafetyOpen(true)}
+              className={`px-2.5 py-1.5 rounded-xl border shadow-md backdrop-blur-xl flex items-center gap-1 text-xs font-bold transition-all cursor-pointer ${
+                isLight
+                  ? 'bg-amber-50/90 text-amber-900 border-amber-300 hover:bg-amber-100'
+                  : 'bg-amber-950/80 text-amber-200 border-amber-500/40 hover:bg-amber-900/60'
+              }`}
+              title="Emergency Safety Toolkit"
             >
-              SQL Fix
+              <Shield className="w-3.5 h-3.5 text-amber-500" />
+              <span className="hidden sm:inline">Safety</span>
             </button>
           )}
         </div>
-      )}
+      </div>
+
+      {/* 3. Passenger Booking Page at Bottom of Main Page with Center Drop Down Button */}
+      <div
+        id="passenger-bottom-window-sheet"
+        className={`absolute bottom-0 left-0 right-0 z-20 w-full max-w-lg sm:max-w-xl mx-auto transition-transform duration-300 ease-in-out flex flex-col pointer-events-auto ${
+          isWindowCollapsed
+            ? 'translate-y-[calc(100%-82px)]'
+            : 'translate-y-0 max-h-[84vh] sm:max-h-[80vh]'
+        }`}
+      >
+        {/* Center Button to Drop Down / Expand Window Style */}
+        <div className="w-full flex items-center justify-center -mb-3.5 z-30 pointer-events-auto">
+          <button
+            id="passenger-window-dropdown-toggle-btn"
+            type="button"
+            onClick={() => setIsWindowCollapsed(!isWindowCollapsed)}
+            className={`group px-5 py-2 rounded-full border shadow-2xl flex items-center gap-2 text-xs font-black transition-all cursor-pointer hover:scale-105 active:scale-95 ${
+              isWindowCollapsed
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 border-white/80 ring-4 ring-emerald-500/25 animate-bounce'
+                : isLight
+                ? 'bg-slate-900/95 hover:bg-slate-900 text-white border-slate-700/80 shadow-slate-900/30'
+                : 'bg-white/95 hover:bg-white text-slate-950 border-white/50 shadow-black/50'
+            }`}
+            title={isWindowCollapsed ? "Expand Passenger Booking Window" : "Drop Down Window to View Full Google Map"}
+          >
+            {isWindowCollapsed ? (
+              <>
+                <ChevronUp className="w-4 h-4 stroke-[3]" />
+                <span>Expand Booking Window</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-700 animate-ping" />
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-4 h-4 stroke-[3] transition-transform group-hover:translate-y-0.5" />
+                <span>Drop Down Window</span>
+                <span className="text-[10px] font-semibold opacity-75">View Map</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Window Container Box */}
+        <div
+          className={`w-full border-t border-x rounded-t-3xl shadow-2xl flex flex-col overflow-hidden backdrop-blur-2xl transition-colors duration-200 ${
+            isLight
+              ? 'bg-white/95 border-slate-200 text-slate-900 shadow-slate-900/20'
+              : 'bg-[#07090e]/95 border-slate-800 text-slate-100 shadow-black/80'
+          }`}
+        >
+          {/* If Window is Dropped Down: Sleek Bottom Mini-Dock Bar */}
+          {isWindowCollapsed ? (
+            <div
+              onClick={() => setIsWindowCollapsed(false)}
+              className="p-3.5 pt-5 flex items-center justify-between gap-3 cursor-pointer hover:opacity-95"
+            >
+              {!activeRide ? (
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold text-sm shrink-0">
+                    🛵
+                  </div>
+                  <div className="min-w-0">
+                    <p className={`text-xs font-black truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {pickup ? pickup.split(',')[0] : 'Choose Pickup'} → {dropoff ? dropoff.split(',')[0] : 'Choose Dropoff'}
+                    </p>
+                    <p className="text-[10px] text-emerald-600 font-bold">
+                      Estimated ₹{displayFare.toFixed(0)} · Click center button or here to open booking
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center font-bold text-sm shrink-0">
+                    🏍️
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-400 text-slate-950">
+                        {activeRide.status}
+                      </span>
+                      <span className={`text-xs font-black truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                        {activeRide.captain_name || 'Captain Driver'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-bold">
+                      PIN: <span className="text-amber-500 font-mono">{safetyPin}</span> · Click to view ride progress & rating
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsWindowCollapsed(false);
+                }}
+                className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs shrink-0 shadow-sm cursor-pointer"
+              >
+                Open Window
+              </button>
+            </div>
+          ) : (
+            /* If Window is Expanded: Full Scrollable Booking Page / Active Ride Content */
+            <div className="overflow-y-auto max-h-[calc(84vh-35px)] sm:max-h-[calc(80vh-35px)] scrollbar-thin">
+              {/* Database Error Banner */}
+              {errorMessage && (
+                <div className="m-3 p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 text-xs flex items-center justify-between gap-2 animate-in fade-in">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                    <span className="leading-tight">{errorMessage}</span>
+                  </div>
+                  {(errorMessage.includes('SQL') || errorMessage.includes('missing')) && onOpenSqlModal && (
+                    <button
+                      onClick={onOpenSqlModal}
+                      className="px-2.5 py-1 bg-amber-500 text-slate-950 rounded-lg text-xs font-bold shrink-0"
+                    >
+                      SQL Fix
+                    </button>
+                  )}
+                </div>
+              )}
 
       {/* Active Ride Mode vs Booking Mode */}
       {!activeRide ? (
@@ -1001,6 +1185,28 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                     <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
                     <span>Pickup Location</span>
                   </span>
+                  {liveGPS.coords && (
+                    <button
+                      type="button"
+                      id="pickup-use-live-gps-btn"
+                      onClick={() => {
+                        handleUseLiveLocationAsPickup(
+                          liveGPS.coords,
+                          liveGPS.nearestLandmark
+                            ? `${liveGPS.nearestLandmark} (Live GPS)`
+                            : `${liveGPS.coords.lat.toFixed(4)}, ${liveGPS.coords.lng.toFixed(4)}`
+                        );
+                      }}
+                      className="text-[10px] font-black text-cyan-600 dark:text-cyan-400 hover:text-cyan-500 flex items-center gap-1.5 cursor-pointer bg-cyan-500/10 hover:bg-cyan-500/20 px-2 py-0.5 rounded-full border border-cyan-500/25 transition-all active:scale-95"
+                      title="Set pickup to current real-time GPS coordinates"
+                    >
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500"></span>
+                      </span>
+                      <span>Use Live GPS ({liveGPS.nearestLandmark || 'Tricity'})</span>
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-600 flex items-center justify-center text-[10px] font-black shrink-0">
@@ -1013,6 +1219,11 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                       placeholder="Search Google Maps for Pickup location..."
                       required
                       referenceCoords={pickupCoords}
+                      currentGpsCoords={liveGPS.coords}
+                      currentGpsLabel={liveGPS.nearestLandmark}
+                      onUseCurrentGps={(coords, address) => {
+                        handleUseLiveLocationAsPickup(coords, address);
+                      }}
                       onChange={(val, coords) => {
                         setPickup(val);
                         if (coords) {
@@ -1064,6 +1275,8 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                       placeholder="Search Google Maps for Destination..."
                       required
                       referenceCoords={pickupCoords}
+                      currentGpsCoords={liveGPS.coords}
+                      currentGpsLabel={liveGPS.nearestLandmark}
                       onChange={(val, coords) => {
                         setDropoff(val);
                         if (coords) {
@@ -2209,6 +2422,176 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             );
           })()}
 
+          {/* ================= RATING TO CAPTAIN AT LAST (COMPLETED STEP) ================= */}
+          {activeRide.status === 'completed' && (
+            <div
+              id="passenger-rate-captain-card"
+              className={`p-4 rounded-2xl border-2 shadow-xl space-y-4 animate-in zoom-in-95 duration-200 ${
+                isLight
+                  ? 'bg-gradient-to-b from-amber-50/80 via-white to-emerald-50/50 border-amber-300 shadow-amber-500/10'
+                  : 'bg-gradient-to-b from-amber-950/40 via-slate-900 to-emerald-950/20 border-amber-500/40 shadow-black/40'
+              }`}
+            >
+              <div className="text-center space-y-1">
+                <div className="inline-flex p-2 rounded-2xl bg-amber-400/20 text-amber-500 mb-1">
+                  <Star className="w-8 h-8 fill-amber-400 stroke-amber-500" />
+                </div>
+                <h3 className={`text-base font-black ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                  {reviewSubmitted ? 'Rating Submitted!' : 'Rate Your Captain'}
+                </h3>
+                <p className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                  {reviewSubmitted
+                    ? `Thank you for rating ${activeRide.captain_name || 'Captain'}!`
+                    : `How was your ride with ${activeRide.captain_name || 'Captain Vikram Singh'}?`}
+                </p>
+              </div>
+
+              {!reviewSubmitted ? (
+                <div className="space-y-3 pt-1">
+                  {/* Interactive 5-Star Selection */}
+                  <div className="flex flex-col items-center justify-center gap-1.5">
+                    <div className="flex items-center justify-center gap-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          id={`passenger-star-${star}`}
+                          onClick={() => setRatingStars(star)}
+                          className="p-1 cursor-pointer transition-transform hover:scale-125 active:scale-95"
+                          title={`${star} Star${star > 1 ? 's' : ''}`}
+                        >
+                          <Star
+                            className={`w-8 h-8 transition-colors ${
+                              star <= ratingStars
+                                ? 'text-amber-400 fill-amber-400 drop-shadow-md'
+                                : isLight
+                                ? 'text-slate-300 hover:text-amber-300'
+                                : 'text-slate-700 hover:text-amber-400'
+                            }`}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-xs font-black text-amber-500">
+                      {ratingStars === 5 && '⭐⭐⭐⭐⭐ Outstanding Ride!'}
+                      {ratingStars === 4 && '⭐⭐⭐⭐ Very Good Ride'}
+                      {ratingStars === 3 && '⭐⭐⭐ Good Trip'}
+                      {ratingStars === 2 && '⭐⭐ Fair Experience'}
+                      {ratingStars === 1 && '⭐ Poor Experience'}
+                    </span>
+                  </div>
+
+                  {/* Compliment Badges */}
+                  <div className="space-y-1.5">
+                    <label className={`text-[10px] font-bold uppercase tracking-wider block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                      Compliments (Tap to choose)
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        '🪖 Clean Helmet',
+                        '⚡ On-Time Pickup',
+                        '🛡️ Safe Driving',
+                        '💬 Polite Captain',
+                        '🏍️ Clean Bike',
+                        '🧭 Great Route',
+                      ].map((tag) => {
+                        const isSelected = selectedTags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => {
+                              setSelectedTags((prev) =>
+                                isSelected ? prev.filter((t) => t !== tag) : [...prev, tag]
+                              );
+                            }}
+                            className={`px-2.5 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-xs'
+                                : isLight
+                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Optional Tip to Captain */}
+                  <div className="space-y-1.5">
+                    <label className={`text-[10px] font-bold uppercase tracking-wider block ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                      Tip your Captain (100% goes to driver)
+                    </label>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[0, 10, 20, 30, 50].map((tip) => (
+                        <button
+                          key={tip}
+                          type="button"
+                          onClick={() => setTipAmount(tip)}
+                          className={`py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                            tipAmount === tip
+                              ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-xs'
+                              : isLight
+                              ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                          }`}
+                        >
+                          {tip === 0 ? 'No Tip' : `₹${tip}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Feedback Note */}
+                  <div>
+                    <input
+                      type="text"
+                      value={feedbackComment}
+                      onChange={(e) => setFeedbackComment(e.target.value)}
+                      placeholder="Leave a short note for Captain..."
+                      className={`w-full px-3 py-2 text-xs rounded-xl border transition-colors ${
+                        isLight
+                          ? 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-amber-500'
+                          : 'bg-slate-950 border-slate-800 text-slate-100 placeholder:text-slate-500 focus:border-amber-500'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Submit Rating Button */}
+                  <button
+                    type="button"
+                    id="passenger-submit-rating-btn"
+                    onClick={handleSubmitRating}
+                    disabled={isSubmitting}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/25 flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-98 disabled:opacity-50"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Star className="w-4 h-4 fill-slate-950" />
+                        <span>Submit Rating · {ratingStars} Stars{tipAmount > 0 ? ` (+₹${tipAmount} Tip)` : ''}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-center space-y-1">
+                  <div className="flex items-center justify-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Rating Recorded Successfully</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Your {ratingStars}★ review has been recorded for Captain {activeRide.captain_name || 'Driver'}.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Action Footer */}
           <div className="pt-1">
             {activeRide.status === 'requested' || activeRide.status === 'accepted' ? (
@@ -2255,6 +2638,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
           </div>
         </div>
       )}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* In-Ride Chat Modal */}
       {activeRide && (

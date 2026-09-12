@@ -101,7 +101,7 @@ function AppContent() {
               />
             </div>
           ) : (
-            <div className="py-6 px-4">
+            <div className="relative w-full flex-1 flex flex-col h-[calc(100vh-64px)] min-h-[580px] overflow-hidden">
               <PassengerApp
                 passengerUser={
                   passengerUser
