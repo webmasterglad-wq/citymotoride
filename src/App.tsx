@@ -128,13 +128,22 @@ function AppContent() {
 
         {/* ================= CAPTAIN VIEW ================= */}
         {activeView === 'captain' && (
-          <div className="py-6 px-4">
-            <CaptainApp
-              captainUser={captainUserProp}
-              titleSuffix={captainUser?.name ? captainUser.name.split(' ')[0] : ''}
-              onOpenSqlModal={() => setIsSqlModalOpen(true)}
-            />
-          </div>
+          !isCaptainAuthed ? (
+            <div className="py-8 px-4 my-auto">
+              <AuthScreen
+                role="captain"
+                onOpenSqlModal={() => setIsSqlModalOpen(true)}
+              />
+            </div>
+          ) : (
+            <div className="relative w-full flex-1 flex flex-col h-[calc(100vh-64px)] min-h-[580px] overflow-hidden">
+              <CaptainApp
+                captainUser={captainUserProp}
+                titleSuffix={captainUser?.name ? captainUser.name.split(' ')[0] : ''}
+                onOpenSqlModal={() => setIsSqlModalOpen(true)}
+              />
+            </div>
+          )
         )}
       </main>
 

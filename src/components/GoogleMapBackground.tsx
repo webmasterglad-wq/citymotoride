@@ -37,9 +37,19 @@ interface GoogleMapBackgroundProps {
   passengerName?: string;
   nearestLandmark?: string;
   compassDirection?: string;
+  // Captain Real-Time Location & Incoming Rides Props
+  isCaptainMode?: boolean;
+  captainLiveLocation?: LatLng | null;
+  captainHeading?: number;
+  captainSpeed?: number;
+  captainName?: string;
+  captainVehicleDetails?: string;
+  captainAvatarUrl?: string;
+  incomingRides?: Ride[];
+  onSelectRide?: (ride: Ride) => void;
 }
 
-type MapLayerType = 'streets' | 'satellite' | 'terrain';
+export type MapLayerType = 'streets' | 'satellite' | 'terrain' | 'dark';
 
 // Regional Default Center
 const DEFAULT_CENTER: LatLng = { lat: 30.7180, lng: 76.7650 };
@@ -93,6 +103,16 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
   passengerName = 'You',
   nearestLandmark,
   compassDirection = 'N',
+  // Destructure captain mode props
+  isCaptainMode = false,
+  captainLiveLocation,
+  captainHeading = 0,
+  captainSpeed = 0,
+  captainName = 'Captain',
+  captainVehicleDetails,
+  captainAvatarUrl,
+  incomingRides = [],
+  onSelectRide,
 }) => {
   const { isLight } = useTheme();
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -107,6 +127,7 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
   const routeCasingRef = useRef<L.Polyline | null>(null);
   const routeMidpointMarkerRef = useRef<L.Marker | null>(null);
   const nearbyCaptainsGroupRef = useRef<L.LayerGroup | null>(null);
+  const incomingRidesGroupRef = useRef<L.LayerGroup | null>(null);
 
   // Passenger Live GPS Refs
   const passengerLiveMarkerRef = useRef<L.Marker | null>(null);
@@ -146,28 +167,47 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
   const onSelectCoordsRef = useRef(onSelectCoords);
   onSelectCoordsRef.current = onSelectCoords;
 
-  // Google Maps Tile URL based on selected layer type
-  const getGoogleTileUrl = (type: MapLayerType) => {
+  // Map Tile URL & Subdomains based on selected layer type
+  const getTileConfig = (type: MapLayerType) => {
     switch (type) {
       case 'satellite':
-        // Hybrid: Satellite imagery + Google road/place labels
-        return 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+        // Hybrid: Google Satellite imagery + road/place labels
+        return {
+          url: 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+          subdomains: ['0', '1', '2', '3'],
+          attribution: 'Map data &copy; Google',
+        };
       case 'terrain':
-        // Shaded terrain with roads
-        return 'https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}';
+        // Shaded Google terrain with roads & elevation contours
+        return {
+          url: 'https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
+          subdomains: ['0', '1', '2', '3'],
+          attribution: 'Map data &copy; Google',
+        };
+      case 'dark':
+        // Voyager Dark / Dark Matter Tile
+        return {
+          url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+          subdomains: ['a', 'b', 'c', 'd'],
+          attribution: 'Map tiles &copy; CARTO, &copy; OpenStreetMap',
+        };
       case 'streets':
       default:
-        // Clean Google Road Map
-        return 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+        // Crisp Google Road Map
+        return {
+          url: 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+          subdomains: ['0', '1', '2', '3'],
+          attribution: 'Map data &copy; Google',
+        };
     }
   };
 
-  // Initialize Map: Always center on passenger's real-time live GPS location
+  // Initialize Map: Always center on live GPS location
   useEffect(() => {
     if (!mapContainerRef.current) return;
     if (mapInstanceRef.current) return;
 
-    const initialCenter = passengerLiveLocation || resolvedPickup || DEFAULT_CENTER;
+    const initialCenter = captainLiveLocation || passengerLiveLocation || resolvedPickup || DEFAULT_CENTER;
 
     const map = L.map(mapContainerRef.current, {
       center: [initialCenter.lat, initialCenter.lng],
@@ -177,10 +217,11 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
     });
 
     // Base Google Maps Layer
-    const baseTile = L.tileLayer(getGoogleTileUrl('streets'), {
-      subdomains: ['0', '1', '2', '3'],
+    const tileConfig = getTileConfig('streets');
+    const baseTile = L.tileLayer(tileConfig.url, {
+      subdomains: tileConfig.subdomains,
       maxZoom: 20,
-      attribution: 'Map data &copy; Google',
+      attribution: tileConfig.attribution,
     }).addTo(map);
 
     tileLayerRef.current = baseTile;
@@ -196,9 +237,13 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
       trafficTile.addTo(map);
     }
 
-    // Nearby Captains Group
+    // Nearby Captains Group (for passenger view)
     const nearbyGroup = L.layerGroup().addTo(map);
     nearbyCaptainsGroupRef.current = nearbyGroup;
+
+    // Incoming Rides Group (for captain view)
+    const incomingGroup = L.layerGroup().addTo(map);
+    incomingRidesGroupRef.current = incomingGroup;
 
     // Track zoom
     map.on('zoomend', () => {
@@ -231,6 +276,7 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
       captainMarkerRef.current = null;
       passengerLiveMarkerRef.current = null;
       passengerAccuracyCircleRef.current = null;
+      incomingRidesGroupRef.current = null;
     };
   }, []);
 
@@ -243,10 +289,11 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
       map.removeLayer(tileLayerRef.current);
     }
 
-    const newTile = L.tileLayer(getGoogleTileUrl(mapLayer), {
-      subdomains: ['0', '1', '2', '3'],
+    const tileConfig = getTileConfig(mapLayer);
+    const newTile = L.tileLayer(tileConfig.url, {
+      subdomains: tileConfig.subdomains,
       maxZoom: 20,
-      attribution: 'Map data &copy; Google',
+      attribution: tileConfig.attribution,
     }).addTo(map);
 
     tileLayerRef.current = newTile;
@@ -796,6 +843,143 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
     }
   };
 
+  // Center on Captain Live GPS
+  const handleCenterOnCaptainGPS = () => {
+    const map = mapInstanceRef.current;
+    if (!map || !captainLiveLocation) return;
+    map.flyTo([captainLiveLocation.lat, captainLiveLocation.lng], 16, {
+      duration: 0.8,
+    });
+    if (captainMarkerRef.current) {
+      captainMarkerRef.current.openPopup();
+    }
+  };
+
+  // Captain Real-Time Live Location Marker
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (captainLiveLocation) {
+      const { lat, lng } = captainLiveLocation;
+      const captainMotoIcon = L.divIcon({
+        className: 'custom-captain-live-marker',
+        html: `
+          <div class="relative flex flex-col items-center group cursor-pointer select-none">
+            <div class="absolute -top-2 w-14 h-14 rounded-full bg-amber-500/25 animate-ping pointer-events-none"></div>
+            <div class="relative w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-600 via-amber-500 to-yellow-400 p-0.5 shadow-2xl border-2 border-white flex items-center justify-center transition-transform hover:scale-110">
+              <div class="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center overflow-hidden relative">
+                ${
+                  captainAvatarUrl
+                    ? `<img src="${captainAvatarUrl}" class="w-full h-full object-cover" />`
+                    : `<span class="text-lg">🏍️</span>`
+                }
+              </div>
+              <div class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 border border-slate-900 text-[9px] font-black text-slate-950 flex items-center justify-center shadow-xs" style="transform: rotate(${captainHeading}deg);">
+                ▲
+              </div>
+            </div>
+            <div class="w-4 h-1.5 bg-black/40 rounded-full blur-[1px] mt-0.5"></div>
+          </div>
+        `,
+        iconSize: [44, 48],
+        iconAnchor: [22, 44],
+      });
+
+      const captainPopupContent = `
+        <div class="p-1 min-w-[200px] font-sans text-slate-900">
+          <div class="flex items-center gap-2 mb-1 border-b border-slate-100 pb-1">
+            <div class="w-7 h-7 rounded-xl bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center shadow-xs">🏍️</div>
+            <div>
+              <div class="text-[10px] font-bold uppercase text-amber-600 font-bold">Captain Live Location</div>
+              <div class="text-xs font-bold text-slate-900">${captainName}</div>
+            </div>
+          </div>
+          <div class="text-[11px] text-slate-600 mb-1 font-medium">${captainVehicleDetails || 'Moto Captain'}</div>
+          <div class="text-[9px] font-mono text-slate-400">GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+        </div>
+      `;
+
+      if (captainMarkerRef.current) {
+        captainMarkerRef.current.setLatLng([lat, lng]);
+        captainMarkerRef.current.setIcon(captainMotoIcon);
+        captainMarkerRef.current.setPopupContent(captainPopupContent);
+      } else {
+        const marker = L.marker([lat, lng], { icon: captainMotoIcon, zIndexOffset: 950 }).addTo(map);
+        marker.bindPopup(captainPopupContent);
+        marker.bindTooltip(`
+          <div class="px-2 py-0.5 text-[10px] font-black text-amber-900 bg-amber-400 rounded-full shadow-md flex items-center gap-1 whitespace-nowrap pointer-events-none">
+            <span class="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping"></span>
+            <span>${captainName} (You)</span>
+          </div>
+        `, {
+          permanent: true,
+          direction: 'top',
+          offset: [0, -20],
+          className: 'captain-live-tooltip',
+        });
+        captainMarkerRef.current = marker;
+      }
+    } else if (captainMarkerRef.current) {
+      map.removeLayer(captainMarkerRef.current);
+      captainMarkerRef.current = null;
+    }
+  }, [captainLiveLocation, captainHeading, captainSpeed, captainName, captainVehicleDetails, captainAvatarUrl]);
+
+  // Render Incoming Ride Requests on Map (for Captain Mode)
+  useEffect(() => {
+    const group = incomingRidesGroupRef.current;
+    if (!group) return;
+
+    group.clearLayers();
+
+    if (!incomingRides || incomingRides.length === 0) return;
+
+    incomingRides.forEach((ride) => {
+      const coords = strictResolveLocationCoords(ride.pickup_location) || resolveLocationCoords(ride.pickup_location);
+      if (!coords) return;
+
+      const fareAmount = ride.fare || 100;
+      const isCourier = ride.service_type === 'moto_package' || ride.tier_name?.toLowerCase().includes('courier');
+
+      const pickupPinIcon = L.divIcon({
+        className: 'custom-incoming-ride-pin',
+        html: `
+          <div class="relative flex flex-col items-center group cursor-pointer select-none">
+            <div class="absolute -top-1 w-10 h-10 rounded-full bg-emerald-500/20 animate-ping pointer-events-none"></div>
+            <div class="relative px-2 py-1 rounded-xl bg-slate-950 border-2 border-emerald-400 text-white font-black text-xs flex items-center gap-1 shadow-2xl transition-transform hover:scale-110">
+              <span class="text-[12px]">${isCourier ? '📦' : '🏍️'}</span>
+              <span class="text-emerald-400 font-extrabold">₹${fareAmount}</span>
+            </div>
+            <div class="w-0 h-0 border-x-[4px] border-x-transparent border-t-[6px] border-t-slate-950 -mt-0.5"></div>
+          </div>
+        `,
+        iconSize: [60, 36],
+        iconAnchor: [30, 34],
+      });
+
+      const marker = L.marker([coords.lat, coords.lng], { icon: pickupPinIcon, zIndexOffset: 700 });
+      marker.bindTooltip(`
+        <div class="px-2 py-1 text-[11px] font-bold text-slate-900 bg-white/95 rounded-xl shadow-lg border border-emerald-500 flex items-center gap-1.5 whitespace-nowrap">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>${ride.passenger_name || 'Passenger'} · ₹${fareAmount}</span>
+        </div>
+      `, {
+        permanent: false,
+        direction: 'top',
+        offset: [0, -18],
+      });
+
+      marker.on('click', () => {
+        if (onSelectRide) {
+          onSelectRide(ride);
+        }
+      });
+
+      group.addLayer(marker);
+    });
+  }, [incomingRides, onSelectRide]);
+
   // Listen to custom events from popup or external dashboard triggers
   useEffect(() => {
     const handleSetLivePickup = () => {
@@ -890,31 +1074,53 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
 
         {/* Right: Map Type Selector & Recenter/Zoom Controls */}
         <div className="flex items-center gap-1.5 pointer-events-auto">
-          {/* Map Layer Switcher (Streets, Satellite, Terrain) */}
+          {/* Map Layer Switcher (Streets, Satellite, Terrain, Voyager Dark) */}
           <div
             className={`p-1 rounded-2xl border shadow-lg backdrop-blur-md flex items-center gap-1 text-xs ${
               isLight ? 'bg-white/90 border-slate-200' : 'bg-slate-950/85 border-slate-800'
             }`}
           >
-            {(['streets', 'satellite', 'terrain'] as MapLayerType[]).map((type) => (
+            {[
+              { id: 'streets', label: 'Streets' },
+              { id: 'satellite', label: 'Satellite' },
+              { id: 'terrain', label: 'Terrain' },
+              { id: 'dark', label: 'Voyager Dark' },
+            ].map(({ id, label }) => (
               <button
-                key={type}
+                key={id}
                 type="button"
-                onClick={() => setMapLayer(type)}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold capitalize transition-all cursor-pointer ${
-                  mapLayer === type
+                onClick={() => setMapLayer(id as MapLayerType)}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  mapLayer === id
                     ? 'bg-emerald-500 text-slate-950 shadow-sm font-black'
                     : isLight
                     ? 'text-slate-600 hover:text-slate-900'
                     : 'text-slate-400 hover:text-slate-100'
                 }`}
               >
-                {type}
+                {label}
               </button>
             ))}
           </div>
 
-          {/* Dedicated Recenter on My Real-Time GPS Button */}
+          {/* Dedicated Recenter on Captain GPS Button */}
+          {captainLiveLocation && (
+            <button
+              type="button"
+              id="map-locate-captain-gps-btn"
+              onClick={handleCenterOnCaptainGPS}
+              className={`p-2 rounded-xl border shadow-md backdrop-blur-md text-xs font-bold transition-all cursor-pointer hover:scale-105 active:scale-95 ${
+                isLight
+                  ? 'bg-white/90 hover:bg-amber-50 text-amber-600 border-amber-200 shadow-amber-500/10'
+                  : 'bg-slate-950/85 hover:bg-amber-950/60 text-amber-400 border-amber-900/60 shadow-black/40'
+              }`}
+              title="Center Map on Captain GPS Location"
+            >
+              <Navigation className="w-4 h-4 text-amber-500 fill-amber-500/20" />
+            </button>
+          )}
+
+          {/* Dedicated Recenter on Passenger GPS Button */}
           {passengerLiveLocation && (
             <button
               type="button"
