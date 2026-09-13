@@ -2180,8 +2180,8 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       </div>
       ) : (
         /* ================= INCOMING & DECLINED RIDE REQUESTS TABS (INDRIVE / UBER) ================= */
-        <div className="relative z-20 flex-1 flex flex-col justify-end p-3 sm:p-6 pointer-events-none overflow-hidden">
-          {/* Drop Down Button in Center of Captain Dashboard to open/minimize from bottom to half of the main page */}
+        <div className="relative z-20 flex-1 flex flex-col justify-start pt-3 px-3 sm:px-6 pointer-events-none overflow-hidden">
+          {/* Drop Down Button in Center of Captain Dashboard to open/minimize from top to bottom */}
           <div className="w-full max-w-xl mx-auto flex flex-col items-center justify-center pb-2 pointer-events-auto">
             <button
               type="button"
@@ -2194,7 +2194,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                   ? 'bg-white/95 hover:bg-white text-slate-800 border-slate-300 shadow-slate-200/50'
                   : 'bg-slate-900/95 hover:bg-slate-900 text-slate-200 border-slate-700 shadow-black/40'
               }`}
-              title={isIncomingHalfOpen ? 'Click to drop down / minimize incoming ride requests' : 'Click to open incoming ride requests from bottom to half of main page'}
+              title={isIncomingHalfOpen ? 'Click to minimize incoming ride requests' : 'Click to drop down incoming ride requests from top to bottom'}
             >
               {/* Animated Live Ping */}
               {requestedRides.length > 0 && (
@@ -2215,13 +2215,13 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
               {/* Center Drop Down / Expand Indicator Icon */}
               {isIncomingHalfOpen ? (
-                <ChevronDown className="w-4 h-4 transition-transform group-hover:translate-y-0.5 stroke-[2.5]" />
-              ) : (
                 <ChevronUp className="w-4 h-4 transition-transform group-hover:-translate-y-0.5 stroke-[2.5]" />
+              ) : (
+                <ChevronDown className="w-4 h-4 transition-transform group-hover:translate-y-0.5 stroke-[2.5]" />
               )}
             </button>
             <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-1 bg-white/80 dark:bg-slate-950/80 px-2 py-0.5 rounded-full backdrop-blur-xs">
-              {isIncomingHalfOpen ? '▼ Half-Page View Active (Tap to drop down / minimize)' : '▲ Tap to expand from bottom to half of main page'}
+              {isIncomingHalfOpen ? '▲ Top-to-Bottom View Active (Tap to minimize)' : '▼ Tap to drop down incoming requests from top to bottom'}
             </span>
           </div>
 
