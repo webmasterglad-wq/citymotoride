@@ -20,6 +20,8 @@ import {
   Award,
   Bike,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   TrendingUp,
   SlidersHorizontal,
   Target,
@@ -191,6 +193,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   });
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [profileModalTab, setProfileModalTab] = useState<'profile' | 'vehicle' | 'earnings' | 'preferences' | 'checklist'>('profile');
+  const [isIncomingHalfOpen, setIsIncomingHalfOpen] = useState<boolean>(true);
   const [onlineMinutes, setOnlineMinutes] = useState<number>(0);
 
   // Database-driven Earnings Summary strictly from completed rides
@@ -519,6 +522,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         if (skippedSet.has(incomingRide.id)) return;
 
         playSweetAlertTune();
+        setIsIncomingHalfOpen(true);
         setRequestedRides((prev) => {
           if (prev.some((r) => r.id === incomingRide.id)) {
             return prev.map((r) => (r.id === incomingRide.id ? { ...r, ...incomingRide } : r));
@@ -2090,9 +2094,62 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         </div>
       ) : (
         /* ================= INCOMING & DECLINED RIDE REQUESTS TABS (INDRIVE / UBER) ================= */
-        <div className="p-4 space-y-3">
-          {/* Sub-navigation Tabs: Incoming vs Declined */}
-          <div className={`flex items-center justify-between border-b pb-2.5 ${isLight ? 'border-slate-200' : 'border-slate-800/80'}`}>
+        <div className="p-3 sm:p-4 space-y-2">
+          {/* Drop Down Button in Center of Captain Dashboard to open/minimize from bottom to half of the main page */}
+          <div className="flex flex-col items-center justify-center pt-1 pb-1">
+            <button
+              type="button"
+              id="captain-incoming-dropdown-center-btn"
+              onClick={() => setIsIncomingHalfOpen((prev) => !prev)}
+              className={`group relative flex items-center gap-2.5 px-5 py-2.5 rounded-full border text-xs font-black transition-all duration-300 cursor-pointer shadow-lg active:scale-95 select-none ${
+                isIncomingHalfOpen
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 border-amber-300 shadow-amber-500/25 ring-2 ring-amber-400/40'
+                  : isLight
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 shadow-slate-200/50'
+                  : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700 shadow-black/40'
+              }`}
+              title={isIncomingHalfOpen ? 'Click to drop down / minimize incoming ride requests' : 'Click to open incoming ride requests from bottom to half of main page'}
+            >
+              {/* Animated Live Ping */}
+              {requestedRides.length > 0 && (
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+              )}
+
+              <span className="tracking-tight font-extrabold flex items-center gap-1.5">
+                <span>Incoming Ride Requests</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                  isIncomingHalfOpen ? 'bg-slate-950 text-amber-300' : 'bg-emerald-500 text-slate-950'
+                }`}>
+                  {requestedRides.length}
+                </span>
+              </span>
+
+              {/* Center Drop Down / Expand Indicator Icon */}
+              {isIncomingHalfOpen ? (
+                <ChevronDown className="w-4 h-4 transition-transform group-hover:translate-y-0.5 stroke-[2.5]" />
+              ) : (
+                <ChevronUp className="w-4 h-4 transition-transform group-hover:-translate-y-0.5 stroke-[2.5]" />
+              )}
+            </button>
+            <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-1">
+              {isIncomingHalfOpen ? '▼ Half-Page View Active (Tap to drop down / minimize)' : '▲ Tap to expand from bottom to half of main page'}
+            </span>
+          </div>
+
+          {/* Collapsible / Expandable Half-Page Drawer Container */}
+          <div
+            id="captain-incoming-half-page-container"
+            className={`transition-all duration-300 ease-in-out ${
+              isIncomingHalfOpen
+                ? 'max-h-[50vh] overflow-y-auto overscroll-contain pr-1 space-y-3 opacity-100'
+                : 'max-h-0 overflow-hidden opacity-0 p-0 m-0'
+            }`}
+          >
+            {/* Sub-navigation Tabs: Incoming vs Declined */}
+            <div className={`flex items-center justify-between border-b pb-2.5 ${isLight ? 'border-slate-200' : 'border-slate-800/80'}`}>
             <div className={`flex items-center gap-1.5 p-1 rounded-2xl border ${
               isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950 border-slate-800'
             }`}>
@@ -2763,6 +2820,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               })}
             </div>
           )}
+          </div>
         </div>
       )}
 
