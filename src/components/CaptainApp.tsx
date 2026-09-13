@@ -1374,126 +1374,20 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               </span>
               {titleSuffix && <span className="text-amber-500 font-bold text-xs shrink-0">({titleSuffix})</span>}
             </div>
-            <div className={`text-[11px] flex items-center gap-2 flex-wrap ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+            <div className={`text-[11px] flex items-center gap-1.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               <span className="text-amber-500 dark:text-amber-300 font-bold flex items-center shrink-0">
                 ★ {currentCaptain.rating || 4.96}
               </span>
-              {captainBikeParsed.raw ? (
-                <span className="hidden sm:inline-flex items-center gap-1 font-semibold text-[11px] truncate">
-                  <span className="opacity-40">•</span>
-                  <span className="text-xs shrink-0">🏍️</span>
-                  <span className={`truncate max-w-[140px] md:max-w-[220px] ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
-                    {captainBikeParsed.model || captainBikeParsed.raw}
-                  </span>
-                  {captainBikeParsed.plate && (
-                    <span className={`text-[9px] font-mono font-bold px-1 py-0.2 rounded border shrink-0 ${
-                      isLight ? 'bg-white border-slate-300 text-slate-800' : 'bg-slate-900 border-slate-700 text-amber-300'
-                    }`}>
-                      #{captainBikeParsed.plate}
-                    </span>
-                  )}
-                </span>
-              ) : null}
+              <span className="opacity-40">•</span>
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                Verified Captain
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Action Controls: Full Clear Bike Details Badge + Online Toggle */}
+        {/* Action Controls: Online Toggle */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Full Clear Bike Details Badge near Online Tab */}
-          <div
-            id="captain-header-bike-details-badge"
-            className={`flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-2xl border text-left transition-all shadow-sm ${
-              isLight
-                ? 'bg-amber-50/90 border-amber-300/80 text-slate-900 ring-1 ring-amber-400/20'
-                : 'bg-slate-900 border-amber-500/30 text-slate-100 ring-1 ring-amber-500/20'
-            }`}
-          >
-            {/* Bike Image / Icon with Camera upload button */}
-            <div className="relative group/bike-img shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setProfileModalTab('vehicle');
-                  setIsProfileOpen(true);
-                }}
-                className={`w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center cursor-pointer border ${
-                  isLight ? 'bg-amber-200 border-amber-300 shadow-xs' : 'bg-amber-500/20 border-amber-500/40'
-                }`}
-                title="View full bike details"
-              >
-                {currentCaptain.bike_image ? (
-                  <img
-                    src={currentCaptain.bike_image}
-                    alt="Registered Bike"
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <Bike className="w-4 h-4 text-amber-700 dark:text-amber-400" />
-                )}
-              </button>
-
-              {/* Fast Camera Upload on Bike Icon */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  headerBikeImageInputRef.current?.click();
-                }}
-                className={`absolute -bottom-1 -right-1 p-0.5 rounded-full border shadow transition-colors cursor-pointer ${
-                  isLight
-                    ? 'bg-white hover:bg-amber-400 text-slate-700 hover:text-slate-950 border-slate-300'
-                    : 'bg-slate-950 hover:bg-amber-400 text-slate-300 hover:text-slate-950 border-slate-700'
-                }`}
-                title="Upload or update Bike photo"
-              >
-                <Camera className="w-2.5 h-2.5" />
-              </button>
-            </div>
-
-            <div
-              className="min-w-0 pr-0.5 cursor-pointer flex flex-col justify-center"
-              onClick={() => {
-                setProfileModalTab('vehicle');
-                setIsProfileOpen(true);
-              }}
-            >
-              {/* Bike Name */}
-              <div className={`text-xs font-bold truncate max-w-[120px] sm:max-w-[200px] md:max-w-[280px] leading-tight ${
-                isLight ? 'text-slate-900' : 'text-slate-100'
-              }`}>
-                {captainBikeParsed.model ? (
-                  <span>
-                    {captainBikeParsed.model}
-                    {captainBikeParsed.color && (
-                      <span className="font-normal opacity-75 text-[11px]"> ({captainBikeParsed.color})</span>
-                    )}
-                  </span>
-                ) : captainBikeParsed.raw ? (
-                  <span>{captainBikeParsed.raw}</span>
-                ) : (
-                  <span className="text-amber-500 font-semibold text-[11px]">+ Add Bike Details</span>
-                )}
-              </div>
-              {/* Bike Plate directly below Bike Name without "Bike No:" label */}
-              {captainBikeParsed.plate ? (
-                <div className="mt-0.5 leading-none">
-                  <span
-                    id="captain-header-bike-number-badge"
-                    className={`inline-block text-[10px] sm:text-[11px] font-mono font-black px-1.5 py-0.5 rounded border leading-none tracking-wide shrink-0 shadow-xs ${
-                      isLight
-                        ? 'bg-white border-amber-300 text-slate-900'
-                        : 'bg-slate-950 border-amber-500/50 text-amber-300'
-                    }`}
-                  >
-                    #{captainBikeParsed.plate}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
           {/* Uber Online Toggle Button */}
           <button
             id="uber-driver-toggle-online-btn"
@@ -1509,131 +1403,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             <Power className="w-3.5 h-3.5" />
             {isOnline ? 'ONLINE' : 'GO ONLINE'}
           </button>
-        </div>
-      </div>
-
-      {/* Today's Income & Shift HUD (Uber Driver Style) */}
-      <div
-        className={`p-4 border-b space-y-3 transition-colors duration-200 ${
-          isLight
-            ? 'bg-gradient-to-b from-slate-50 to-white border-slate-200'
-            : 'bg-gradient-to-b from-[#0e1424] to-[#07090e] border-slate-800/80'
-        }`}
-      >
-        {/* Today's Income Hero Card */}
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <span className={`text-[11px] font-black uppercase tracking-wider ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                Today's Income
-              </span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                isLight ? 'bg-slate-200 text-slate-700' : 'bg-slate-800 text-slate-300'
-              }`}>
-                {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <h2 id="captain-today-income-hero" className={`text-2xl sm:text-3xl font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                ₹{earningsSummary.todayIncome.toFixed(2)}
-              </h2>
-              {earningsSummary.yesterdayIncome > 0 ? (
-                <span className={`text-xs font-bold flex items-center ${
-                  earningsSummary.todayIncome >= earningsSummary.yesterdayIncome
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-slate-500 dark:text-slate-400'
-                }`}>
-                  <TrendingUp className="w-3 h-3 mr-0.5" />
-                  {earningsSummary.todayIncome >= earningsSummary.yesterdayIncome
-                    ? `+₹${(earningsSummary.todayIncome - earningsSummary.yesterdayIncome).toFixed(2)} vs yesterday`
-                    : `₹${earningsSummary.yesterdayIncome.toFixed(2)} yesterday`}
-                </span>
-              ) : (
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  {earningsSummary.todayCompletedCount === 0
-                    ? '₹0 · No completed rides today'
-                    : `${earningsSummary.todayCompletedCount} completed today`}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Surge Badge */}
-          <div
-            className={`px-3 py-1.5 rounded-2xl flex items-center gap-1.5 text-xs font-bold border ${
-              isLight
-                ? 'bg-amber-50 border-amber-300 text-amber-800'
-                : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-            }`}
-          >
-            <Flame className="w-4 h-4 text-amber-500 fill-amber-500 animate-pulse" />
-            <span>1.4x Surge Area</span>
-          </div>
-        </div>
-
-        {/* Shift Stats Row */}
-        <div className="grid grid-cols-3 gap-2 text-center text-xs">
-          <div
-            className={`p-2 rounded-xl border ${
-              isLight ? 'bg-slate-100/80 border-slate-200' : 'bg-slate-900/80 border-slate-800'
-            }`}
-          >
-            <span className={`text-[10px] block font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              Online Time
-            </span>
-            <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-              {Math.floor(onlineMinutes / 60)}h {onlineMinutes % 60}m
-            </span>
-          </div>
-
-          <div
-            className={`p-2 rounded-xl border ${
-              isLight ? 'bg-slate-100/80 border-slate-200' : 'bg-slate-900/80 border-slate-800'
-            }`}
-          >
-            <span className={`text-[10px] block font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              Today's Rides
-            </span>
-            <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-              {earningsSummary.todayCompletedCount} {earningsSummary.todayCompletedCount === 1 ? 'ride' : 'rides'}
-            </span>
-          </div>
-
-          <div
-            className={`p-2 rounded-xl border ${
-              isLight ? 'bg-slate-100/80 border-slate-200' : 'bg-slate-900/80 border-slate-800'
-            }`}
-          >
-            <span className={`text-[10px] block font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              Total Earnings
-            </span>
-            <span className="font-bold text-emerald-600 dark:text-emerald-400">
-              ₹{earningsSummary.totalEarnings.toFixed(2)}
-            </span>
-          </div>
-        </div>
-
-        {/* Daily Quest Goal Bar */}
-        <div
-          className={`p-2.5 rounded-xl border space-y-1 ${
-            isLight ? 'bg-slate-100/70 border-slate-200' : 'bg-slate-900/60 border-slate-800'
-          }`}
-        >
-          <div className="flex items-center justify-between text-[10px] font-bold">
-            <span className={`flex items-center gap-1 ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
-              <Zap className="w-3 h-3 text-amber-500" />
-              Daily Quest: Complete 8 rides for ₹25 bonus
-            </span>
-            <span className={`font-mono ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-              {earningsSummary.todayCompletedCount}/8
-            </span>
-          </div>
-          <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`}>
-            <div
-              className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-500"
-              style={{ width: `${Math.min(100, (earningsSummary.todayCompletedCount / 8) * 100)}%` }}
-            />
-          </div>
         </div>
       </div>
 
