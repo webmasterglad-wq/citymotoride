@@ -69,7 +69,6 @@ import { ChatMessage } from '../types/ride';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { InRideChatModal } from './InRideChatModal';
 import { CaptainProfileModal } from './CaptainProfileModal';
-import { TodayIncomeWindow } from './TodayIncomeWindow';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { InDriveTimelineBar } from './InDriveTimelineBar';
 import { useTheme } from '../context/ThemeContext';
@@ -192,7 +191,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   });
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [profileModalTab, setProfileModalTab] = useState<'profile' | 'vehicle' | 'earnings' | 'preferences' | 'checklist'>('profile');
-  const [isIncomeWindowOpen, setIsIncomeWindowOpen] = useState<boolean>(false);
   const [onlineMinutes, setOnlineMinutes] = useState<number>(0);
 
   // Database-driven Earnings Summary strictly from completed rides
@@ -1293,97 +1291,11 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                 ? 'bg-slate-100 hover:bg-amber-100 border-slate-200 hover:border-amber-400 text-slate-800'
                 : 'bg-slate-900 hover:bg-amber-500/20 border-slate-800 hover:border-amber-500/40 text-slate-200'
             }`}
-            title="Open Captain Profile Details (1-Click)"
+            title="Open Captain Profile, Vehicle & Earnings Details (1-Click)"
           >
             <span className="w-4 h-0.5 rounded-full bg-slate-700 dark:bg-slate-200 group-hover:bg-amber-600 dark:group-hover:bg-amber-400 transition-colors" />
             <span className="w-4 h-0.5 rounded-full bg-slate-700 dark:bg-slate-200 group-hover:bg-amber-600 dark:group-hover:bg-amber-400 transition-colors" />
           </button>
-
-          {/* Today's Income Minimize Window Link in Top Left Corner */}
-          <button
-            id="captain-header-today-income-window-link-btn"
-            type="button"
-            onClick={() => setIsIncomeWindowOpen((prev) => !prev)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl border transition-all cursor-pointer shadow-xs active:scale-95 shrink-0 group select-none ${
-              isIncomeWindowOpen
-                ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-emerald-500/25 ring-2 ring-emerald-400/40'
-                : isLight
-                ? 'bg-emerald-50/90 hover:bg-emerald-100 border-emerald-200 text-emerald-900'
-                : 'bg-emerald-950/40 hover:bg-emerald-900/60 border-emerald-800/60 text-emerald-300'
-            }`}
-            title="Click to open Today's Income Minimized Window"
-          >
-            <span className="w-5 h-5 rounded-lg bg-emerald-500 text-slate-950 flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
-              ₹
-            </span>
-            <div className="flex flex-col items-start leading-none text-left">
-              <span className="text-[9px] uppercase font-bold tracking-tight opacity-75">
-                Today's Income
-              </span>
-              <span className="text-xs font-black font-mono mt-0.5">
-                ₹{earningsSummary.todayIncome.toFixed(0)}
-              </span>
-            </div>
-            <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity ml-0.5" />
-          </button>
-
-          <div className="relative group shrink-0">
-            <button
-              onClick={() => setIsProfileOpen(true)}
-              className="cursor-pointer block"
-              title="Open Captain Profile & Photo"
-            >
-              {currentCaptain.avatar_url && !currentCaptain.avatar_url.includes('unsplash.com') ? (
-                <img
-                  src={currentCaptain.avatar_url}
-                  alt={currentCaptain.name}
-                  referrerPolicy="no-referrer"
-                  className="w-10 h-10 rounded-2xl object-cover border border-amber-400/50 shadow-md group-hover:scale-105 transition-transform"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 text-slate-950 flex items-center justify-center font-black text-sm tracking-wider shadow-md group-hover:scale-105 transition-transform">
-                  {currentCaptain.name ? currentCaptain.name.slice(0, 2).toUpperCase() : 'CP'}
-                </div>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                headerAvatarInputRef.current?.click();
-              }}
-              className={`absolute -bottom-1 -right-1 p-0.5 rounded-full border shadow transition-colors cursor-pointer ${
-                isLight
-                  ? 'bg-white hover:bg-amber-400 text-slate-700 hover:text-slate-950 border-slate-300'
-                  : 'bg-slate-900 hover:bg-amber-400 text-slate-300 hover:text-slate-950 border-slate-700'
-              }`}
-              title="Upload Captain photo"
-            >
-              <Camera className="w-2.5 h-2.5" />
-            </button>
-          </div>
-
-          <div
-            onClick={() => setIsProfileOpen(true)}
-            className="cursor-pointer min-w-0 group/prof"
-            title="Click to view Captain Profile & Vehicle details"
-          >
-            <div className="flex items-center gap-1.5">
-              <span className={`font-black text-sm group-hover/prof:text-amber-500 transition-colors truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                {currentCaptain.name}
-              </span>
-              {titleSuffix && <span className="text-amber-500 font-bold text-xs shrink-0">({titleSuffix})</span>}
-            </div>
-            <div className={`text-[11px] flex items-center gap-1.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              <span className="text-amber-500 dark:text-amber-300 font-bold flex items-center shrink-0">
-                ★ {currentCaptain.rating || 4.96}
-              </span>
-              <span className="opacity-40">•</span>
-              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
-                Verified Captain
-              </span>
-            </div>
-          </div>
         </div>
 
         {/* Action Controls: Online Toggle */}
@@ -3105,19 +3017,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         totalEarnings={earningsSummary.totalEarnings}
         todayRides={earningsSummary.todayRides}
         completedCount={earningsSummary.todayCompletedCount}
-      />
-
-      {/* Floating Today's Income Minimized Window (Triggered from Top Left Corner) */}
-      <TodayIncomeWindow
-        isOpen={isIncomeWindowOpen}
-        onClose={() => setIsIncomeWindowOpen(false)}
-        onOpenFullEarnings={() => {
-          setProfileModalTab('earnings');
-          setIsProfileOpen(true);
-        }}
-        earningsSummary={earningsSummary}
-        onlineMinutes={onlineMinutes}
-        isLight={isLight}
       />
     </div>
   );
