@@ -270,7 +270,17 @@ export const createRideBooking = async (
   const isCourier = chosenServiceType === 'moto_delivery';
   const chosenTierName = params.tier_name || (isCourier ? 'Moto Courier' : 'Comfort Moto');
 
-  const rideId = `ride_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const generateUUID = (): string => {
+    if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  };
+  const rideId = generateUUID();
   const nowIso = new Date().toISOString();
 
   const payload: any = {
