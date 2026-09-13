@@ -2230,7 +2230,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             id="captain-incoming-half-page-container"
             className={`w-full max-w-xl mx-auto rounded-3xl border shadow-2xl backdrop-blur-xl pointer-events-auto transition-all duration-300 ease-in-out ${
               isIncomingHalfOpen
-                ? 'max-h-[50vh] overflow-y-auto overscroll-contain p-4 space-y-3 opacity-100 scale-100'
+                ? 'max-h-[82vh] overflow-y-auto overscroll-contain p-4 space-y-3 opacity-100 scale-100'
                 : 'max-h-0 overflow-hidden opacity-0 p-0 m-0 scale-95 border-0 shadow-none'
             } ${
               isLight
