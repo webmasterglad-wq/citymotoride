@@ -474,7 +474,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
   // Initial fetch & Polling synchronization
   const loadInitialData = async () => {
-    if (!isSupabaseConfigured()) return;
     setTableMissingNotice(false);
 
     const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
