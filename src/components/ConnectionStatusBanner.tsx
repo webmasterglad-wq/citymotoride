@@ -201,9 +201,12 @@ export const ConnectionStatusBanner: React.FC<ConnectionStatusBannerProps> = ({
       <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap md:flex-nowrap items-center justify-between gap-3">
         {/* Left: Brand */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-950 text-xs tracking-tight shadow-md shadow-amber-500/20 shrink-0">
-            MR
-          </div>
+          <img
+            src="/app-icon.png"
+            alt="MotoRide App Icon"
+            className="w-8 h-8 rounded-xl object-cover shadow-md shrink-0 border border-amber-400/30"
+            referrerPolicy="no-referrer"
+          />
           <div className="flex flex-col">
             <span className={`font-bold tracking-tight text-sm leading-none ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
               Moto<span className="text-amber-500">Ride</span>
