@@ -270,7 +270,11 @@ export const createRideBooking = async (
   const isCourier = chosenServiceType === 'moto_delivery';
   const chosenTierName = params.tier_name || (isCourier ? 'Moto Courier' : 'Comfort Moto');
 
+  const rideId = `ride_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const nowIso = new Date().toISOString();
+
   const payload: any = {
+    id: rideId,
     passenger_id: params.passenger_id,
     passenger_name: params.passenger_name || 'Passenger',
     passenger_phone: params.passenger_phone || '',
@@ -287,10 +291,12 @@ export const createRideBooking = async (
     tier_name: chosenTierName,
     delivery_notes: params.delivery_notes ? params.delivery_notes.trim() : null,
     status: 'requested' as RideStatus,
-    created_at: new Date().toISOString(),
+    created_at: nowIso,
   };
 
-  // 1. Primary Sync: POST to Server API for instant cross-device broadcast across all phones & computers
+  let createdRide: Ride = payload;
+
+  // 1. Post to Server API for memory & disk persistence
   try {
     const apiRes = await fetch('/api/rides', {
       method: 'POST',
@@ -301,26 +307,14 @@ export const createRideBooking = async (
     if (apiRes.ok) {
       const json = await apiRes.json();
       if (json?.data) {
-        const serverRide = json.data as Ride;
-        setStoredRideTier(serverRide.id, chosenServiceType, chosenTierName);
-        setStoredRideData(serverRide.id, serverRide);
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.setItem('motoride_last_passenger_ride_id', serverRide.id);
-            const cache: Ride[] = JSON.parse(localStorage.getItem('motoride_requested_rides_cache') || '[]');
-            const updatedCache = [serverRide, ...cache.filter((r) => r.id !== serverRide.id)].slice(0, 30);
-            localStorage.setItem('motoride_requested_rides_cache', JSON.stringify(updatedCache));
-          } catch {}
-        }
-        notifyNewIncomingRide(serverRide);
-        return { data: serverRide, error: null };
+        createdRide = { ...createdRide, ...json.data };
       }
     }
   } catch (apiErr) {
     console.warn('[Motoride] Server API ride creation fallback:', apiErr);
   }
 
-  // 2. Secondary Sync: Supabase Direct Insert
+  // 2. Also insert directly to Supabase Cloud Database
   const supabase = getSupabaseClient();
   if (supabase) {
     try {
@@ -343,92 +337,73 @@ export const createRideBooking = async (
 
         if (!retryRes.error && retryRes.data) {
           data = retryRes.data;
-          error = null;
         }
       }
 
       if (data) {
-        const resData = data as Ride;
-        setStoredRideTier(resData.id, chosenServiceType, chosenTierName);
-        const enrichedRide: Ride = {
-          ...resData,
-          passenger_name: resData.passenger_name || params.passenger_name || 'Passenger',
-          passenger_phone: resData.passenger_phone || params.passenger_phone || '',
-          pickup_location: resData.pickup_location || params.pickup_location,
-          dropoff_location: resData.dropoff_location || params.dropoff_location,
-          fare: resData.fare ?? params.fare,
+        createdRide = {
+          ...createdRide,
+          ...data,
           service_type: chosenServiceType,
           tier_name: chosenTierName,
-          delivery_notes: params.delivery_notes || undefined,
         };
-        setStoredRideData(resData.id, enrichedRide);
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.setItem('motoride_last_passenger_ride_id', resData.id);
-            const cache: Ride[] = JSON.parse(localStorage.getItem('motoride_requested_rides_cache') || '[]');
-            const updatedCache = [enrichedRide, ...cache.filter((r) => r.id !== resData.id)].slice(0, 30);
-            localStorage.setItem('motoride_requested_rides_cache', JSON.stringify(updatedCache));
-          } catch {}
-        }
-        notifyNewIncomingRide(enrichedRide);
-        return { data: enrichedRide, error: null };
       }
     } catch (dbErr) {
       console.warn('[Motoride] Supabase direct insert fallback:', dbErr);
     }
   }
 
-  // 3. Client Optimistic Fallback
-  const fallbackId = `ride_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  const clientRide: Ride = {
-    ...payload,
-    id: fallbackId,
-  };
-  setStoredRideTier(fallbackId, chosenServiceType, chosenTierName);
-  setStoredRideData(fallbackId, clientRide);
+  // 3. Cache locally and trigger broadcast alerts
+  setStoredRideTier(createdRide.id, chosenServiceType, chosenTierName);
+  setStoredRideData(createdRide.id, createdRide);
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem('motoride_last_passenger_ride_id', fallbackId);
+      localStorage.setItem('motoride_last_passenger_ride_id', createdRide.id);
       const cache: Ride[] = JSON.parse(localStorage.getItem('motoride_requested_rides_cache') || '[]');
-      localStorage.setItem('motoride_requested_rides_cache', JSON.stringify([clientRide, ...cache].slice(0, 30)));
+      const updatedCache = [createdRide, ...cache.filter((r) => r.id !== createdRide.id)].slice(0, 30);
+      localStorage.setItem('motoride_requested_rides_cache', JSON.stringify(updatedCache));
     } catch {}
   }
-  notifyNewIncomingRide(clientRide);
-  return { data: clientRide, error: null };
+
+  notifyNewIncomingRide(createdRide);
+  return { data: createdRide, error: null };
 };
 
 export const fetchActiveRequestedRides = async (): Promise<{
   data: Ride[];
   error: string | null;
 }> => {
-  let localCacheList: Ride[] = [];
+  const combinedMap = new Map<string, Ride>();
+
+  // A. Load from Local Storage Cache
   if (typeof window !== 'undefined') {
     try {
       const rawCache = localStorage.getItem('motoride_requested_rides_cache');
       if (rawCache) {
-        localCacheList = JSON.parse(rawCache);
+        const localList: Ride[] = JSON.parse(rawCache);
+        localList.forEach((r) => {
+          if (r && r.id && r.status === 'requested') {
+            combinedMap.set(r.id, r);
+          }
+        });
       }
       const lastId = localStorage.getItem('motoride_last_passenger_ride_id');
       if (lastId) {
         const stored = getStoredRideData(lastId) as Ride | null;
         if (stored && stored.status === 'requested') {
-          if (!localCacheList.some((r) => r.id === stored.id)) {
-            localCacheList.unshift(stored);
-          }
+          combinedMap.set(stored.id, stored);
         }
       }
     } catch {}
   }
 
-  // 1. Primary: Fetch from Server API (ensures cross-device synchronization between phone and laptop)
+  // B. Fetch concurrently from Server REST API
   try {
     const apiRes = await fetch('/api/rides?status=requested');
     if (apiRes.ok) {
       const json = await apiRes.json();
       if (Array.isArray(json?.data)) {
-        const serverList = json.data as Ride[];
-        const combinedMap = new Map<string, Ride>();
-        serverList.forEach((ride) => {
+        (json.data as Ride[]).forEach((ride) => {
           const cachedTier = getStoredRideTier(ride.id);
           const stored = getStoredRideData(ride.id) || {};
           combinedMap.set(ride.id, {
@@ -438,23 +413,13 @@ export const fetchActiveRequestedRides = async (): Promise<{
             tier_name: ride.tier_name || cachedTier?.tierName || (ride.service_type === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
           });
         });
-
-        // Also merge any local cache
-        localCacheList.forEach((r) => {
-          if (r.status === 'requested' && !combinedMap.has(r.id)) {
-            combinedMap.set(r.id, r);
-          }
-        });
-
-        const enrichedList = Array.from(combinedMap.values()).filter((r) => r.status === 'requested');
-        return { data: enrichedList, error: null };
       }
     }
   } catch (apiErr) {
     console.warn('[Motoride] Server fetch requested rides note:', apiErr);
   }
 
-  // 2. Secondary: Supabase Query
+  // C. Fetch concurrently from Supabase Cloud Database
   const supabase = getSupabaseClient();
   if (supabase) {
     try {
@@ -465,9 +430,7 @@ export const fetchActiveRequestedRides = async (): Promise<{
         .order('created_at', { ascending: false });
 
       if (!error && Array.isArray(data)) {
-        const rawList = data as Ride[];
-        const combinedMap = new Map<string, Ride>();
-        rawList.forEach((ride) => {
+        (data as Ride[]).forEach((ride) => {
           const cachedTier = getStoredRideTier(ride.id);
           const stored = getStoredRideData(ride.id) || {};
           combinedMap.set(ride.id, {
@@ -477,20 +440,17 @@ export const fetchActiveRequestedRides = async (): Promise<{
             tier_name: ride.tier_name || cachedTier?.tierName || (ride.service_type === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
           });
         });
-
-        localCacheList.forEach((r) => {
-          if (r.status === 'requested' && !combinedMap.has(r.id)) {
-            combinedMap.set(r.id, r);
-          }
-        });
-
-        const enrichedList = Array.from(combinedMap.values()).filter((r) => r.status === 'requested');
-        return { data: enrichedList, error: null };
       }
-    } catch (err) {}
+    } catch (err) {
+      console.warn('[Motoride] Supabase fetch requested rides note:', err);
+    }
   }
 
-  return { data: localCacheList.filter((r) => r.status === 'requested'), error: null };
+  // D. Deduplicate and return enriched requested rides
+  const enrichedList = Array.from(combinedMap.values()).filter((r) => r.status === 'requested');
+  enrichedList.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
+  return { data: enrichedList, error: null };
 };
 
 export const fetchRideById = async (
