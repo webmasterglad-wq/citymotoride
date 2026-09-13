@@ -94,8 +94,18 @@ interface PassengerAppProps {
 
 const getStoredPassengerId = () => {
   let id = localStorage.getItem('motoride_passenger_uuid');
-  if (!id) {
-    id = crypto.randomUUID ? crypto.randomUUID() : 'pass-' + Date.now();
+  if (!id || id.startsWith('pass-')) {
+    const generateUUID = (): string => {
+      if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    };
+    id = generateUUID();
     localStorage.setItem('motoride_passenger_uuid', id);
   }
   return id;

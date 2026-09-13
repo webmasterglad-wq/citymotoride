@@ -376,6 +376,8 @@ export const createRideBooking = async (
   }
 
   notifyNewIncomingRide(createdRide);
+  console.log("Ride created:", createdRide);
+  console.log("Ride ID:", createdRide.id);
   return { data: createdRide, error: null };
 };
 
@@ -1023,6 +1025,8 @@ export const subscribeToCaptainRealtime = (callbacks: {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
+  console.log("Connecting to Motoride Realtime...");
+
   const channelName = `captain-rides-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   
   const channel = supabase
@@ -1050,8 +1054,10 @@ export const subscribeToCaptainRealtime = (callbacks: {
             service_type: raw.service_type || cachedRide.service_type || cached?.tier || (raw.ride_tier as any) || 'moto_comfort',
             tier_name: raw.tier_name || cachedRide.tier_name || cached?.tierName || (raw.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
           };
+          console.log("New incoming ride received:", enriched);
           setStoredRideData(raw.id, enriched);
           callbacks.onInsert(enriched);
+          console.log("Ride added to captain feed:", enriched);
         }
       }
     )
@@ -1087,12 +1093,18 @@ export const subscribeToCaptainRealtime = (callbacks: {
       if (callbacks.onStatusChange) {
         callbacks.onStatusChange(status as any, err);
       }
-      if (status === 'CHANNEL_ERROR') {
+      if (status === 'SUBSCRIBED') {
+        console.log("Captain Realtime status: SUBSCRIBED");
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error("[Motoride Realtime Captain] Realtime status CHANNEL_ERROR, automatically reconnecting...", err);
         if (!isSocketNormalClose(err)) {
           console.warn('[Motoride Realtime Captain] Channel status:', err || 'Reconnecting');
         }
       } else if (status === 'TIMED_OUT') {
+        console.error("[Motoride Realtime Captain] Realtime status TIMED_OUT, automatically reconnecting...", err);
         console.warn('[Motoride Realtime Captain] Channel Timed Out (auto-retrying)');
+      } else if (status === 'CLOSED') {
+        console.error("[Motoride Realtime Captain] Realtime status CLOSED, automatically reconnecting...", err);
       }
     });
 
