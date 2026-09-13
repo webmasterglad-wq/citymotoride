@@ -207,6 +207,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   });
 
   const [activeRide, setActiveRide] = useState<Ride | null>(null);
+  const [previousRide, setPreviousRide] = useState<Ride | null>(null);
   const [currentUser, setCurrentUser] = useState<UserProfile>(passengerUser);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -357,13 +358,18 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       const { data } = await fetchActiveRideForPassenger(passengerUser.id);
       if (isMounted && data) {
         setActiveRide(data);
-      } else if (isMounted) {
+      }
+      
+      if (isMounted) {
         // Also check if the latest ride was completed recently and not yet rated
         const { data: latest } = await fetchLatestRideForPassenger(passengerUser.id);
-        if (latest && latest.status === 'completed') {
-          const isRated = localStorage.getItem(`motoride_rating_${latest.id}`);
-          if (!isRated) {
-            setActiveRide(latest);
+        if (latest) {
+          setPreviousRide(latest);
+          if (latest.status === 'completed') {
+            const isRated = localStorage.getItem(`motoride_rating_${latest.id}`);
+            if (!isRated) {
+              setActiveRide(latest);
+            }
           }
         }
       }
@@ -959,6 +965,9 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   };
 
   const handleBookAnother = () => {
+    if (activeRide) {
+      setPreviousRide(activeRide);
+    }
     setActiveRide(null);
     setPickup('');
     setDropoff('');
@@ -1223,6 +1232,70 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               Fair Fare Bidding
             </span>
           </div>
+
+          {/* Previous Ride Summary Card */}
+          {previousRide && (
+            <div className={`p-3 rounded-2xl border text-left transition-all ${
+              isLight 
+                ? 'bg-slate-50 border-slate-200 shadow-xs' 
+                : 'bg-slate-900/40 border-slate-800'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs">⏱️</span>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Previous Ride Summary
+                  </span>
+                </div>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                  previousRide.status === 'completed'
+                    ? 'bg-emerald-500/10 text-emerald-600'
+                    : 'bg-rose-500/10 text-rose-500'
+                }`}>
+                  {previousRide.status === 'completed' ? 'Completed' : 'Cancelled'}
+                </span>
+              </div>
+              
+              <div className="text-xs space-y-1 opacity-85">
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="truncate text-slate-600 dark:text-slate-300 font-medium text-[11px]">
+                    {previousRide.pickup_location?.split(',')[0] || 'Previous Pickup'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                  <span className="truncate text-slate-600 dark:text-slate-300 font-medium text-[11px]">
+                    {previousRide.dropoff_location?.split(',')[0] || 'Previous Dropoff'}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-500/10">
+                <span className="text-[10px] text-slate-500 font-bold">
+                  {previousRide.captain_name ? `Captain: ${previousRide.captain_name}` : 'No Captain assigned'} · ₹{Number(previousRide.fare || 0).toFixed(0)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPickup(previousRide.pickup_location);
+                    setDropoff(previousRide.dropoff_location);
+                    if (previousRide.pickup_lat && previousRide.pickup_lng) {
+                      setPickupCoords({ lat: previousRide.pickup_lat, lng: previousRide.pickup_lng });
+                    }
+                    if (previousRide.dropoff_lat && previousRide.dropoff_lng) {
+                      setDropoffCoords({ lat: previousRide.dropoff_lat, lng: previousRide.dropoff_lng });
+                    }
+                    setCustomBidFare(Number(previousRide.fare || 0));
+                    setHasUserModifiedBid(true);
+                  }}
+                  className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[10px] font-black rounded-lg transition-all cursor-pointer shadow-xs"
+                >
+                  Repeat Route
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Locations Input */}
           <div className="space-y-3 p-3 bg-slate-500/5 rounded-2xl border border-slate-500/10">

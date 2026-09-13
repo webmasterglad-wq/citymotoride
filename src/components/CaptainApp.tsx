@@ -2318,7 +2318,53 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
                   {requestTab === 'incoming' ? (
                     /* Incoming Requests Stream */
-                    requestedRides.length === 0 ? (
+                    <>
+                      {/* Last Completed Ride Receipt */}
+                      {(() => {
+                        const lastCompleted = earningsSummary?.completedRides?.[0];
+                        if (!lastCompleted) return null;
+                        return (
+                          <div className={`p-3.5 rounded-2xl border text-left transition-all mb-4 ${
+                            isLight 
+                              ? 'bg-slate-50 border-slate-200 shadow-xs' 
+                              : 'bg-slate-900/40 border-slate-800/80'
+                          }`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs">💰</span>
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                  Last Completed Trip Earnings
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20">
+                                +₹{Number(lastCompleted.fare || 0).toFixed(0)}
+                              </span>
+                            </div>
+                            
+                            <div className="text-[11px] space-y-1 opacity-85">
+                              <div className="flex items-center gap-1.5 truncate">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                <span className="truncate text-slate-600 dark:text-slate-300 font-medium">
+                                  {lastCompleted.pickup_location?.split(',')[0]}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 truncate">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                                <span className="truncate text-slate-600 dark:text-slate-300 font-medium">
+                                  {lastCompleted.dropoff_location?.split(',')[0]}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-500/10 text-[10px] text-slate-500 font-bold">
+                              <span>Passenger: {lastCompleted.passenger_name || 'Passenger'}</span>
+                              <span>Completed at {new Date(lastCompleted.completed_at || lastCompleted.created_at || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {requestedRides.length === 0 ? (
                       <div className="p-8 text-center space-y-2 flex flex-col items-center justify-center min-h-[180px] border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
                         <div className="w-10 h-10 rounded-full bg-slate-500/10 text-slate-500 flex items-center justify-center text-sm font-bold animate-pulse">
                           📡
@@ -2466,7 +2512,8 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                           );
                         })}
                       </div>
-                    )
+                    )}
+                    </>
                   ) : (
                     /* Skipped/Declined Stream */
                     declinedRides.length === 0 ? (
