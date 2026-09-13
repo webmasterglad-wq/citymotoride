@@ -1354,7 +1354,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             }`}
             title="View Full Today's Earnings Breakdown"
           >
-            <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Today's Income</span>
             <span>₹{earningsSummary.todayIncome.toFixed(0)}</span>
             <span className="text-[10px] font-normal opacity-75 hidden sm:inline">
               ({earningsSummary.todayCompletedCount} rides)
