@@ -1989,20 +1989,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                           }`}
                         >
                           {/* inDrive Style Timeline Bar: Countdown to accept driver's offer */}
-                          <div className={`p-2.5 rounded-xl border mb-3 ${
-                            isLight ? 'bg-slate-50/90 border-slate-200' : 'bg-slate-950/70 border-slate-800'
-                          }`}>
-                            <InDriveTimelineBar
-                              id={`passenger-offer-timeline-${offer.id}`}
-                              variant="passenger_offer"
-                              totalDurationSeconds={25}
-                              startedAt={offer.created_at}
-                              isLight={isLight}
-                              label="Time to accept driver's offer"
-                              isPaused={isAcceptingOfferId === offer.id}
-                              onExpire={() => handleOfferTimeout(offer)}
-                            />
-                          </div>
+                          {/* Timeline bar removed per request */}
 
                           {/* Captain Info & Offered Fare */}
                           <div className="flex items-start justify-between gap-2">
@@ -2113,20 +2100,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                     </div>
                   </div>
 
-                  {/* inDrive Style Live Broadcast Search Timeline Bar */}
-                  <div className={`p-2.5 rounded-xl border ${
-                    isLight ? 'bg-white border-slate-200' : 'bg-slate-950/80 border-slate-800'
-                  }`}>
-                    <InDriveTimelineBar
-                      id="passenger-search-radar-timeline"
-                      variant="search_radar"
-                      totalDurationSeconds={30}
-                      startedAt={activeRide.created_at}
-                      isLight={isLight}
-                      label="inDrive live driver search cycle"
-                      compact={true}
-                    />
-                  </div>
+                  {/* inDrive Style Live Broadcast Search Timeline Bar removed */}
                 </div>
 
                 {/* Offer Your Price to Captain (Raise Offer while searching) */}
