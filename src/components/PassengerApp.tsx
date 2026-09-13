@@ -1145,15 +1145,15 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             >
               {!activeRide ? (
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-slate-500/10 text-slate-500 flex items-center justify-center font-bold text-sm shrink-0">
-                    🚫
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold text-sm shrink-0">
+                    🛵
                   </div>
                   <div className="min-w-0">
                     <p className={`text-xs font-black truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                      Ride Booking Removed
+                      {pickup ? pickup.split(',')[0] : 'Choose Pickup'} → {dropoff ? dropoff.split(',')[0] : 'Choose Dropoff'}
                     </p>
-                    <p className="text-[10px] text-slate-500 font-bold">
-                      Booking Flow Disabled · Tap to view details
+                    <p className="text-[10px] text-emerald-600 font-bold">
+                      Estimated ₹{displayFare.toFixed(0)} · Click to open booking
                     </p>
                   </div>
                 </div>
@@ -1186,7 +1186,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 }}
                 className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs shrink-0 shadow-sm cursor-pointer"
               >
-                Open Details
+                Open Booking
               </button>
             </div>
           ) : (
@@ -1212,17 +1212,233 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
       {/* Active Ride Mode vs Booking Mode */}
       {!activeRide ? (
-        <div className="p-8 text-center space-y-3 flex flex-col items-center justify-center min-h-[300px]">
-          <div className="w-12 h-12 rounded-2xl bg-slate-500/10 text-slate-500 flex items-center justify-center text-xl font-bold mx-auto">
-            🚫
+        /* ================= INDRIVE OFFER PRICE BOOKING INTERFACE ================= */
+        <form onSubmit={handleBookRide} className="p-4 space-y-4">
+          {/* Header */}
+          <div className="flex items-center justify-between pb-1">
+            <h3 className={`text-sm font-black uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+              Book Moto Ride (inDrive Style)
+            </h3>
+            <span className="text-[10px] px-2 py-0.5 bg-emerald-500/10 text-emerald-600 font-bold rounded-full border border-emerald-500/20">
+              Fair Fare Bidding
+            </span>
           </div>
-          <h3 className="text-sm font-black text-slate-800 dark:text-slate-200">
-            Booking Flow Disabled
-          </h3>
-          <p className="text-xs max-w-xs mx-auto text-slate-500 dark:text-slate-400">
-            The passenger's ride booking flow card has been completely removed from this application.
-          </p>
-        </div>
+
+          {/* Locations Input */}
+          <div className="space-y-3 p-3 bg-slate-500/5 rounded-2xl border border-slate-500/10">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-wide opacity-75">
+                Pickup Location
+              </label>
+              <GoogleLocationSearchInput
+                type="pickup"
+                value={pickup}
+                placeholder="Enter pickup address..."
+                onChange={(val, coords) => {
+                  setPickup(val);
+                  if (coords) setPickupCoords(coords);
+                }}
+                currentGpsCoords={liveGPS.coords}
+                currentGpsLabel={liveGPS.nearestLandmark}
+                onUseCurrentGps={handleUseLiveLocationAsPickup}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-wide opacity-75">
+                Dropoff Location
+              </label>
+              <GoogleLocationSearchInput
+                type="dropoff"
+                value={dropoff}
+                placeholder="Where is your destination?"
+                onChange={(val, coords) => {
+                  setDropoff(val);
+                  if (coords) setDropoffCoords(coords);
+                }}
+              />
+            </div>
+
+            {distanceKm > 0 && (
+              <div className="flex items-center justify-between pt-1 text-[11px] font-bold text-slate-500">
+                <span>Distance: {distanceKm.toFixed(1)} km</span>
+                <span>Est. Time: {estimatedMins} mins</span>
+              </div>
+            )}
+          </div>
+
+          {/* Service Selection / Ride Tiers */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black uppercase tracking-wide opacity-75 block px-1">
+              Choose Service
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              {RIDE_TIERS.map((tier) => {
+                const isSelected = selectedTier === tier.id;
+                const calculatedTierFare = baseCalculatedFare > 0 
+                  ? baseCalculatedFare * tier.multiplier 
+                  : (tier.id === 'moto_delivery' ? 20 : 25);
+                return (
+                  <button
+                    key={tier.id}
+                    type="button"
+                    onClick={() => setSelectedTier(tier.id)}
+                    className={`p-3 rounded-2xl border text-left transition-all relative flex flex-col justify-between min-h-[90px] cursor-pointer ${
+                      isSelected
+                        ? 'bg-emerald-500/10 border-emerald-500 text-slate-900 dark:text-slate-100 shadow-sm shadow-emerald-500/10'
+                        : 'bg-white/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between w-full">
+                      <span className="text-2xl">{tier.icon}</span>
+                      {tier.popular && (
+                        <span className="text-[8px] bg-amber-400 text-slate-950 font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                          Popular
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-black leading-tight mt-1 truncate">
+                        {tier.name}
+                      </p>
+                      <p className="text-[9px] text-slate-500 truncate leading-none mt-0.5">
+                        Est. ₹{calculatedTierFare.toFixed(0)}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Delivery Note (if Moto Courier selected) */}
+          {selectedTier === 'moto_delivery' && (
+            <div className="space-y-1 animate-in slide-in-from-top-2 duration-200">
+              <label className="text-[10px] font-black uppercase tracking-wide opacity-75 block px-1">
+                Courier Parcel Details
+              </label>
+              <input
+                type="text"
+                value={passengerNotes}
+                onChange={(e) => setPassengerNotes(e.target.value)}
+                placeholder="What are we delivering? (e.g. Keys, Documents, Gift box)"
+                className={`w-full text-xs px-3 py-2.5 rounded-xl border outline-none bg-white/50 dark:bg-slate-900/50 ${
+                  isLight
+                    ? 'border-slate-200 focus:border-emerald-500'
+                    : 'border-slate-800 focus:border-emerald-500'
+                }`}
+              />
+            </div>
+          )}
+
+          {/* Fare Bidding Segment (inDrive style) */}
+          <div className="space-y-2 p-3 bg-slate-500/5 rounded-2xl border border-slate-500/10">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-black">Your Offer Price</h4>
+                <p className="text-[9px] text-slate-500 font-bold">
+                  Recommended: ₹{recommendedFare.toFixed(0)} (Min. ₹10)
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = customBidFare > 0 ? customBidFare : recommendedFare;
+                    const next = Math.max(10, Math.round(current - 10));
+                    setCustomBidFare(next);
+                    setHasUserModifiedBid(true);
+                  }}
+                  className="w-8 h-8 rounded-full bg-slate-500/10 hover:bg-slate-500/20 text-lg flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  -
+                </button>
+                <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                  ₹{displayFare.toFixed(0)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const current = customBidFare > 0 ? customBidFare : recommendedFare;
+                    const next = Math.round(current + 10);
+                    setCustomBidFare(next);
+                    setHasUserModifiedBid(true);
+                  }}
+                  className="w-8 h-8 rounded-full bg-slate-500/10 hover:bg-slate-500/20 text-lg flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Bid Increment Chips */}
+            <div className="flex gap-2 justify-center pt-1 border-t border-slate-500/5">
+              {[10, 20, 50].map((amt) => (
+                <button
+                  key={amt}
+                  type="button"
+                  onClick={() => {
+                    const current = customBidFare > 0 ? customBidFare : recommendedFare;
+                    setCustomBidFare(current + amt);
+                    setHasUserModifiedBid(true);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 text-xs font-black rounded-xl border border-emerald-500/20 cursor-pointer flex-1 text-center"
+                >
+                  +₹{amt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Payment Option Selector */}
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[10px] font-black uppercase tracking-wide opacity-75">
+              Payment Method
+            </span>
+            <div className="flex gap-2 text-xs font-black">
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('upi')}
+                className={`px-3 py-1 rounded-full border transition-all cursor-pointer ${
+                  paymentMethod === 'upi'
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-500'
+                    : 'bg-transparent border-slate-300 dark:border-slate-700 text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                UPI
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('cash')}
+                className={`px-3 py-1 rounded-full border transition-all cursor-pointer ${
+                  paymentMethod === 'cash'
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-500'
+                    : 'bg-transparent border-slate-300 dark:border-slate-700 text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Cash
+              </button>
+            </div>
+          </div>
+
+          {/* Submit Action Button */}
+          <button
+            type="submit"
+            disabled={isSubmitting || !pickup.trim() || !dropoff.trim()}
+            className={`w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-500/20 disabled:text-slate-500 text-slate-950 font-black rounded-2xl text-sm shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2`}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                Searching for Captains...
+              </>
+            ) : (
+              <>
+                🛵 Find a Captain
+              </>
+            )}
+          </button>
+        </form>
       ) : (
         /* ================= UBER / INDRIVE LIVE ACTIVE RIDE TRACKER ================= */
         <div id="uber-active-ride-sheet" className="p-4 space-y-3.5 flex flex-col animate-in fade-in duration-300">

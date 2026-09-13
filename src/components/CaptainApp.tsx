@@ -2248,16 +2248,266 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                 : 'bg-slate-950/95 border-slate-800/90 text-slate-100 shadow-black/70'
             }`}
           >
-            <div className="p-8 text-center space-y-3 flex flex-col items-center justify-center">
-              <div className="w-12 h-12 rounded-2xl bg-slate-500/10 text-slate-500 flex items-center justify-center text-xl font-bold mx-auto">
-                🚫
+            {/* Real-time Bid & Acceptance Matching Content */}
+            <div className="space-y-4 text-left">
+              {/* Tabs strip */}
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setRequestTab('incoming')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-black transition-all cursor-pointer ${
+                      requestTab === 'incoming'
+                        ? 'bg-emerald-500 text-slate-950 shadow-sm font-bold'
+                        : 'bg-transparent text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Incoming ({requestedRides.length})
+                  </button>
+                  <button
+                    onClick={() => setRequestTab('declined')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-black transition-all cursor-pointer ${
+                      requestTab === 'declined'
+                        ? 'bg-emerald-500 text-slate-950 shadow-sm font-bold'
+                        : 'bg-transparent text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    Skipped ({declinedRides.length})
+                  </button>
+                </div>
+
+                {requestTab === 'declined' && declinedRides.length > 0 && (
+                  <button
+                    onClick={handleRestoreAllSkipped}
+                    className="text-[10px] font-black text-emerald-600 hover:text-emerald-500 hover:underline cursor-pointer"
+                  >
+                    Restore All
+                  </button>
+                )}
               </div>
-              <h4 className={`text-sm font-black ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
-                Ride Acceptance Disabled
-              </h4>
-              <p className={`text-xs max-w-xs mx-auto ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                The captain's ride accept flow card has been completely removed from this application.
-              </p>
+
+              {!isOnline ? (
+                /* Offline Screen */
+                <div className="p-8 text-center space-y-3 flex flex-col items-center justify-center min-h-[180px]">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-xl font-bold mx-auto">
+                    🌙
+                  </div>
+                  <h4 className="text-sm font-black">You are Offline</h4>
+                  <p className="text-xs max-w-xs mx-auto text-slate-500 dark:text-slate-400">
+                    Please go online in the top-right header to start receiving and bidding on ride requests in this simulator.
+                  </p>
+                </div>
+              ) : (
+                /* Online Streams */
+                <div className="space-y-3">
+                  {/* Concurrency Notifications */}
+                  {concurrencyAlert && (
+                    <div className={`p-3 rounded-2xl border text-xs flex items-center justify-between gap-2 animate-in fade-in duration-200 ${
+                      concurrencyAlert.type === 'success'
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600'
+                        : 'bg-rose-500/10 border-rose-500/30 text-rose-600'
+                    }`}>
+                      <span>{concurrencyAlert.message}</span>
+                      <button
+                        onClick={() => setConcurrencyAlert(null)}
+                        className="text-xs font-black hover:opacity-80 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {requestTab === 'incoming' ? (
+                    /* Incoming Requests Stream */
+                    requestedRides.length === 0 ? (
+                      <div className="p-8 text-center space-y-2 flex flex-col items-center justify-center min-h-[180px] border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+                        <div className="w-10 h-10 rounded-full bg-slate-500/10 text-slate-500 flex items-center justify-center text-sm font-bold animate-pulse">
+                          📡
+                        </div>
+                        <h4 className="text-xs font-black">Awaiting Ride Bookings</h4>
+                        <p className="text-[11px] max-w-xs mx-auto text-slate-500">
+                          Waiting for passengers to submit bookings from Device A. Your live simulator status is transmitting location updates.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {requestedRides.map((ride) => {
+                          const originalFare = Number(ride.fare) || 25;
+                          const hasOffer = myOffers[ride.id] !== undefined;
+
+                          if (hasOffer) {
+                            return (
+                              <div key={ride.id} className="p-4 border rounded-2xl bg-emerald-500/5 border-emerald-500/20 space-y-3 animate-in fade-in duration-200 text-left">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                      Bidding Offer Sent
+                                    </span>
+                                  </div>
+                                  <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                                    Your Bid: ₹{myOffers[ride.id].offered_fare}
+                                  </span>
+                                </div>
+                                <div className="text-xs font-semibold">
+                                  Waiting for <strong className="text-emerald-600">{ride.passenger_name}</strong> to review and accept your bid...
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelCaptainOffer(ride.id)}
+                                  className="w-full py-2 bg-slate-500/10 hover:bg-slate-500/20 text-slate-700 dark:text-slate-300 font-black rounded-xl text-xs transition-colors cursor-pointer"
+                                >
+                                  Withdraw Offer
+                                </button>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div key={ride.id} className="p-4 border rounded-2xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs space-y-3.5 animate-in slide-in-from-bottom-2 duration-300 text-left">
+                              {/* Passenger & Zone Info */}
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-base border border-slate-200 dark:border-slate-700 shadow-inner">
+                                    👤
+                                  </div>
+                                  <div>
+                                    <h5 className="text-xs font-black leading-tight flex items-center gap-1.5">
+                                      {ride.passenger_name || 'Rider'}
+                                      <span className="text-[10px] font-bold text-amber-500 flex items-center gap-0.5">
+                                        ★ 4.95
+                                      </span>
+                                    </h5>
+                                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">
+                                      {ride.service_type === 'moto_delivery' ? '📦 Parcel Courier' : '🛵 Moto Comfort'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="text-right">
+                                  <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                                    ₹{originalFare.toFixed(0)}
+                                  </span>
+                                  <p className="text-[9px] text-slate-400 font-bold">Passenger Offer</p>
+                                </div>
+                              </div>
+
+                              {/* Ride Route MapPins */}
+                              <div className="space-y-1.5 text-xs">
+                                <div className="flex items-start gap-2">
+                                  <span className="text-emerald-500 text-sm shrink-0 mt-0.5">🟢</span>
+                                  <p className="font-bold truncate opacity-85">
+                                    <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wide leading-none">Pickup</span>
+                                    {ride.pickup_location}
+                                  </p>
+                                </div>
+                                <div className="flex items-start gap-2 border-t border-dashed border-slate-200 dark:border-slate-800 pt-1.5">
+                                  <span className="text-rose-500 text-sm shrink-0 mt-0.5">🔴</span>
+                                  <p className="font-bold truncate opacity-85">
+                                    <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wide leading-none">Dropoff</span>
+                                    {ride.dropoff_location}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Courier Delivery Notes */}
+                              {ride.service_type === 'moto_delivery' && ride.delivery_notes && (
+                                <div className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/10 text-[11px] font-medium text-amber-600 dark:text-amber-400 space-y-0.5">
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-amber-500/80 block">Parcel Instructions:</span>
+                                  <p className="italic">"{ride.delivery_notes}"</p>
+                                </div>
+                              )}
+
+                              {/* Distance and Estimated time */}
+                              <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 px-1">
+                                <span>Distance: {Number(ride.distance_km || 0).toFixed(1)} km</span>
+                                <span>Est. Ride: {ride.estimated_mins || 5} mins</span>
+                              </div>
+
+                              {/* Bidding Negotiation row */}
+                              <div className="space-y-2">
+                                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 px-1">
+                                  Counter-Offer Price (Bidding)
+                                </p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {[10, 20, 30].map((amt) => {
+                                    const counterValue = Math.round(originalFare + amt);
+                                    return (
+                                      <button
+                                        key={amt}
+                                        type="button"
+                                        onClick={() => handleSendCaptainOffer(ride, counterValue)}
+                                        className="py-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 text-xs font-black rounded-xl border border-emerald-500/20 cursor-pointer text-center"
+                                      >
+                                        ₹{counterValue} (+₹{amt})
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* Action Buttons row */}
+                              <div className="flex items-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeclineRide(ride)}
+                                  className="flex-1 py-3 bg-slate-500/10 hover:bg-slate-500/20 text-slate-700 dark:text-slate-300 text-xs font-black rounded-2xl transition-all cursor-pointer"
+                                >
+                                  Skip Request
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAcceptRide(ride)}
+                                  className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-2xl shadow-sm transition-all cursor-pointer"
+                                >
+                                  Accept for ₹{originalFare.toFixed(0)}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )
+                  ) : (
+                    /* Skipped/Declined Stream */
+                    declinedRides.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-slate-500">
+                        You haven't skipped any ride requests in this session.
+                      </div>
+                    ) : (
+                      <div className="space-y-3 text-left">
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 px-1 font-bold">
+                          <span>Skipped in this session:</span>
+                          <button
+                            onClick={handleClearDeclined}
+                            className="text-rose-500 hover:text-rose-400 underline cursor-pointer"
+                          >
+                            Clear List
+                          </button>
+                        </div>
+                        {declinedRides.map((item) => (
+                          <div key={item.ride.id} className="p-3 border rounded-2xl border-slate-200 dark:border-slate-800 bg-slate-500/5 flex items-center justify-between gap-3 animate-in fade-in duration-200">
+                            <div className="min-w-0">
+                              <p className="text-xs font-black truncate">
+                                {item.ride.pickup_location.split(',')[0]} → {item.ride.dropoff_location.split(',')[0]}
+                              </p>
+                              <p className="text-[10px] text-slate-400 font-bold">
+                                Offer: ₹{Number(item.ride.fare).toFixed(0)} · Skipped at {item.declinedAt}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreRide(item)}
+                              className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-[10px] font-black rounded-xl cursor-pointer shrink-0 transition-colors"
+                            >
+                              Restore
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
