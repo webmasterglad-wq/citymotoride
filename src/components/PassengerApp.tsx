@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   MapPin,
   Navigation,
@@ -54,6 +54,7 @@ import {
   createRideBooking,
   fetchActiveRideForPassenger,
   fetchLatestRideForPassenger,
+  fetchPassengerRideHistory,
   fetchRideById,
   submitPassengerRatingForRide,
   updateRideStatus,
@@ -149,6 +150,54 @@ const RIDE_TIERS: RideTier[] = [
   },
 ];
 
+const DEFAULT_PREVIOUS_RIDES: Ride[] = [
+  {
+    id: 'past-ride-1',
+    passenger_id: 'sample-passenger',
+    passenger_name: 'Rider',
+    pickup_location: 'Sector 17 Plaza & Shopping Complex, Chandigarh',
+    pickup_lat: 30.7421,
+    pickup_lng: 76.7825,
+    dropoff_location: 'Elante Mall & Business Hub, Industrial Area, Chandigarh',
+    dropoff_lat: 30.7056,
+    dropoff_lng: 76.8012,
+    fare: 85,
+    service_type: 'moto_comfort',
+    status: 'completed',
+    created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+  } as any,
+  {
+    id: 'past-ride-2',
+    passenger_id: 'sample-passenger',
+    passenger_name: 'Rider',
+    pickup_location: 'Sukhna Lake Tourist Complex, Sector 1, Chandigarh',
+    pickup_lat: 30.7421,
+    pickup_lng: 76.8118,
+    dropoff_location: 'Rock Garden of Chandigarh, Sector 1, Chandigarh',
+    dropoff_lat: 30.7525,
+    dropoff_lng: 76.8012,
+    fare: 65,
+    service_type: 'moto_comfort',
+    status: 'completed',
+    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+  } as any,
+  {
+    id: 'past-ride-3',
+    passenger_id: 'sample-passenger',
+    passenger_name: 'Rider',
+    pickup_location: 'Sector 20 Market & HUDA Complex, Panchkula',
+    pickup_lat: 30.6852,
+    pickup_lng: 76.8587,
+    dropoff_location: 'Fun Republic Mall & Multiplex, Manimajra',
+    dropoff_lat: 30.7224,
+    dropoff_lng: 76.8273,
+    fare: 95,
+    service_type: 'moto_delivery',
+    status: 'completed',
+    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+  } as any
+];
+
 export const PassengerApp: React.FC<PassengerAppProps> = ({
   passengerUser = {
     id: getStoredPassengerId(),
@@ -212,6 +261,8 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<string>('idle');
   const [captainArrivedNotice, setCaptainArrivedNotice] = useState<{ captainName: string; time: string } | null>(null);
+  const [previousRides, setPreviousRides] = useState<Ride[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
 
   const { isLight } = useTheme();
   const { pricing, calculateFare } = usePricing();
@@ -347,6 +398,24 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     setDropoffCoords(currentPickCoords);
   };
 
+  // Rebook past ride
+  const handleRebookRide = (pastRide: Ride) => {
+    setPickup(pastRide.pickup_location);
+    if (pastRide.pickup_lat !== null && pastRide.pickup_lng !== null && pastRide.pickup_lat !== undefined && pastRide.pickup_lng !== undefined) {
+      setPickupCoords({ lat: pastRide.pickup_lat, lng: pastRide.pickup_lng });
+    }
+    setDropoff(pastRide.dropoff_location);
+    if (pastRide.dropoff_lat !== null && pastRide.dropoff_lng !== null && pastRide.dropoff_lat !== undefined && pastRide.dropoff_lng !== undefined) {
+      setDropoffCoords({ lat: pastRide.dropoff_lat, lng: pastRide.dropoff_lng });
+    }
+    setSelectedTier(pastRide.service_type || 'moto_comfort');
+    if (pastRide.fare) {
+      setCustomBidFare(pastRide.fare);
+      setCustomBidInput(pastRide.fare.toString());
+      setHasUserModifiedBid(true);
+    }
+  };
+
   // Load existing active ride on mount
   useEffect(() => {
     let isMounted = true;
@@ -371,6 +440,23 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       isMounted = false;
     };
   }, [passengerUser.id]);
+
+  // Load previous ride history
+  const loadRideHistory = useCallback(async () => {
+    if (!isSupabaseConfigured() || !passengerUser?.id) return;
+    setLoadingHistory(true);
+    const { data, error } = await fetchPassengerRideHistory(passengerUser.id);
+    if (!error && data) {
+      setPreviousRides(data.filter(r => r.status === 'completed' || r.status === 'cancelled'));
+    }
+    setLoadingHistory(false);
+  }, [passengerUser?.id]);
+
+  useEffect(() => {
+    if (!activeRide) {
+      loadRideHistory();
+    }
+  }, [activeRide, loadRideHistory]);
 
   // Realtime Subscription & Polling Fallback
   useEffect(() => {
@@ -1595,6 +1681,69 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               )}
             </button>
           </form>
+
+          {/* Previous Ride Booking Style / Quick Rebook Section */}
+          {(() => {
+            const ridesToDisplay = previousRides.length > 0 ? previousRides : DEFAULT_PREVIOUS_RIDES;
+            return (
+              <div className="pt-3 border-t border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <span className={`text-[10px] font-black uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {previousRides.length > 0 ? 'Your Previous Bookings' : 'Suggested Previous Bookings'}
+                  </span>
+                  <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                    Tap to auto-fill
+                  </span>
+                </div>
+                
+                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 scrollbar-thin">
+                  {ridesToDisplay.slice(0, 3).map((pastRide) => {
+                    const formattedDate = pastRide.created_at 
+                      ? new Date(pastRide.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : 'Recent Trip';
+                    const isDelivery = pastRide.service_type === 'moto_delivery';
+                    
+                    return (
+                      <button
+                        key={pastRide.id}
+                        type="button"
+                        onClick={() => handleRebookRide(pastRide)}
+                        className={`w-full text-left p-2.5 border rounded-xl flex items-center justify-between gap-3 transition-all transform active:scale-[0.98] hover:border-emerald-500/50 cursor-pointer ${
+                          isLight 
+                            ? 'bg-white hover:bg-slate-50 border-slate-150 shadow-2xs' 
+                            : 'bg-slate-950 hover:bg-slate-900 border-slate-850'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                            isDelivery ? 'bg-amber-500/15 text-amber-500' : 'bg-emerald-500/15 text-emerald-500'
+                          }`}>
+                            {isDelivery ? '📦' : '🛵'}
+                          </div>
+                          <div className="min-w-0">
+                            <p className={`text-[11px] font-bold truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                              {pastRide.pickup_location.split(',')[0]} → {pastRide.dropoff_location.split(',')[0]}
+                            </p>
+                            <p className="text-[9px] text-slate-400 font-medium">
+                              {formattedDate} · {isDelivery ? 'Moto Courier' : 'Comfort Ride'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className={`text-xs font-black block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                            ₹{pastRide.fare}
+                          </span>
+                          <span className="text-[8px] uppercase tracking-wider font-extrabold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.2 rounded">
+                            Rebook
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       ) : (
         /* ================= UBER / INDRIVE LIVE ACTIVE RIDE TRACKER ================= */
