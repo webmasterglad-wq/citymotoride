@@ -69,6 +69,7 @@ import { ChatMessage } from '../types/ride';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { InRideChatModal } from './InRideChatModal';
 import { CaptainProfileModal } from './CaptainProfileModal';
+import { TodayIncomeWindow } from './TodayIncomeWindow';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { InDriveTimelineBar } from './InDriveTimelineBar';
 import { useTheme } from '../context/ThemeContext';
@@ -191,6 +192,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
   });
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [profileModalTab, setProfileModalTab] = useState<'profile' | 'vehicle' | 'earnings' | 'preferences' | 'checklist'>('profile');
+  const [isIncomeWindowOpen, setIsIncomeWindowOpen] = useState<boolean>(false);
   const [onlineMinutes, setOnlineMinutes] = useState<number>(0);
 
   // Database-driven Earnings Summary strictly from completed rides
@@ -1277,7 +1279,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           id="captain-header-bike-image-input"
         />
 
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           {/* Two lines button in top last left corner to show captain profile full details on one click */}
           <button
             id="captain-header-two-lines-menu-btn"
@@ -1295,6 +1297,34 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           >
             <span className="w-4 h-0.5 rounded-full bg-slate-700 dark:bg-slate-200 group-hover:bg-amber-600 dark:group-hover:bg-amber-400 transition-colors" />
             <span className="w-4 h-0.5 rounded-full bg-slate-700 dark:bg-slate-200 group-hover:bg-amber-600 dark:group-hover:bg-amber-400 transition-colors" />
+          </button>
+
+          {/* Today's Income Minimize Window Link in Top Left Corner */}
+          <button
+            id="captain-header-today-income-window-link-btn"
+            type="button"
+            onClick={() => setIsIncomeWindowOpen((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl border transition-all cursor-pointer shadow-xs active:scale-95 shrink-0 group select-none ${
+              isIncomeWindowOpen
+                ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black shadow-emerald-500/25 ring-2 ring-emerald-400/40'
+                : isLight
+                ? 'bg-emerald-50/90 hover:bg-emerald-100 border-emerald-200 text-emerald-900'
+                : 'bg-emerald-950/40 hover:bg-emerald-900/60 border-emerald-800/60 text-emerald-300'
+            }`}
+            title="Click to open Today's Income Minimized Window"
+          >
+            <span className="w-5 h-5 rounded-lg bg-emerald-500 text-slate-950 flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
+              ₹
+            </span>
+            <div className="flex flex-col items-start leading-none text-left">
+              <span className="text-[9px] uppercase font-bold tracking-tight opacity-75">
+                Today's Income
+              </span>
+              <span className="text-xs font-black font-mono mt-0.5">
+                ₹{earningsSummary.todayIncome.toFixed(0)}
+              </span>
+            </div>
+            <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity ml-0.5" />
           </button>
 
           <div className="relative group shrink-0">
@@ -3306,6 +3336,19 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         totalEarnings={earningsSummary.totalEarnings}
         todayRides={earningsSummary.todayRides}
         completedCount={earningsSummary.todayCompletedCount}
+      />
+
+      {/* Floating Today's Income Minimized Window (Triggered from Top Left Corner) */}
+      <TodayIncomeWindow
+        isOpen={isIncomeWindowOpen}
+        onClose={() => setIsIncomeWindowOpen(false)}
+        onOpenFullEarnings={() => {
+          setProfileModalTab('earnings');
+          setIsProfileOpen(true);
+        }}
+        earningsSummary={earningsSummary}
+        onlineMinutes={onlineMinutes}
+        isLight={isLight}
       />
     </div>
   );
