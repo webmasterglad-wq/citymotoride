@@ -320,8 +320,17 @@ export const subscribeToIncomingRideBroadcasts = (onNewRide: (ride: any) => void
       onNewRide(e.detail);
     }
   };
+
+  // Handle cross-device SSE events
+  const handleSseEvent = (e: any) => {
+    if ((e.detail?.type === 'ride_created' || e.detail?.type === 'ride_updated') && e.detail?.payload) {
+      onNewRide(e.detail.payload);
+    }
+  };
+
   window.addEventListener('motoride:new_ride_broadcast', handleCustomEvent);
   window.addEventListener('motoride_new_incoming_ride', handleCustomEvent);
+  window.addEventListener('motoride:sse_event', handleSseEvent);
 
   // Handle cross-tab BroadcastChannel on both channels
   let bc1: BroadcastChannel | null = null;
@@ -362,6 +371,7 @@ export const subscribeToIncomingRideBroadcasts = (onNewRide: (ride: any) => void
   return () => {
     window.removeEventListener('motoride:new_ride_broadcast', handleCustomEvent);
     window.removeEventListener('motoride_new_incoming_ride', handleCustomEvent);
+    window.removeEventListener('motoride:sse_event', handleSseEvent);
     window.removeEventListener('storage', handleStorageEvent);
     if (bc1) {
       try {

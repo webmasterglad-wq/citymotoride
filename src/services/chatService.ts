@@ -70,52 +70,63 @@ export const markMessagesAsRead = (rideId: string, role: 'passenger' | 'captain'
 };
 
 /**
- * Fetch messages from Supabase database if available and merge with local cache
+ * Fetch messages from Server REST API and Supabase database and merge with local cache
  */
 export const syncChatMessagesFromDatabase = async (rideId: string): Promise<ChatMessage[]> => {
   if (!rideId) return [];
   const localMsgs = getStoredChatMessages(rideId);
-  const supabase = getSupabaseClient();
-  if (!supabase) return localMsgs;
+  const existingIds = new Set(localMsgs.map((m) => m.id));
+  const combined = [...localMsgs];
 
+  // 1. Fetch from Server REST API
   try {
-    const { data, error } = await supabase
-      .from('rides')
-      .select('chat_messages')
-      .eq('id', rideId)
-      .single();
-
-    if (!error && data?.chat_messages && Array.isArray(data.chat_messages)) {
-      const dbMsgs: ChatMessage[] = data.chat_messages;
-      // Merge unique by message id
-      const existingIds = new Set(localMsgs.map((m) => m.id));
-      const combined = [...localMsgs];
-
-      for (const msg of dbMsgs) {
-        if (!existingIds.has(msg.id)) {
-          combined.push(msg);
-          existingIds.add(msg.id);
+    const apiRes = await fetch(`/api/rides/${rideId}/chat`);
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (Array.isArray(json?.data)) {
+        for (const msg of json.data as ChatMessage[]) {
+          if (!existingIds.has(msg.id)) {
+            combined.push(msg);
+            existingIds.add(msg.id);
+          }
         }
       }
-
-      // Sort by creation or timestamp
-      saveChatMessagesToStorage(rideId, combined);
-      return combined;
     }
-  } catch (err) {
-    // Column might not exist yet, fallback gracefully to local storage
+  } catch {}
+
+  // 2. Fetch from Supabase
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('rides')
+        .select('chat_messages')
+        .eq('id', rideId)
+        .single();
+
+      if (!error && data?.chat_messages && Array.isArray(data.chat_messages)) {
+        const dbMsgs: ChatMessage[] = data.chat_messages;
+        for (const msg of dbMsgs) {
+          if (!existingIds.has(msg.id)) {
+            combined.push(msg);
+            existingIds.add(msg.id);
+          }
+        }
+      }
+    } catch {}
   }
 
-  return localMsgs;
+  saveChatMessagesToStorage(rideId, combined);
+  return combined;
 };
 
 /**
  * Send a new chat message with multi-channel synchronization:
- * 1. LocalStorage & in-memory cache
- * 2. Supabase Realtime WebSocket broadcast (cross-device: phone <-> laptop)
- * 3. Browser BroadcastChannel (cross-tab in same browser)
- * 4. Window CustomEvent (dual-view simulator in same window)
- * 5. Supabase Postgres rides table chat_messages column (persistence on reload)
+ * 1. Server REST API + SSE broadcast (cross-device: phone <-> laptop)
+ * 2. LocalStorage & in-memory cache
+ * 3. Supabase Realtime WebSocket broadcast
+ * 4. Browser BroadcastChannel (cross-tab in same browser)
+ * 5. Window CustomEvent (dual-view simulator in same window)
  */
 export const sendChatMessage = async (
   rideId: string,
@@ -151,7 +162,16 @@ export const sendChatMessage = async (
   const currentUnread = getUnreadCount(rideId, targetRole);
   setUnreadCount(rideId, targetRole, currentUnread + 1);
 
-  // 3. Dispatch In-Window CustomEvent (DualViewSimulator / Same Page)
+  // 3. Post to Server REST API for instant cross-device SSE broadcast
+  try {
+    fetch(`/api/rides/${rideId}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newMsg),
+    }).catch(() => {});
+  } catch {}
+
+  // 4. Dispatch In-Window CustomEvent (DualViewSimulator / Same Page)
   try {
     window.dispatchEvent(
       new CustomEvent('motoride:chat_message', {
@@ -160,7 +180,7 @@ export const sendChatMessage = async (
     );
   } catch {}
 
-  // 4. Send via Browser BroadcastChannel (Across separate tabs on same machine)
+  // 5. Send via Browser BroadcastChannel (Across separate tabs on same machine)
   try {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       const bc = new BroadcastChannel(BROADCAST_BUS_NAME);
@@ -178,7 +198,7 @@ export const sendChatMessage = async (
     }
   } catch {}
 
-  // 5. Trigger storage event ping
+  // 6. Trigger storage event ping
   try {
     localStorage.setItem(
       'motoride_last_chat_ping',
@@ -186,7 +206,7 @@ export const sendChatMessage = async (
     );
   } catch {}
 
-  // 6. Supabase Realtime WebSocket broadcast (Across different phones/devices)
+  // 7. Supabase Realtime WebSocket broadcast
   const supabase = getSupabaseClient();
   if (supabase) {
     try {
@@ -201,14 +221,12 @@ export const sendChatMessage = async (
         }
       });
 
-      // Also send immediately if channel already subscribed
       channel.send({
         type: 'broadcast',
         event: 'new_chat_message',
         payload: { rideId, message: newMsg },
       }).catch(() => {});
 
-      // 7. Persist to Supabase Database (if column exists)
       Promise.resolve(
         supabase
           .from('rides')
@@ -255,13 +273,22 @@ export const subscribeToRideChat = (
     onNewMessage(msg);
   };
 
-  // 1. Same Window CustomEvent
+  // 1. Same Window CustomEvent & SSE CustomEvent
   const handleCustomEvent = (e: any) => {
     if (e.detail?.rideId === rideId && e.detail?.message) {
       handleIncomingMessage(e.detail.message);
     }
   };
+  const handleSseEvent = (e: any) => {
+    if (e.detail?.type === 'chat_message' && e.detail?.payload) {
+      const msg = e.detail.payload as ChatMessage;
+      if (msg.rideId === rideId) {
+        handleIncomingMessage(msg);
+      }
+    }
+  };
   window.addEventListener('motoride:chat_message', handleCustomEvent);
+  window.addEventListener('motoride:sse_event', handleSseEvent);
 
   // 2. Cross-tab BroadcastChannel
   let bc: BroadcastChannel | null = null;
@@ -318,6 +345,7 @@ export const subscribeToRideChat = (
   // Cleanup function
   return () => {
     window.removeEventListener('motoride:chat_message', handleCustomEvent);
+    window.removeEventListener('motoride:sse_event', handleSseEvent);
     window.removeEventListener('storage', handleStorageEvent);
     if (bc) {
       try {
