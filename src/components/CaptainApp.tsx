@@ -1277,7 +1277,26 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           id="captain-header-bike-image-input"
         />
 
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0">
+          {/* Two lines button in top last left corner to show captain profile full details on one click */}
+          <button
+            id="captain-header-two-lines-menu-btn"
+            type="button"
+            onClick={() => {
+              setProfileModalTab('profile');
+              setIsProfileOpen(true);
+            }}
+            className={`w-9 h-9 rounded-2xl border flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0 group ${
+              isLight
+                ? 'bg-slate-100 hover:bg-amber-100 border-slate-200 hover:border-amber-400 text-slate-800'
+                : 'bg-slate-900 hover:bg-amber-500/20 border-slate-800 hover:border-amber-500/40 text-slate-200'
+            }`}
+            title="Open Captain Profile Details (1-Click)"
+          >
+            <span className="w-4 h-0.5 rounded-full bg-slate-700 dark:bg-slate-200 group-hover:bg-amber-600 dark:group-hover:bg-amber-400 transition-colors" />
+            <span className="w-4 h-0.5 rounded-full bg-slate-700 dark:bg-slate-200 group-hover:bg-amber-600 dark:group-hover:bg-amber-400 transition-colors" />
+          </button>
+
           <div className="relative group shrink-0">
             <button
               onClick={() => setIsProfileOpen(true)}
@@ -2024,6 +2043,28 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
             {/* Trip Route Details (Pickup & Drop-off with inline maps links) */}
             <div className={`p-2.5 rounded-xl border space-y-2 ${isLight ? 'bg-white border-slate-200' : 'bg-slate-950/60 border-slate-800'}`}>
+              {/* Small Capsule Navigate Button on left side above pickup location */}
+              <div className="flex items-center justify-between pb-0.5">
+                <a
+                  id="captain-capsule-navigate-btn"
+                  href={
+                    activeRide.status === 'started'
+                      ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.dropoff_location || 'Destination Dropoff')}`
+                      : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.pickup_location || 'Pickup Location')}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[10px] font-black shadow-xs transition-all active:scale-95 cursor-pointer border border-emerald-400"
+                  title="Navigate in Google Maps"
+                >
+                  <Navigation className="w-2.5 h-2.5 fill-current -rotate-45" />
+                  <span>Navigate {activeRide.status === 'started' ? 'to Drop-off' : 'to Pickup'}</span>
+                </a>
+                <span className={`text-[10px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  {activeRide.status === 'started' ? 'Trip in Progress' : 'Pickup Route'}
+                </span>
+              </div>
+
               {/* Pickup Address */}
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2 min-w-0 flex-1">
