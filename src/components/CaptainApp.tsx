@@ -1583,49 +1583,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           </div>
         </div>
 
-        {/* Active Registered Bike Status Banner */}
-        <div
-          id="captain-registered-bike-banner"
-          className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-2 text-xs transition-all ${
-            isLight
-              ? 'bg-amber-50/80 border-amber-200 text-slate-800 shadow-xs'
-              : 'bg-amber-500/10 border-amber-500/20 text-slate-200 shadow-sm'
-          }`}
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
-              <Bike className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                  Registered Bike
-                </span>
-                <span className="text-[9px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-bold">
-                  Certified
-                </span>
-              </div>
-              <span className="font-bold text-xs block truncate text-slate-900 dark:text-white">
-                {currentCaptain.vehicle_details || 'No bike registered'}
-              </span>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setProfileModalTab('vehicle');
-              setIsProfileOpen(true);
-            }}
-            className={`shrink-0 text-[11px] px-2.5 py-1 rounded-lg font-bold border transition-colors cursor-pointer ${
-              isLight
-                ? 'bg-white hover:bg-amber-100 text-slate-800 border-amber-300 shadow-xs'
-                : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border-slate-700'
-            }`}
-          >
-            {currentCaptain.vehicle_details ? 'Change Bike' : 'Register Bike'}
-          </button>
-        </div>
-
         {/* Daily Quest Goal Bar */}
         <div
           className={`p-2.5 rounded-xl border space-y-1 ${
