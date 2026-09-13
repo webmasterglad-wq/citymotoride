@@ -66,8 +66,20 @@ export const sanitizeSupabaseKey = (inputKey?: string | null): string => {
 
 // Allow runtime override for testing in AI Studio preview or when configuring in UI
 export const getStoredSupabaseConfig = () => {
-  const rawCustomUrl = localStorage.getItem('motoride_supabase_url');
-  const rawCustomKey = localStorage.getItem('motoride_supabase_anon_key');
+  let rawCustomUrl = '';
+  let rawCustomKey = '';
+  try {
+    rawCustomUrl = localStorage.getItem('motoride_supabase_url') || '';
+    rawCustomKey = localStorage.getItem('motoride_supabase_anon_key') || '';
+    if (!rawCustomUrl && DEFAULT_SUPABASE_URL) {
+      localStorage.setItem('motoride_supabase_url', DEFAULT_SUPABASE_URL);
+      rawCustomUrl = DEFAULT_SUPABASE_URL;
+    }
+    if (!rawCustomKey && DEFAULT_SUPABASE_ANON_KEY) {
+      localStorage.setItem('motoride_supabase_anon_key', DEFAULT_SUPABASE_ANON_KEY);
+      rawCustomKey = DEFAULT_SUPABASE_ANON_KEY;
+    }
+  } catch {}
 
   const rawUrl = rawCustomUrl || ENV_SUPABASE_URL;
   const rawKey = rawCustomKey || ENV_SUPABASE_ANON_KEY;
