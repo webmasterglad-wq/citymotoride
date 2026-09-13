@@ -50,14 +50,18 @@ function AppContent() {
     captainUser?.avatar_url,
   ]);
 
-  // Keep activeView locked to respective dashboard when authenticated
+  // Initialize activeView once on startup based on authenticated session without locking user navigation
+  const hasInitializedViewRef = React.useRef(false);
   useEffect(() => {
-    if (isPassengerAuthed && activeView !== 'passenger') {
+    if (hasInitializedViewRef.current) return;
+    if (isPassengerAuthed && !isCaptainAuthed) {
       setActiveView('passenger');
-    } else if (isCaptainAuthed && activeView !== 'captain') {
+      hasInitializedViewRef.current = true;
+    } else if (isCaptainAuthed && !isPassengerAuthed) {
       setActiveView('captain');
+      hasInitializedViewRef.current = true;
     }
-  }, [isPassengerAuthed, isCaptainAuthed, activeView]);
+  }, [isPassengerAuthed, isCaptainAuthed]);
 
   return (
     <div
@@ -124,22 +128,13 @@ function AppContent() {
 
         {/* ================= CAPTAIN VIEW ================= */}
         {activeView === 'captain' && (
-          !isCaptainAuthed ? (
-            <div className="py-8 px-4 my-auto">
-              <AuthScreen
-                role="captain"
-                onOpenSqlModal={() => setIsSqlModalOpen(true)}
-              />
-            </div>
-          ) : (
-            <div className="py-6 px-4">
-              <CaptainApp
-                captainUser={captainUserProp}
-                titleSuffix={captainUser?.name ? captainUser.name.split(' ')[0] : ''}
-                onOpenSqlModal={() => setIsSqlModalOpen(true)}
-              />
-            </div>
-          )
+          <div className="py-6 px-4">
+            <CaptainApp
+              captainUser={captainUserProp}
+              titleSuffix={captainUser?.name ? captainUser.name.split(' ')[0] : ''}
+              onOpenSqlModal={() => setIsSqlModalOpen(true)}
+            />
+          </div>
         )}
       </main>
 

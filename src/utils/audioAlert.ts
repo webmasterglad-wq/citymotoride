@@ -264,34 +264,47 @@ export const notifyNewIncomingRide = (ride: any) => {
   if (typeof window === 'undefined' || !ride) return;
 
   try {
-    // 1. Dispatch in-window event (DualView and same page components)
+    const fullPayload = {
+      ...ride,
+      status: ride.status || 'requested',
+      timestamp: Date.now(),
+    };
+
+    // 1. Dispatch in-window events
     window.dispatchEvent(
       new CustomEvent('motoride:new_ride_broadcast', {
-        detail: ride,
+        detail: fullPayload,
+      })
+    );
+    window.dispatchEvent(
+      new CustomEvent('motoride_new_incoming_ride', {
+        detail: fullPayload,
       })
     );
 
-    // 2. Broadcast across tabs
+    // 2. Broadcast across tabs on BOTH channels
     if ('BroadcastChannel' in window) {
       try {
-        const bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-        bc.postMessage({ type: 'NEW_RIDE_BROADCAST', ride, timestamp: Date.now() });
-        setTimeout(() => bc.close(), 1500);
+        const bc1 = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+        bc1.postMessage({ type: 'NEW_RIDE_BROADCAST', ride: fullPayload, timestamp: Date.now() });
+        setTimeout(() => {
+          try { bc1.close(); } catch {}
+        }, 3000);
+      } catch {}
+
+      try {
+        const bc2 = new BroadcastChannel('motoride_offers_bus');
+        bc2.postMessage({ type: 'NEW_RIDE_BROADCAST', ride: fullPayload, timestamp: Date.now() });
+        setTimeout(() => {
+          try { bc2.close(); } catch {}
+        }, 3000);
       } catch {}
     }
 
-    // 3. LocalStorage event trigger (cross-tab fallback)
+    // 3. LocalStorage event trigger with FULL ride record
     localStorage.setItem(
       'motoride_last_broadcast_event',
-      JSON.stringify({
-        id: ride.id,
-        service_type: ride.service_type,
-        pickup_location: ride.pickup_location,
-        dropoff_location: ride.dropoff_location,
-        fare: ride.fare,
-        passenger_name: ride.passenger_name,
-        timestamp: Date.now(),
-      })
+      JSON.stringify(fullPayload)
     );
   } catch (e) {
     console.warn('[Motoride Audio] Broadcast notification note:', e);
@@ -308,13 +321,24 @@ export const subscribeToIncomingRideBroadcasts = (onNewRide: (ride: any) => void
     }
   };
   window.addEventListener('motoride:new_ride_broadcast', handleCustomEvent);
+  window.addEventListener('motoride_new_incoming_ride', handleCustomEvent);
 
-  // Handle cross-tab BroadcastChannel
-  let bc: BroadcastChannel | null = null;
+  // Handle cross-tab BroadcastChannel on both channels
+  let bc1: BroadcastChannel | null = null;
+  let bc2: BroadcastChannel | null = null;
   if ('BroadcastChannel' in window) {
     try {
-      bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-      bc.onmessage = (event) => {
+      bc1 = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      bc1.onmessage = (event) => {
+        if (event.data?.type === 'NEW_RIDE_BROADCAST' && event.data?.ride) {
+          onNewRide(event.data.ride);
+        }
+      };
+    } catch {}
+
+    try {
+      bc2 = new BroadcastChannel('motoride_offers_bus');
+      bc2.onmessage = (event) => {
         if (event.data?.type === 'NEW_RIDE_BROADCAST' && event.data?.ride) {
           onNewRide(event.data.ride);
         }
@@ -337,10 +361,16 @@ export const subscribeToIncomingRideBroadcasts = (onNewRide: (ride: any) => void
 
   return () => {
     window.removeEventListener('motoride:new_ride_broadcast', handleCustomEvent);
+    window.removeEventListener('motoride_new_incoming_ride', handleCustomEvent);
     window.removeEventListener('storage', handleStorageEvent);
-    if (bc) {
+    if (bc1) {
       try {
-        bc.close();
+        bc1.close();
+      } catch {}
+    }
+    if (bc2) {
+      try {
+        bc2.close();
       } catch {}
     }
   };
@@ -444,33 +474,74 @@ export const notifyCaptainArrived = (ride: any) => {
   if (typeof window === 'undefined' || !ride) return;
 
   try {
-    // 1. Dispatch custom event for same window (DualView simulator & active tabs)
+    const arrivedRide = {
+      ...ride,
+      status: 'arrived',
+      captain_name: ride.captain_name || 'Captain Driver',
+      timestamp: Date.now(),
+    };
+
+    // 1. Dispatch custom events for same window (DualView simulator & active components)
     window.dispatchEvent(
       new CustomEvent('motoride:captain_arrived', {
-        detail: ride,
+        detail: arrivedRide,
       })
     );
 
-    // 2. BroadcastChannel across browser tabs
+    window.dispatchEvent(
+      new CustomEvent('motoride_ride_status_updated', {
+        detail: {
+          rideId: arrivedRide.id,
+          status: 'arrived',
+          ride: arrivedRide,
+        },
+      })
+    );
+
+    // 2. BroadcastChannel across browser tabs - post on both channels for complete redundancy
     if ('BroadcastChannel' in window) {
       try {
-        const bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-        bc.postMessage({ type: 'CAPTAIN_ARRIVED_BROADCAST', ride, timestamp: Date.now() });
-        setTimeout(() => bc.close(), 1500);
+        const bc1 = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+        bc1.postMessage({ type: 'CAPTAIN_ARRIVED_BROADCAST', ride: arrivedRide, timestamp: Date.now() });
+        setTimeout(() => {
+          try { bc1.close(); } catch {}
+        }, 2000);
+      } catch {}
+
+      try {
+        const bc2 = new BroadcastChannel('motoride_offers_bus');
+        bc2.postMessage({
+          type: 'ride_status_updated',
+          rideId: arrivedRide.id,
+          status: 'arrived',
+          ride: arrivedRide,
+          timestamp: Date.now(),
+        });
+        setTimeout(() => {
+          try { bc2.close(); } catch {}
+        }, 2000);
       } catch {}
     }
 
-    // 3. LocalStorage event trigger
-    localStorage.setItem(
-      'motoride_last_arrived_event',
-      JSON.stringify({
-        id: ride.id,
-        captain_id: ride.captain_id,
-        passenger_id: ride.passenger_id,
-        pickup_location: ride.pickup_location,
+    // 3. LocalStorage events triggers for cross-tab synchronisation
+    try {
+      localStorage.setItem('motoride_last_arrived_event', JSON.stringify(arrivedRide));
+      localStorage.setItem('motoride_last_status_event', JSON.stringify({
+        rideId: arrivedRide.id,
+        status: 'arrived',
+        ride: arrivedRide,
         timestamp: Date.now(),
-      })
-    );
+      }));
+      localStorage.setItem('motoride_last_passenger_ride_id', String(arrivedRide.id));
+
+      const existingRaw = localStorage.getItem(`motoride_active_ride_${arrivedRide.id}`);
+      const existing = existingRaw ? JSON.parse(existingRaw) : {};
+      localStorage.setItem(`motoride_active_ride_${arrivedRide.id}`, JSON.stringify({
+        ...existing,
+        ...arrivedRide,
+        status: 'arrived',
+      }));
+    } catch {}
   } catch (e) {
     console.warn('[Motoride Audio] Captain arrived notification note:', e);
   }
@@ -484,28 +555,52 @@ export const subscribeToCaptainArrivedBroadcasts = (onArrived: (ride: any) => vo
 
   const handleCustomEvent = (e: any) => {
     if (e.detail) {
-      onArrived(e.detail);
+      onArrived(e.detail.ride || e.detail);
     }
   };
   window.addEventListener('motoride:captain_arrived', handleCustomEvent);
 
-  let bc: BroadcastChannel | null = null;
+  const handleStatusUpdateEvent = (e: any) => {
+    if (e.detail && e.detail.status === 'arrived') {
+      onArrived(e.detail.ride || { id: e.detail.rideId, status: 'arrived' });
+    }
+  };
+  window.addEventListener('motoride_ride_status_updated', handleStatusUpdateEvent);
+
+  let bc1: BroadcastChannel | null = null;
+  let bc2: BroadcastChannel | null = null;
   if ('BroadcastChannel' in window) {
     try {
-      bc = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-      bc.onmessage = (event) => {
+      bc1 = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      bc1.onmessage = (event) => {
         if (event.data?.type === 'CAPTAIN_ARRIVED_BROADCAST' && event.data?.ride) {
           onArrived(event.data.ride);
+        }
+      };
+    } catch {}
+
+    try {
+      bc2 = new BroadcastChannel('motoride_offers_bus');
+      bc2.onmessage = (event) => {
+        if (event.data?.type === 'ride_status_updated' && event.data?.status === 'arrived') {
+          onArrived(event.data.ride || { id: event.data.rideId, status: 'arrived' });
         }
       };
     } catch {}
   }
 
   const handleStorageEvent = (e: StorageEvent) => {
-    if (e.key === 'motoride_last_arrived_event' && e.newValue) {
+    if ((e.key === 'motoride_last_arrived_event' || e.key === 'motoride_last_status_event') && e.newValue) {
       try {
         const parsed = JSON.parse(e.newValue);
-        if (parsed?.id) {
+        if (parsed?.status === 'arrived' || parsed?.id || parsed?.rideId) {
+          onArrived(parsed.ride || parsed);
+        }
+      } catch {}
+    } else if (e.key && e.key.startsWith('motoride_active_ride_') && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        if (parsed?.status === 'arrived') {
           onArrived(parsed);
         }
       } catch {}
@@ -515,11 +610,13 @@ export const subscribeToCaptainArrivedBroadcasts = (onArrived: (ride: any) => vo
 
   return () => {
     window.removeEventListener('motoride:captain_arrived', handleCustomEvent);
+    window.removeEventListener('motoride_ride_status_updated', handleStatusUpdateEvent);
     window.removeEventListener('storage', handleStorageEvent);
-    if (bc) {
-      try {
-        bc.close();
-      } catch {}
+    if (bc1) {
+      try { bc1.close(); } catch {}
+    }
+    if (bc2) {
+      try { bc2.close(); } catch {}
     }
   };
 };

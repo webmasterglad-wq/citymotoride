@@ -263,6 +263,14 @@ export const createRideBooking = async (
       delivery_notes: params.delivery_notes || undefined,
     };
     setStoredRideData(resData.id, enrichedRide);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('motoride_last_passenger_ride_id', resData.id);
+        const cache: Ride[] = JSON.parse(localStorage.getItem('motoride_requested_rides_cache') || '[]');
+        const updatedCache = [enrichedRide, ...cache.filter((r) => r.id !== resData.id)].slice(0, 20);
+        localStorage.setItem('motoride_requested_rides_cache', JSON.stringify(updatedCache));
+      } catch {}
+    }
     notifyNewIncomingRide(enrichedRide);
     return {
       data: enrichedRide,
@@ -279,7 +287,28 @@ export const fetchActiveRequestedRides = async (): Promise<{
   error: string | null;
 }> => {
   const supabase = getSupabaseClient();
-  if (!supabase) return { data: [], error: 'Supabase client is not configured' };
+  let localCacheList: Ride[] = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const rawCache = localStorage.getItem('motoride_requested_rides_cache');
+      if (rawCache) {
+        localCacheList = JSON.parse(rawCache);
+      }
+      const lastId = localStorage.getItem('motoride_last_passenger_ride_id');
+      if (lastId) {
+        const stored = getStoredRideData(lastId) as Ride | null;
+        if (stored && stored.status === 'requested') {
+          if (!localCacheList.some((r) => r.id === stored.id)) {
+            localCacheList.unshift(stored);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  if (!supabase) {
+    return { data: localCacheList.filter((r) => r.status === 'requested'), error: null };
+  }
 
   try {
     const { data, error } = await supabase
@@ -290,22 +319,33 @@ export const fetchActiveRequestedRides = async (): Promise<{
 
     if (error) {
       console.error('[Motoride] Fetch requested rides error:', error.message || error);
-      return { data: [], error: formatSupabaseError(error) };
+      return { data: localCacheList.filter((r) => r.status === 'requested'), error: formatSupabaseError(error) };
     }
 
     const rawList = (data as Ride[]) || [];
-    const enrichedList = rawList.map((ride) => {
-      const cached = getStoredRideTier(ride.id);
-      return {
+    const combinedMap = new Map<string, Ride>();
+    rawList.forEach((ride) => {
+      const cachedTier = getStoredRideTier(ride.id);
+      const stored = getStoredRideData(ride.id) || {};
+      combinedMap.set(ride.id, {
+        ...stored,
         ...ride,
-        service_type: ride.service_type || cached?.tier || (ride.ride_tier as any) || 'moto_comfort',
-        tier_name: ride.tier_name || cached?.tierName || (ride.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
-      };
+        service_type: ride.service_type || cachedTier?.tier || (ride.ride_tier as any) || 'moto_comfort',
+        tier_name: ride.tier_name || cachedTier?.tierName || (ride.service_type === 'moto_delivery' || cachedTier?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
+      });
     });
 
+    // Also merge any active local cache rides that might not have indexed yet
+    localCacheList.forEach((r) => {
+      if (r.status === 'requested' && !combinedMap.has(r.id)) {
+        combinedMap.set(r.id, r);
+      }
+    });
+
+    const enrichedList = Array.from(combinedMap.values()).filter((r) => r.status === 'requested');
     return { data: enrichedList, error: null };
   } catch (err: any) {
-    return { data: [], error: formatSupabaseError(err) };
+    return { data: localCacheList.filter((r) => r.status === 'requested'), error: formatSupabaseError(err) };
   }
 };
 
@@ -313,7 +353,9 @@ export const fetchRideById = async (
   rideId: string
 ): Promise<{ data: Ride | null; error: string | null }> => {
   const supabase = getSupabaseClient();
-  if (!supabase) return { data: null, error: 'Supabase client is not configured' };
+  const cached = getStoredRideData(rideId) as Ride | null;
+
+  if (!supabase) return { data: cached, error: null };
 
   try {
     const { data, error } = await supabase
@@ -323,7 +365,7 @@ export const fetchRideById = async (
       .maybeSingle();
 
     if (error) {
-      return { data: null, error: formatSupabaseError(error) };
+      return { data: cached, error: formatSupabaseError(error) };
     }
 
     if (data) {
@@ -334,11 +376,23 @@ export const fetchRideById = async (
           localStorage.setItem(OFFERS_KEY_PREFIX + data.id, JSON.stringify(extracted));
         } catch {}
       }
+
+      // Merge with cached local data to preserve captain arrival status if DB lags
+      const merged: Ride = {
+        ...(cached || {}),
+        ...(data as Ride),
+        status: (cached?.status === 'arrived' && data.status === 'accepted') ? 'arrived' : (data.status as any),
+        captain_name: data.captain_name || cached?.captain_name,
+        captain_phone: data.captain_phone || cached?.captain_phone,
+        captain_vehicle: data.captain_vehicle || cached?.captain_vehicle,
+      };
+      setStoredRideData(rideId, merged);
+      return { data: merged, error: null };
     }
 
-    return { data: data as Ride | null, error: null };
+    return { data: cached, error: null };
   } catch (err: any) {
-    return { data: null, error: formatSupabaseError(err) };
+    return { data: cached, error: formatSupabaseError(err) };
   }
 };
 
@@ -346,7 +400,16 @@ export const fetchActiveRideForPassenger = async (
   passengerId: string
 ): Promise<{ data: Ride | null; error: string | null }> => {
   const supabase = getSupabaseClient();
-  if (!supabase) return { data: null, error: 'Supabase client is not configured' };
+  if (!supabase) {
+    const lastId = typeof window !== 'undefined' ? localStorage.getItem('motoride_last_passenger_ride_id') : null;
+    if (lastId) {
+      const cached = getStoredRideData(lastId) as Ride | null;
+      if (cached && ['requested', 'accepted', 'arrived', 'started'].includes(cached.status)) {
+        return { data: cached, error: null };
+      }
+    }
+    return { data: null, error: 'Supabase client is not configured' };
+  }
 
   try {
     const { data, error } = await supabase
@@ -368,9 +431,30 @@ export const fetchActiveRideForPassenger = async (
           localStorage.setItem(OFFERS_KEY_PREFIX + data.id, JSON.stringify(extracted));
         } catch {}
       }
+
+      const cached = getStoredRideData(data.id) as Ride | null;
+      const merged: Ride = {
+        ...(cached || {}),
+        ...(data as Ride),
+        status: (cached?.status === 'arrived' && data.status === 'accepted') ? 'arrived' : (data.status as any),
+        captain_name: data.captain_name || cached?.captain_name,
+        captain_phone: data.captain_phone || cached?.captain_phone,
+        captain_vehicle: data.captain_vehicle || cached?.captain_vehicle,
+      };
+      setStoredRideData(data.id, merged);
+      return { data: merged, error: null };
     }
 
-    return { data: data as Ride | null, error: null };
+    // Local fallback if DB has no record
+    const lastId = typeof window !== 'undefined' ? localStorage.getItem('motoride_last_passenger_ride_id') : null;
+    if (lastId) {
+      const cached = getStoredRideData(lastId) as Ride | null;
+      if (cached && ['requested', 'accepted', 'arrived', 'started'].includes(cached.status)) {
+        return { data: cached, error: null };
+      }
+    }
+
+    return { data: null, error: null };
   } catch (err: any) {
     return { data: null, error: formatSupabaseError(err) };
   }
@@ -549,6 +633,28 @@ export const claimRideAtomic = async (
           dropoff_location: finalRide.dropoff_location || cached.dropoff_location || 'Destination',
         };
         setStoredRideData(rideId, finalRide);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('motoride_last_passenger_ride_id', rideId);
+            localStorage.setItem('motoride_last_status_event', JSON.stringify({
+              rideId,
+              status: 'accepted',
+              ride: finalRide,
+              timestamp: Date.now(),
+            }));
+            offersBroadcastChannel?.postMessage({
+              type: 'ride_status_updated',
+              rideId,
+              status: 'accepted',
+              ride: finalRide,
+            });
+            window.dispatchEvent(
+              new CustomEvent('motoride_ride_status_updated', {
+                detail: { rideId, status: 'accepted', ride: finalRide },
+              })
+            );
+          } catch {}
+        }
         return {
           success: true,
           message: 'Ride claimed successfully!',
@@ -617,6 +723,28 @@ export const claimRideAtomic = async (
       fare: (data as Ride).fare ?? cached.fare,
     };
     setStoredRideData(rideId, finalRide);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('motoride_last_passenger_ride_id', rideId);
+        localStorage.setItem('motoride_last_status_event', JSON.stringify({
+          rideId,
+          status: 'accepted',
+          ride: finalRide,
+          timestamp: Date.now(),
+        }));
+        offersBroadcastChannel?.postMessage({
+          type: 'ride_status_updated',
+          rideId,
+          status: 'accepted',
+          ride: finalRide,
+        });
+        window.dispatchEvent(
+          new CustomEvent('motoride_ride_status_updated', {
+            detail: { rideId, status: 'accepted', ride: finalRide },
+          })
+        );
+      } catch {}
+    }
 
     return {
       success: true,
@@ -732,9 +860,11 @@ export const updateRideStatus = async (
     setStoredRideData(rideId, finalRide);
     if (typeof window !== 'undefined') {
       try {
+        localStorage.setItem('motoride_last_passenger_ride_id', rideId);
         localStorage.setItem('motoride_last_status_event', JSON.stringify({
           rideId,
           status: newStatus,
+          ride: finalRide,
           timestamp: Date.now(),
         }));
       } catch {}
@@ -957,7 +1087,18 @@ export const subscribeToPassengerRide = (
       },
       (payload) => {
         if (payload.new) {
-          callbacks.onUpdate(payload.new as Ride);
+          const raw = payload.new as Ride;
+          const cachedRide = getStoredRideData(raw.id) || {};
+          const merged: Ride = {
+            ...cachedRide,
+            ...raw,
+            status: (cachedRide.status === 'arrived' && raw.status === 'accepted') ? 'arrived' : raw.status,
+            captain_name: raw.captain_name || cachedRide.captain_name,
+            captain_phone: raw.captain_phone || cachedRide.captain_phone,
+            captain_vehicle: raw.captain_vehicle || cachedRide.captain_vehicle,
+          };
+          setStoredRideData(raw.id, merged);
+          callbacks.onUpdate(merged);
         }
       }
     )

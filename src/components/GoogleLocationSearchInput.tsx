@@ -598,7 +598,7 @@ export const GoogleLocationSearchInput: React.FC<GoogleLocationSearchInputProps>
             onChange(e.target.value);
           }}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder || (type === 'pickup' ? 'Search Google Maps for Pickup location...' : 'Search Google Maps for Destination...')}
+          placeholder={placeholder || (type === 'pickup' ? 'Search location for A...' : 'Search location for B...')}
           className={`w-full bg-transparent text-xs font-semibold focus:outline-none pr-14 ${
             isLight ? 'text-slate-900 placeholder-slate-400' : 'text-slate-100 placeholder-slate-500'
           }`}
@@ -671,7 +671,7 @@ export const GoogleLocationSearchInput: React.FC<GoogleLocationSearchInputProps>
                     ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
                     : 'bg-rose-500/10 text-rose-600 border border-rose-500/20'
                 }`}>
-                  {type === 'pickup' ? 'Pickup Location' : 'Destination'}
+                  {type === 'pickup' ? 'A' : 'B'}
                 </span>
               </div>
 

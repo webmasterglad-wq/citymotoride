@@ -521,7 +521,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         playSweetAlertTune();
         setRequestedRides((prev) => {
           if (prev.some((r) => r.id === incomingRide.id)) {
-            return prev;
+            return prev.map((r) => (r.id === incomingRide.id ? { ...r, ...incomingRide } : r));
           }
           return [incomingRide, ...prev];
         });
@@ -530,6 +530,15 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
     return () => unsubBroadcasts();
   }, [currentCaptain.id]);
+
+  // Periodic polling fallback (every 4 seconds) to guarantee ride arrival even across inactive/throttled tabs
+  useEffect(() => {
+    if (!isOnline) return;
+    const interval = setInterval(() => {
+      loadInitialData();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isOnline, currentCaptain.id]);
 
   // Automatic Daily Reset: Watches calendar date transitions (e.g. 12:00 AM midnight rollover)
   // Automatically switches Today's Income to ₹0 on a new day without manual captain intervention
@@ -838,6 +847,12 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
         ...cached,
         ...ride,
         ...result.ride,
+        status: 'accepted',
+        captain_id: captainUser?.id || ride.captain_id || result.ride.captain_id,
+        captain_name: captainUser?.name || ride.captain_name || result.ride.captain_name || 'Captain Driver',
+        captain_phone: captainUser?.phone || ride.captain_phone || result.ride.captain_phone || '+91 98765 43210',
+        captain_vehicle: (captainUser as any)?.vehicle_number || ride.captain_vehicle || result.ride.captain_vehicle || 'Motorcycle',
+        captain_rating: captainUser?.rating || ride.captain_rating || result.ride.captain_rating || 4.9,
         passenger_name: result.ride.passenger_name || ride.passenger_name || cached.passenger_name || 'Passenger',
         passenger_phone: result.ride.passenger_phone || ride.passenger_phone || cached.passenger_phone || '',
         pickup_location: result.ride.pickup_location || ride.pickup_location || cached.pickup_location || 'Pickup Location',
@@ -848,6 +863,23 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       setActiveRide(mergedRide);
       setRequestedRides((prev) => prev.filter((r) => r.id !== ride.id));
       setDeclinedRides((prev) => prev.filter((d) => d.ride.id !== ride.id));
+
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('motoride_last_passenger_ride_id', mergedRide.id);
+          localStorage.setItem('motoride_last_status_event', JSON.stringify({
+            rideId: mergedRide.id,
+            status: 'accepted',
+            ride: mergedRide,
+            timestamp: Date.now(),
+          }));
+          window.dispatchEvent(
+            new CustomEvent('motoride_ride_status_updated', {
+              detail: { rideId: mergedRide.id, status: 'accepted', ride: mergedRide },
+            })
+          );
+        } catch {}
+      }
       
       const fareNotice = customFareOffer && customFareOffer !== ride.fare
         ? ` with agreed offer of ₹${Number(customFareOffer).toFixed(2)}`
@@ -923,11 +955,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     if (myOffers[ride.id]?.status === 'pending' || isClaimingId === ride.id) {
       return;
     }
-    handleDeclineRide(ride);
-    setConcurrencyAlert({
-      type: 'success',
-      message: `Ride request from ${ride.passenger_name || 'passenger'} timed out (25s). Passed to next nearby captain.`,
-    });
+    // Do not auto-delete or auto-decline: keep available for captain to review and accept
   };
 
   // Restore a declined ride back to incoming broadcasts
@@ -940,6 +968,21 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     setConcurrencyAlert({
       type: 'success',
       message: `Ride #${item.ride.id.slice(0, 6)} restored to active incoming stream.`,
+    });
+  };
+
+  // Restore all skipped rides back to incoming stream
+  const handleRestoreAllSkipped = () => {
+    const activeCapId = currentCaptainRef.current?.id || currentCaptain.id;
+    try {
+      localStorage.removeItem(`motoride_skipped_rides_${activeCapId}`);
+    } catch {}
+    setDeclinedRides([]);
+    loadInitialData();
+    setRequestTab('incoming');
+    setConcurrencyAlert({
+      type: 'success',
+      message: 'All skipped ride requests restored to active incoming stream.',
     });
   };
 
@@ -1022,6 +1065,11 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       ...cached,
       ...activeRide,
       status: nextStatus,
+      captain_id: captainUser?.id || activeRide.captain_id || 'demo-captain',
+      captain_name: captainUser?.name || activeRide.captain_name || 'Captain Driver',
+      captain_phone: captainUser?.phone || activeRide.captain_phone || '+91 98765 43210',
+      captain_vehicle: (captainUser as any)?.vehicle_number || activeRide.captain_vehicle || 'Motorcycle',
+      captain_rating: captainUser?.rating || activeRide.captain_rating || 4.9,
       passenger_name: activeRide.passenger_name || cached.passenger_name || 'Passenger',
       passenger_phone: activeRide.passenger_phone || cached.passenger_phone || '',
       pickup_location: activeRide.pickup_location || cached.pickup_location || 'Pickup Location',
@@ -1035,6 +1083,22 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
     } else {
       setStoredRideData(optimisticRide.id, optimisticRide);
       setActiveRide(optimisticRide);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('motoride_last_passenger_ride_id', optimisticRide.id);
+          localStorage.setItem('motoride_last_status_event', JSON.stringify({
+            rideId: optimisticRide.id,
+            status: nextStatus,
+            ride: optimisticRide,
+            timestamp: Date.now(),
+          }));
+          window.dispatchEvent(
+            new CustomEvent('motoride_ride_status_updated', {
+              detail: { rideId: optimisticRide.id, status: nextStatus, ride: optimisticRide },
+            })
+          );
+        } catch {}
+      }
       if (nextStatus === 'arrived') {
         notifyCaptainArrived(optimisticRide);
         setConcurrencyAlert({
@@ -2633,14 +2697,26 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               <p className={`text-xs max-w-xs mx-auto ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                 Waiting for riders. Ride offers will ring with audio alert instantly via Supabase Realtime.
               </p>
-              <button
-                onClick={loadInitialData}
-                className={`flex items-center gap-1.5 text-xs mx-auto pt-1 cursor-pointer transition-colors ${
-                  isLight ? 'text-slate-500 hover:text-slate-800' : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> Re-sync Pending List
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={loadInitialData}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
+                    isLight ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100' : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                  }`}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Re-sync Pending List
+                </button>
+                {declinedRides.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleRestoreAllSkipped}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> Restore Skipped Requests ({declinedRides.length})
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             /* ================= INCOMING RIDES ACTIVE STREAM ================= */

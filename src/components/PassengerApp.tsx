@@ -30,7 +30,6 @@ import {
   KeyRound,
   Share2,
   User,
-  Camera,
   Calculator,
   ArrowUpDown,
   TrendingUp,
@@ -67,6 +66,8 @@ import {
   acceptCaptainOffer,
   declineCaptainOffer,
   subscribeToCaptainSkipEvents,
+  getStoredRideData,
+  setStoredRideData,
 } from '../services/rideService';
 import { subscribeToUnreadCount, markMessagesAsRead } from '../services/chatService';
 import { ChatMessage } from '../types/ride';
@@ -172,6 +173,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [customBidInput, setCustomBidInput] = useState<string>('');
   const [hasUserModifiedBid, setHasUserModifiedBid] = useState<boolean>(false);
   const [passengerNotes, setPassengerNotes] = useState<string>('');
+  const [isCommentBoxOpen, setIsCommentBoxOpen] = useState<boolean>(false);
   const [isRaisingFare, setIsRaisingFare] = useState<boolean>(false);
   const [raiseFareSuccess, setRaiseFareSuccess] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>('upi');
@@ -256,25 +258,9 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
   useEffect(() => {
     activeRideRef.current = activeRide;
-  }, [activeRide?.id, activeRide?.status]);
+  }, [activeRide]);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
-  const headerAvatarInputRef = useRef<HTMLInputElement>(null);
-
-  const handleHeaderAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          if (typeof event.target?.result === 'string') {
-            setCurrentUser((prev) => ({ ...prev, avatar_url: event.target?.result as string }));
-          }
-        };
-        reader.readAsDataURL(file);
-      }
-    }
-  };
 
   // Recalculate estimated route and fare whenever pickup, dropoff, selectedTier or admin pricing changes
   useEffect(() => {
@@ -423,19 +409,29 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
     // Fast polling fallback: Poll this exact ride ID to catch status transitions instantly
     const pollInterval = setInterval(async () => {
-      if (!isSupabaseConfigured()) return;
-      const { data } = await fetchRideById(currentActiveRideId);
-      if (data) {
-        if (data.status !== activeRide.status) {
-          if (data.status === 'arrived' && activeRide.status !== 'arrived') {
+      const current = activeRideRef.current;
+      const cached = getStoredRideData(currentActiveRideId);
+      let data: Ride | null = null;
+      if (isSupabaseConfigured()) {
+        const res = await fetchRideById(currentActiveRideId);
+        data = res.data;
+      }
+      const latest: Ride | null = (cached && cached.status === 'arrived' && data?.status !== 'arrived')
+        ? ({ ...(data || {}), ...cached, id: currentActiveRideId } as Ride)
+        : ((data || (cached ? { ...cached, id: currentActiveRideId } : null)) as Ride | null);
+
+      if (latest && current) {
+        if (latest.status !== current.status) {
+          if (latest.status === 'arrived' && current.status !== 'arrived') {
             playCaptainArrivedChime();
             setCaptainArrivedNotice({
-              captainName: data.captain_name || 'Your Captain',
+              captainName: latest.captain_name || current.captain_name || 'Your Captain',
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             });
           }
-          setActiveRide(data);
-          if (data.status === 'completed') {
+          setActiveRide(latest);
+          activeRideRef.current = latest;
+          if (latest.status === 'completed') {
             try {
               confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
             } catch (e) {}
@@ -443,7 +439,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
         }
 
         // Also sync captain offers using extractOffersFromRide
-        const offers = extractOffersFromRide(data);
+        const offers = extractOffersFromRide(latest);
         if (offers.length > 0) {
           setCaptainOffers(offers);
         } else {
@@ -453,7 +449,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
           }
         }
       }
-    }, 1500);
+    }, 1200);
 
     return () => {
       clearInterval(pollInterval);
@@ -514,83 +510,143 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
   // Subscribe to Captain Arrived broadcast alerts across tabs / simulator
   useEffect(() => {
-    const unsubArrived = subscribeToCaptainArrivedBroadcasts((arrivedRide) => {
-      if (activeRide && arrivedRide?.id === activeRide.id) {
+    const handleIncomingArrivalOrStatus = (incoming: any) => {
+      if (!incoming) return;
+      const current = activeRideRef.current;
+      const storedLastId = typeof window !== 'undefined' ? localStorage.getItem('motoride_last_passenger_ride_id') : null;
+      const targetId = current?.id || storedLastId;
+      const incomingId = incoming.id || incoming.rideId;
+
+      // Allow match if same ID, or if we have an active ride and incoming is an arrival broadcast
+      const isMatch = (targetId && incomingId && String(targetId).trim() === String(incomingId).trim())
+        || (targetId && !incomingId)
+        || (!targetId && incomingId);
+
+      if (!isMatch) return;
+
+      const incomingStatus = incoming.status || (incoming.type === 'CAPTAIN_ARRIVED_BROADCAST' ? 'arrived' : undefined);
+      if (!incomingStatus) return;
+
+      const prevStatus = current?.status;
+
+      setActiveRide((prev) => {
+        const base = prev || current || (targetId ? getStoredRideData(targetId) : null) || ({} as Ride);
+        const updated: Ride = {
+          ...base,
+          ...(incoming.ride || incoming),
+          id: base.id || incomingId || targetId || '',
+          status: incomingStatus as any,
+          captain_name: incoming.captain_name || incoming.ride?.captain_name || base.captain_name || 'Captain Driver',
+          captain_phone: incoming.captain_phone || incoming.ride?.captain_phone || base.captain_phone || '',
+          captain_vehicle: incoming.captain_vehicle || incoming.ride?.captain_vehicle || base.captain_vehicle || 'Motorcycle',
+          captain_rating: incoming.captain_rating || incoming.ride?.captain_rating || base.captain_rating || 5.0,
+        };
+        activeRideRef.current = updated;
+        if (updated.id) {
+          setStoredRideData(updated.id, updated);
+          try {
+            localStorage.setItem('motoride_last_passenger_ride_id', updated.id);
+          } catch {}
+        }
+        return updated;
+      });
+
+      if (incomingStatus === 'arrived' && prevStatus !== 'arrived') {
         playCaptainArrivedChime();
         setCaptainArrivedNotice({
-          captainName: arrivedRide.captain_name || activeRide.captain_name || 'Your Captain',
+          captainName: incoming.captain_name || incoming.ride?.captain_name || current?.captain_name || 'Your Captain',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         });
-        setActiveRide((prev) => {
-          if (!prev || prev.id !== arrivedRide.id) return prev;
-          return {
-            ...prev,
-            status: 'arrived',
-            captain_name: arrivedRide.captain_name || prev.captain_name,
-            captain_phone: arrivedRide.captain_phone || prev.captain_phone,
-            captain_vehicle: arrivedRide.captain_vehicle || prev.captain_vehicle,
-          };
-        });
+      } else if (incomingStatus === 'completed' && prevStatus !== 'completed') {
+        setReviewSubmitted(false);
+        try {
+          confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
+        } catch (e) {}
+      } else if (incomingStatus === 'accepted' && prevStatus === 'requested') {
+        try {
+          confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+        } catch (e) {}
       }
+    };
+
+    // 1. AudioAlert subscription (covers custom event, broadcast channel, and storage)
+    const unsubArrived = subscribeToCaptainArrivedBroadcasts((arrivedRide) => {
+      handleIncomingArrivalOrStatus(arrivedRide);
     });
 
+    // 2. Direct BroadcastChannel on motoride_offers_bus
     let passBroadcastChannel: BroadcastChannel | null = null;
     try {
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
         passBroadcastChannel = new BroadcastChannel('motoride_offers_bus');
         passBroadcastChannel.onmessage = (msgEvent: MessageEvent) => {
           const data = msgEvent.data;
-          const currentRide = activeRideRef.current;
-          if (data && data.type === 'ride_status_updated' && currentRide && data.rideId === currentRide.id) {
-            const updated = data.ride || { ...currentRide, status: data.status };
-            setActiveRide(updated);
-            if (data.status === 'arrived') {
-              playCaptainArrivedChime();
-              setCaptainArrivedNotice({
-                captainName: updated.captain_name || currentRide.captain_name || 'Your Captain',
-                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              });
-            } else if (data.status === 'completed') {
-              setReviewSubmitted(false);
-              try {
-                confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
-              } catch (e) {}
-            }
+          if (data && (data.type === 'ride_status_updated' || data.status)) {
+            handleIncomingArrivalOrStatus(data.ride || data);
           }
         };
       }
     } catch {}
 
+    // 3. Direct CustomEvent for motoride_ride_status_updated
     const handleStatusUpdate = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      const currentRide = activeRideRef.current;
-      if (currentRide && detail && detail.rideId === currentRide.id) {
-        const updated = detail.ride || { ...currentRide, status: detail.status };
-        setActiveRide(updated);
-        if (detail.status === 'arrived') {
-          playCaptainArrivedChime();
-          setCaptainArrivedNotice({
-            captainName: updated.captain_name || currentRide.captain_name || 'Your Captain',
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          });
-        } else if (detail.status === 'completed') {
-          setReviewSubmitted(false);
-          try {
-            confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 } });
-          } catch (e) {}
-        }
+      if (detail) {
+        handleIncomingArrivalOrStatus(detail.ride || detail);
       }
     };
     window.addEventListener('motoride_ride_status_updated', handleStatusUpdate);
 
+    // 4. Direct CustomEvent for motoride:captain_arrived
+    const handleCaptainArrivedEvent = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        handleIncomingArrivalOrStatus({ ...(detail.ride || detail), status: 'arrived' });
+      }
+    };
+    window.addEventListener('motoride:captain_arrived', handleCaptainArrivedEvent);
+
+    // 5. Direct StorageEvent for cross-tab updates
+    const handleStorage = (e: StorageEvent) => {
+      if ((e.key === 'motoride_last_arrived_event' || e.key === 'motoride_last_status_event') && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          handleIncomingArrivalOrStatus(parsed.ride || parsed);
+        } catch {}
+      } else if (e.key && e.key.startsWith('motoride_active_ride_') && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed?.status === 'arrived') {
+            handleIncomingArrivalOrStatus(parsed);
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // 6. Fast local poll every 700ms to catch any arrival that occurred in localStorage
+    const statusWatchInterval = setInterval(() => {
+      const current = activeRideRef.current;
+      const targetId = current?.id || (typeof window !== 'undefined' ? localStorage.getItem('motoride_last_passenger_ride_id') : null);
+      if (targetId) {
+        const cached = getStoredRideData(targetId);
+        if (cached && cached.status === 'arrived' && current?.status !== 'arrived') {
+          handleIncomingArrivalOrStatus(cached);
+        }
+      }
+    }, 700);
+
     return () => {
       unsubArrived();
       if (passBroadcastChannel) {
-        passBroadcastChannel.close();
+        try { passBroadcastChannel.close(); } catch {}
       }
       window.removeEventListener('motoride_ride_status_updated', handleStatusUpdate);
+      window.removeEventListener('motoride:captain_arrived', handleCaptainArrivedEvent);
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(statusWatchInterval);
     };
-  }, [activeRide?.id, activeRide?.captain_name]);
+  }, []);
 
   // Passenger Accepts Captain's Offer - Establishes Mutual Acceptance
   const handleAcceptCaptainOffer = async (offer: CaptainOffer) => {
@@ -940,76 +996,22 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
       {/* 2. Top Floating Header Bar */}
       <div className="absolute top-2.5 left-3 right-3 sm:left-6 sm:right-6 z-20 pointer-events-none flex items-center justify-between">
-        {/* Hidden file input for fast avatar upload from header */}
-        <input
-          ref={headerAvatarInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleHeaderAvatarChange}
-          className="hidden"
-          id="passenger-header-avatar-input"
-        />
-
-        {/* Profile Card */}
-        <div
-          className={`pointer-events-auto px-3 py-1.5 rounded-2xl border shadow-lg backdrop-blur-xl flex items-center gap-2.5 transition-all ${
+        {/* Two lines button in top left corner - click to show whole passenger profile details */}
+        <button
+          type="button"
+          id="passenger-profile-two-lines-btn"
+          onClick={() => setIsProfileOpen(true)}
+          className={`pointer-events-auto h-11 w-11 rounded-2xl border shadow-lg backdrop-blur-xl flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer group hover:scale-105 active:scale-95 ${
             isLight
-              ? 'bg-white/90 border-slate-200/80 text-slate-900 shadow-slate-200/50'
-              : 'bg-slate-950/85 border-slate-800 text-slate-100 shadow-black/50'
+              ? 'bg-white/95 hover:bg-white border-slate-200/90 text-slate-800 hover:text-emerald-600 shadow-slate-200/60'
+              : 'bg-slate-950/90 hover:bg-slate-900 border-slate-800 text-slate-200 hover:text-emerald-400 shadow-black/60'
           }`}
+          title="Passenger profile details"
+          aria-label="Open passenger profile details"
         >
-          <div className="relative group">
-            <button
-              onClick={() => setIsProfileOpen(true)}
-              className="cursor-pointer block"
-              title="Open Passenger Profile & Photo"
-            >
-              {currentUser.avatar_url ? (
-                <img
-                  src={currentUser.avatar_url}
-                  alt={currentUser.name}
-                  referrerPolicy="no-referrer"
-                  className="w-8 h-8 rounded-xl object-cover border border-emerald-500/50 shadow-sm group-hover:scale-105 transition-transform"
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 flex items-center justify-center font-black text-xs shadow-sm group-hover:scale-105 transition-transform">
-                  {currentUser.name.charAt(0)}
-                </div>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                headerAvatarInputRef.current?.click();
-              }}
-              className={`absolute -bottom-1 -right-1 p-0.5 rounded-full border shadow transition-colors cursor-pointer ${
-                isLight
-                  ? 'bg-white hover:bg-emerald-500 text-slate-700 hover:text-white border-slate-300'
-                  : 'bg-slate-900 hover:bg-emerald-500 text-slate-300 hover:text-slate-950 border-slate-700'
-              }`}
-              title="Upload profile picture"
-            >
-              <Camera className="w-2.5 h-2.5" />
-            </button>
-          </div>
-
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className={`font-black text-xs tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                {currentUser.name}
-              </span>
-              <span className="text-amber-500 font-bold text-[10px] flex items-center gap-0.5">
-                ★ {currentUser.rating || 4.94}
-              </span>
-            </div>
-            <p className={`text-[10px] flex items-center gap-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              <span className={isLight ? 'text-slate-600' : 'text-slate-300'}>
-                Verified Rider
-              </span>
-            </p>
-          </div>
-        </div>
+          <span className="w-5 h-[2.5px] rounded-full bg-current block transition-transform group-hover:scale-x-110 group-hover:bg-emerald-500" />
+          <span className="w-5 h-[2.5px] rounded-full bg-current block transition-transform group-hover:scale-x-110 group-hover:bg-emerald-500" />
+        </button>
 
         {/* Action Controls */}
         <div className="pointer-events-auto flex items-center gap-1.5">
@@ -1134,7 +1136,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                   </div>
                   <div className="min-w-0">
                     <p className={`text-xs font-black truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                      {pickup ? pickup.split(',')[0] : 'Choose Pickup'} → {dropoff ? dropoff.split(',')[0] : 'Choose Dropoff'}
+                      {pickup ? pickup.split(',')[0] : 'Choose A'} → {dropoff ? dropoff.split(',')[0] : 'Choose B'}
                     </p>
                     <p className="text-[10px] text-emerald-600 font-bold">
                       Estimated ₹{displayFare.toFixed(0)} · Click to open booking (half page)
@@ -1198,7 +1200,40 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       {!activeRide ? (
         /* ================= INDRIVE OFFER PRICE BOOKING INTERFACE ================= */
         <div className="flex flex-col space-y-3 p-4">
-          <form onSubmit={handleBookRide} className="space-y-3.5">
+          <form onSubmit={handleBookRide} className="space-y-3">
+            {/* Choose Services Category - Show only icon, placed above A & B tabs */}
+            <div className="flex items-center justify-between px-1 py-0.5">
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Choose Services Category
+                </span>
+                <span className={`text-[10px] font-bold ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
+                  ({selectedTier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Ride'})
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                {RIDE_TIERS.map((tier) => {
+                  const isSelected = selectedTier === tier.id;
+                  const tierConfig = tier.id === 'moto_delivery' ? pricing.tierPricing.moto_delivery : pricing.tierPricing.moto_comfort;
+                  return (
+                    <button
+                      key={tier.id}
+                      type="button"
+                      onClick={() => setSelectedTier(tier.id)}
+                      title={`${tierConfig.name} - ${tierConfig.tagline || tier.tagline}`}
+                      className={`text-2xl transition-all cursor-pointer p-1 rounded-xl select-none ${
+                        isSelected
+                          ? 'scale-125 opacity-100 drop-shadow-sm'
+                          : 'opacity-35 hover:opacity-80 hover:scale-110'
+                      }`}
+                    >
+                      <span role="img" aria-label={tierConfig.name}>{tierConfig.icon || tier.icon}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Pickup & Destination Inputs (Google Search Integrated) */}
             <div
               className={`border rounded-2xl p-3 space-y-2.5 relative transition-colors ${
@@ -1207,49 +1242,43 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             >
               {/* Pickup Google Location Search */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20" />
-                    <span>Pickup Location (A)</span>
-                  </span>
-                  {liveGPS.coords && (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        id="pickup-show-live-gps-on-map-btn"
-                        onClick={() => {
-                          window.dispatchEvent(new CustomEvent('motoride-center-on-gps'));
-                        }}
-                        className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-500 flex items-center gap-1 cursor-pointer bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/25 transition-all active:scale-95"
-                        title="Show and center real-time GPS location on the map"
-                      >
-                        <Navigation className="w-2.5 h-2.5 text-blue-500 fill-blue-500/20" />
-                        <span>Show on Map</span>
-                      </button>
+                {liveGPS.coords && (
+                  <div className="flex items-center justify-end gap-1.5 mb-1.5">
+                    <button
+                      type="button"
+                      id="pickup-show-live-gps-on-map-btn"
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('motoride-center-on-gps'));
+                      }}
+                      className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-500 flex items-center gap-1 cursor-pointer bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/25 transition-all active:scale-95"
+                      title="Show and center real-time GPS location on the map"
+                    >
+                      <Navigation className="w-2.5 h-2.5 text-blue-500 fill-blue-500/20" />
+                      <span>Show on Map</span>
+                    </button>
 
-                      <button
-                        type="button"
-                        id="pickup-use-live-gps-btn"
-                        onClick={() => {
-                          handleUseLiveLocationAsPickup(
-                            liveGPS.coords,
-                            liveGPS.nearestLandmark
-                              ? `${liveGPS.nearestLandmark} (Live GPS)`
-                              : `${liveGPS.coords.lat.toFixed(4)}, ${liveGPS.coords.lng.toFixed(4)}`
-                          );
-                        }}
-                        className="text-[10px] font-black text-cyan-600 dark:text-cyan-400 hover:text-cyan-500 flex items-center gap-1.5 cursor-pointer bg-cyan-500/10 hover:bg-cyan-500/20 px-2 py-0.5 rounded-full border border-cyan-500/25 transition-all active:scale-95"
-                        title="Set pickup to current real-time GPS coordinates"
-                      >
-                        <span className="relative flex h-1.5 w-1.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500"></span>
-                        </span>
-                        <span>Use Live GPS ({liveGPS.nearestLandmark ? liveGPS.nearestLandmark.split(',')[0] : 'Tricity'})</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
+                    <button
+                      type="button"
+                      id="pickup-use-live-gps-btn"
+                      onClick={() => {
+                        handleUseLiveLocationAsPickup(
+                          liveGPS.coords,
+                          liveGPS.nearestLandmark
+                            ? `${liveGPS.nearestLandmark} (Live GPS)`
+                            : `${liveGPS.coords.lat.toFixed(4)}, ${liveGPS.coords.lng.toFixed(4)}`
+                        );
+                      }}
+                      className="text-[10px] font-black text-cyan-600 dark:text-cyan-400 hover:text-cyan-500 flex items-center gap-1.5 cursor-pointer bg-cyan-500/10 hover:bg-cyan-500/20 px-2 py-0.5 rounded-full border border-cyan-500/25 transition-all active:scale-95"
+                      title="Set A to current real-time GPS coordinates"
+                    >
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500"></span>
+                      </span>
+                      <span>Use Live GPS ({liveGPS.nearestLandmark ? liveGPS.nearestLandmark.split(',')[0] : 'Tricity'})</span>
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0">
                     A
@@ -1258,7 +1287,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                     <GoogleLocationSearchInput
                       type="pickup"
                       value={pickup || ''}
-                      placeholder="Search Google Maps for Pickup location..."
+                      placeholder="Search location for A..."
                       required
                       referenceCoords={pickupCoords}
                       currentGpsCoords={liveGPS.coords}
@@ -1287,7 +1316,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 <button
                   type="button"
                   onClick={handleSwapLocations}
-                  title="Swap Pickup & Drop-off"
+                  title="Swap A & B"
                   className={`absolute right-2 p-1.5 rounded-full border transition-all hover:rotate-180 duration-300 cursor-pointer shadow-xs ${
                     isLight
                       ? 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
@@ -1300,12 +1329,6 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
               {/* Dropoff Google Location Search */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
-                    <span className="w-2 h-2 rounded-full bg-rose-500 ring-2 ring-rose-500/20" />
-                    <span>Drop-off Destination (B)</span>
-                  </span>
-                </div>
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-lg bg-rose-600 text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0">
                     B
@@ -1314,7 +1337,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                     <GoogleLocationSearchInput
                       type="dropoff"
                       value={dropoff || ''}
-                      placeholder="Search Google Maps for Destination..."
+                      placeholder="Search location for B..."
                       required
                       referenceCoords={pickupCoords}
                       currentGpsCoords={liveGPS.coords}
@@ -1359,317 +1382,148 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               ))}
             </div>
 
-            {/* Distance & Fare Calculation Summary Badge */}
-            {(() => {
-              const activeTierConfig = selectedTier === 'moto_delivery' ? pricing.tierPricing.moto_delivery : pricing.tierPricing.moto_comfort;
-              const hasRoute = Boolean(pickup.trim() && dropoff.trim() && distanceKm > 0);
-              return (
-                <div
-                  className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 text-xs transition-colors ${
-                    isLight ? 'bg-emerald-50/60 border-emerald-200/70 text-slate-800' : 'bg-emerald-950/20 border-emerald-500/20 text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-600 font-bold shrink-0">
-                      <Navigation className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-black text-xs text-emerald-700 dark:text-emerald-400">
-                          {hasRoute ? `${distanceKm} km` : '— km'}
-                        </span>
-                        <span className="text-[10px] font-semibold text-slate-500">
-                          {hasRoute ? `(~${estimatedMins} mins)` : '(Awaiting locations)'}
-                        </span>
-                        {hasRoute && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-extrabold flex items-center gap-1 border border-emerald-500/30">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            Route Polyline (A ➔ B)
-                          </span>
-                        )}
-                        {isAccurateRoute && (
-                          <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold">
-                            ROAD GPS
-                          </span>
-                        )}
-                      </div>
-                      <p className={`text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                        {hasRoute ? activeTierConfig.name : 'Enter pickup & drop-off to calculate fare'}
-                        {hasRoute && pricing.surgeMultiplier > 1.0 && (
-                          <span className="ml-1 text-amber-500 font-bold">({pricing.surgeMultiplier}x Surge)</span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-[9px] uppercase font-bold text-slate-400 block">Recommended</span>
-                    <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
-                      {hasRoute ? `₹${baseCalculatedFare.toFixed(2)}` : '—'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Ride Tier Selection */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Choose Motoride Booking Category
-                </span>
-                <span className={`text-[10px] font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  {distanceKm > 0 ? `Rates for ${distanceKm} km` : 'Fares calculated on entry'}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                {RIDE_TIERS.map((tier) => {
-                  const isSelected = selectedTier === tier.id;
-                  const tierConfig = tier.id === 'moto_delivery' ? pricing.tierPricing.moto_delivery : pricing.tierPricing.moto_comfort;
-                  const hasRoute = Boolean(pickup.trim() && dropoff.trim() && distanceKm > 0);
-                  const tierFareObj = calculateFare({
-                    distanceKm: distanceKm || 1.5,
-                    estimatedMins: estimatedMins || 5,
-                    tierId: tier.id,
-                    tierName: tierConfig.name,
-                    pickupLocation: pickup,
-                    isAccurateRoute,
-                  });
-                  return (
-                    <button
-                      key={tier.id}
-                      type="button"
-                      onClick={() => setSelectedTier(tier.id)}
-                      className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
-                        isSelected
-                          ? isLight
-                            ? 'bg-emerald-50/80 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
-                            : 'bg-slate-800 border-emerald-400 ring-2 ring-emerald-500/20 shadow-lg'
-                          : isLight
-                          ? 'bg-slate-50 border-slate-200 hover:bg-white hover:border-slate-300 text-slate-600'
-                          : 'bg-slate-900/60 border-slate-800 hover:bg-slate-900 text-slate-400'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-2xl">{tierConfig.icon || tier.icon}</span>
-                        {tier.popular ? (
-                          <span className="text-[8px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-black px-1.5 py-0.5 rounded">
-                            RECOMMENDED
-                          </span>
-                        ) : (
-                          <span className="text-[8px] bg-sky-500/20 text-sky-700 dark:text-sky-300 font-bold px-1.5 py-0.5 rounded">
-                            COURIER
-                          </span>
-                        )}
-                      </div>
-                      <div>
-                        <span className={`text-xs font-black block leading-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                          {tierConfig.name}
-                        </span>
-                        <span className={`text-xs font-black mt-0.5 block ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
-                          {hasRoute && tierFareObj.totalFare > 0
-                            ? `₹${tierFareObj.totalFare.toFixed(2)}`
-                            : `From ₹${tierConfig.baseFare.toFixed(2)}`}
-                        </span>
-                        <span className={`text-[10px] block mt-0.5 truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                          {tierConfig.tagline || tier.tagline}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* inDrive Bidding Controls (Iconic Classic inDrive Style) */}
+            {/* Offer Your Price to Captain - New Sleek Bar: Payment Mode | (-) Fair (+) | Comment Box Icon Only */}
             <div
               id="indrive-offer-price-card"
-              className={`p-4 border-2 rounded-2xl space-y-3.5 transition-all ${
+              className={`p-2.5 rounded-2xl border transition-all space-y-2 ${
                 isLight
-                  ? 'bg-gradient-to-b from-emerald-50/70 via-white to-amber-50/40 border-emerald-500/40 shadow-sm'
-                  : 'bg-gradient-to-b from-slate-900 via-slate-900/90 to-emerald-950/20 border-emerald-500/40 shadow-lg'
+                  ? 'bg-slate-50 border-slate-200 shadow-xs'
+                  : 'bg-slate-900/80 border-slate-800 shadow-sm'
               }`}
             >
-              {/* inDrive Card Header */}
-              <div className="flex items-center justify-between gap-2">
+              {/* Header: Title on Left, Fair & Reset on Right */}
+              <div className="flex items-center justify-between px-1">
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                  Offer Your Price to Captain
+                </span>
                 <div className="flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-black text-xs shadow-xs">
-                    ₹
+                  <span className={`text-[10px] font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Fair: <strong className="text-emerald-600 dark:text-emerald-400 font-black">₹{recommendedFare.toFixed(0)}</strong>
                   </span>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <h4 className={`text-xs font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                        Offer Your Price to Captains
-                      </h4>
-                    </div>
-                    <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                      You set the price. Nearby drivers can accept or counter-bid.
-                    </p>
-                  </div>
-                </div>
-
-                {hasUserModifiedBid && (
-                  <button
-                    type="button"
-                    onClick={handleResetToFairFare}
-                    className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-0.5"
-                  >
-                    <span>Reset Fair</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Large Centered inDrive Price Stepper */}
-              <div
-                className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 shadow-inner ${
-                  isLight
-                    ? 'bg-white border-slate-200'
-                    : 'bg-slate-950 border-slate-800'
-                }`}
-              >
-                {/* Decrement Round Button */}
-                <button
-                  type="button"
-                  id="bid-decrement-circle-btn"
-                  disabled={displayFare <= minAllowedFare}
-                  onClick={() => handleAdjustBid(-5)}
-                  className={`w-11 h-11 rounded-full flex items-center justify-center font-black border text-base transition-all active:scale-90 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0 ${
-                    isLight
-                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-300 shadow-xs'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700'
-                  }`}
-                  title="Decrease offer by ₹5"
-                >
-                  <Minus className="w-5 h-5 stroke-[2.5]" />
-                </button>
-
-                {/* Central Editable Big Number */}
-                <div className="flex-1 flex flex-col items-center justify-center text-center">
-                  <div className="flex items-baseline justify-center gap-0.5">
-                    <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400">
-                      ₹
-                    </span>
-                    <input
-                      id="custom-bid-fare-input"
-                      type="number"
-                      min={minAllowedFare}
-                      step="1"
-                      value={customBidInput || displayFare.toFixed(0)}
-                      onChange={(e) => handleCustomBidInputChange(e.target.value)}
-                      onBlur={handleCustomBidInputBlur}
-                      placeholder={recommendedFare.toFixed(0)}
-                      className={`w-24 text-3xl sm:text-4xl font-black font-mono bg-transparent focus:outline-none text-center tracking-tight ${
-                        isLight ? 'text-slate-900' : 'text-slate-50'
-                      }`}
-                    />
-                  </div>
-
-                  <span className={`text-[10px] font-medium mt-0.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    Recommended: <strong className="font-bold text-slate-800 dark:text-slate-200">₹{recommendedFare.toFixed(0)}</strong>
-                    {distanceKm > 0 && ` (${distanceKm} km)`}
-                  </span>
-                </div>
-
-                {/* Increment Round Button */}
-                <button
-                  type="button"
-                  id="bid-increment-circle-btn"
-                  onClick={() => handleAdjustBid(5)}
-                  className={`w-11 h-11 rounded-full flex items-center justify-center font-black border text-base transition-all active:scale-90 cursor-pointer shrink-0 ${
-                    isLight
-                      ? 'bg-emerald-500 hover:bg-emerald-600 text-slate-950 border-emerald-400 shadow-sm'
-                      : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-400 shadow-sm'
-                  }`}
-                  title="Increase offer by ₹5"
-                >
-                  <Plus className="w-5 h-5 stroke-[2.5]" />
-                </button>
-              </div>
-
-              {/* Realtime Speed / Acceptance Feedback Pill */}
-              <div className="flex items-center justify-between text-[11px] px-1">
-                {displayFare > recommendedFare ? (
-                  <span className="text-[10px] px-2.5 py-1 rounded-full font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                    <Zap className="w-3 h-3 fill-emerald-500" />
-                    +₹{(displayFare - recommendedFare).toFixed(0)} above recommended · Captains accept in seconds!
-                  </span>
-                ) : displayFare < recommendedFare ? (
-                  <span className="text-[10px] px-2.5 py-1 rounded-full font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-amber-500" />
-                    ₹{(recommendedFare - displayFare).toFixed(0)} below fair price · May take longer to match
-                  </span>
-                ) : (
-                  <span className="text-[10px] px-2.5 py-1 rounded-full font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 flex items-center gap-1">
-                    <Check className="w-3 h-3 stroke-[3]" />
-                    Matches recommended fair price
-                  </span>
-                )}
-
-                {pricing.surgeMultiplier > 1.0 && (
-                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
-                    🔥 {pricing.surgeMultiplier}x Surge
-                  </span>
-                )}
-              </div>
-
-              {/* Quick Increment Pill Steps */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-                <button
-                  type="button"
-                  id="bid-quick-fair-pill"
-                  onClick={handleResetToFairFare}
-                  className={`px-3 py-1.5 rounded-full text-xs font-black border transition-all cursor-pointer whitespace-nowrap active:scale-95 ${
-                    !hasUserModifiedBid || displayFare === recommendedFare
-                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-xs'
-                      : isLight
-                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                  }`}
-                >
-                  Fair ₹{recommendedFare.toFixed(0)}
-                </button>
-
-                {[5, 10, 20, 50].map((step) => (
-                  <button
-                    key={step}
-                    type="button"
-                    id={`bid-quick-plus-${step}-pill`}
-                    onClick={() => handleAdjustBid(step)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-black border transition-all cursor-pointer whitespace-nowrap active:scale-95 ${
-                      isLight
-                        ? 'bg-white hover:bg-emerald-50 text-emerald-800 border-emerald-300 shadow-xs'
-                        : 'bg-slate-800 hover:bg-emerald-950/50 text-emerald-400 border-emerald-500/40'
-                    }`}
-                  >
-                    +₹{step}
-                  </button>
-                ))}
-              </div>
-
-              {/* Comments and wishes for driver */}
-              <div className="pt-1 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="indrive-passenger-notes"
-                    className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                      isLight ? 'text-slate-600' : 'text-slate-400'
-                    }`}
-                  >
-                    <MessageSquare className="w-3 h-3 text-emerald-500" />
-                    <span>Comments & wishes for driver</span>
-                    <span className="text-[9px] font-normal lowercase text-slate-400">(optional)</span>
-                  </label>
-                  {passengerNotes && (
+                  {hasUserModifiedBid && (
                     <button
                       type="button"
-                      onClick={() => setPassengerNotes('')}
-                      className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                      onClick={handleResetToFairFare}
+                      className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
                     >
-                      Clear
+                      Reset
                     </button>
                   )}
                 </div>
+              </div>
 
+              {/* Main Compact Row: [Payment Mode]  [(-) Fair (+)]  [Comment Box Icon Only] */}
+              <div className="flex items-center justify-between gap-2">
+                {/* 1. Payment Mode Selector Button */}
+                <button
+                  type="button"
+                  id="payment-mode-toggle-btn"
+                  onClick={() => setPaymentMethod((prev) => (prev === 'cash' ? 'upi' : 'cash'))}
+                  className={`px-3 py-2 rounded-xl border flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer shrink-0 select-none ${
+                    isLight
+                      ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800 shadow-2xs'
+                      : 'bg-slate-950 hover:bg-slate-800 border-slate-800 text-slate-200 shadow-2xs'
+                  }`}
+                  title={`Payment Mode: ${paymentMethod === 'cash' ? 'Cash' : 'UPI'} (Tap to toggle)`}
+                >
+                  {paymentMethod === 'cash' ? (
+                    <>
+                      <Banknote className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span>Cash</span>
+                    </>
+                  ) : (
+                    <>
+                      <QrCode className="w-4 h-4 text-cyan-500 shrink-0" />
+                      <span>UPI</span>
+                    </>
+                  )}
+                  <span className="text-[10px] text-slate-400 ml-0.5">⇄</span>
+                </button>
+
+                {/* 2. (-) Fair (+) Stepper */}
+                <div
+                  className={`flex-1 flex items-center justify-between gap-1 px-2 py-1 rounded-xl border shadow-2xs ${
+                    isLight ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800'
+                  }`}
+                >
+                  {/* Minus button (-) */}
+                  <button
+                    type="button"
+                    id="bid-decrement-circle-btn"
+                    disabled={displayFare <= minAllowedFare}
+                    onClick={() => handleAdjustBid(-5)}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center font-black border transition-all active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0 ${
+                      isLight
+                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700'
+                    }`}
+                    title="Decrease fare by ₹5"
+                  >
+                    <Minus className="w-4 h-4 stroke-[2.5]" />
+                  </button>
+
+                  {/* Central Fair Price Display */}
+                  <div className="flex flex-col items-center justify-center text-center px-1 min-w-[60px]">
+                    <div className="flex items-baseline justify-center gap-0.5">
+                      <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">₹</span>
+                      <input
+                        id="custom-bid-fare-input"
+                        type="number"
+                        min={minAllowedFare}
+                        step="1"
+                        value={customBidInput || displayFare.toFixed(0)}
+                        onChange={(e) => handleCustomBidInputChange(e.target.value)}
+                        onBlur={handleCustomBidInputBlur}
+                        placeholder={recommendedFare.toFixed(0)}
+                        className={`w-16 text-base sm:text-lg font-black font-mono bg-transparent focus:outline-none text-center tracking-tight ${
+                          isLight ? 'text-slate-900' : 'text-slate-50'
+                        }`}
+                      />
+                    </div>
+                    <span className={`text-[8px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Fair
+                    </span>
+                  </div>
+
+                  {/* Plus button (+) */}
+                  <button
+                    type="button"
+                    id="bid-increment-circle-btn"
+                    onClick={() => handleAdjustBid(5)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center font-black bg-emerald-500 hover:bg-emerald-400 text-slate-950 border border-emerald-400 transition-all active:scale-95 cursor-pointer shrink-0 shadow-xs"
+                    title="Increase fare by ₹5"
+                  >
+                    <Plus className="w-4 h-4 stroke-[2.5]" />
+                  </button>
+                </div>
+
+                {/* 3. Comment Box Icon Only */}
+                <button
+                  type="button"
+                  id="comment-box-toggle-btn"
+                  onClick={() => setIsCommentBoxOpen((prev) => !prev)}
+                  title={passengerNotes ? `Notes: ${passengerNotes}` : 'Add comment/wishes for driver'}
+                  className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-all cursor-pointer relative shrink-0 select-none ${
+                    passengerNotes
+                      ? 'bg-emerald-500/15 border-emerald-500 text-emerald-600 dark:text-emerald-400 ring-2 ring-emerald-500/20 shadow-xs'
+                      : isCommentBoxOpen
+                      ? isLight
+                        ? 'bg-slate-200 border-slate-300 text-slate-900'
+                        : 'bg-slate-800 border-slate-700 text-slate-100'
+                      : isLight
+                      ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-600 shadow-2xs'
+                      : 'bg-slate-950 hover:bg-slate-800 border-slate-800 text-slate-400 shadow-2xs'
+                  }`}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  {passengerNotes && (
+                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900" />
+                  )}
+                </button>
+              </div>
+
+              {/* Expandable Comment Input (Only shown if toggled open or if comment exists) */}
+              {isCommentBoxOpen && (
                 <div
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-colors ${
                     isLight
@@ -1677,112 +1531,29 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                       : 'bg-slate-950 border-slate-800 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20'
                   }`}
                 >
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                   <input
                     id="indrive-passenger-notes"
                     type="text"
+                    autoFocus
                     value={passengerNotes}
                     onChange={(e) => setPassengerNotes(e.target.value)}
-                    placeholder="E.g., 2 helmets needed, have backpack, wait at gate 2"
+                    placeholder="Comments / wishes for driver (optional)..."
                     className={`w-full text-xs bg-transparent focus:outline-none ${
                       isLight ? 'text-slate-800 placeholder:text-slate-400' : 'text-slate-200 placeholder:text-slate-500'
                     }`}
                   />
+                  {passengerNotes && (
+                    <button
+                      type="button"
+                      onClick={() => setPassengerNotes('')}
+                      className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer shrink-0 font-medium"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
-              </div>
-            </div>
-
-            {/* Payment Mode (UPI or Cash Only) */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Payment Mode
-                </span>
-                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                  {paymentMethod === 'upi' ? '⚡ Instant UPI QR' : '💵 Pay Driver Directly'}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {/* UPI Option */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('upi')}
-                  className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
-                    paymentMethod === 'upi'
-                      ? isLight
-                        ? 'bg-emerald-50/90 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
-                        : 'bg-slate-800 border-emerald-400 ring-2 ring-emerald-500/20 shadow-md'
-                      : isLight
-                      ? 'bg-slate-50 border-slate-200 hover:bg-white hover:border-slate-300 text-slate-600'
-                      : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-400'
-                  }`}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                      paymentMethod === 'upi'
-                        ? 'bg-emerald-500 text-slate-950 font-bold shadow-xs'
-                        : isLight
-                        ? 'bg-slate-200 text-slate-600'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}
-                  >
-                    <QrCode className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className={`text-xs font-black block leading-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                        UPI
-                      </span>
-                      {paymentMethod === 'upi' && (
-                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                      )}
-                    </div>
-                    <span className={`text-[10px] block mt-0.5 truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                      GPay / PhonePe / Paytm
-                    </span>
-                  </div>
-                </button>
-
-                {/* Cash Option */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('cash')}
-                  className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
-                    paymentMethod === 'cash'
-                      ? isLight
-                        ? 'bg-emerald-50/90 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
-                        : 'bg-slate-800 border-emerald-400 ring-2 ring-emerald-500/20 shadow-md'
-                      : isLight
-                      ? 'bg-slate-50 border-slate-200 hover:bg-white hover:border-slate-300 text-slate-600'
-                      : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-400'
-                  }`}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                      paymentMethod === 'cash'
-                        ? 'bg-emerald-500 text-slate-950 font-bold shadow-xs'
-                        : isLight
-                        ? 'bg-slate-200 text-slate-600'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}
-                  >
-                    <Banknote className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className={`text-xs font-black block leading-tight ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                        Cash
-                      </span>
-                      {paymentMethod === 'cash' && (
-                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                      )}
-                    </div>
-                    <span className={`text-[10px] block mt-0.5 truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                      Pay on Drop
-                    </span>
-                  </div>
-                </button>
-              </div>
+              )}
             </div>
 
             {/* Main Booking Action Button */}
@@ -1803,12 +1574,12 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 </>
               ) : !pickup.trim() || !dropoff.trim() ? (
                 <>
-                  <span>Enter Pickup & Destination to Request</span>
+                  <span>Find request Offers</span>
                   <ArrowRight className="w-4 h-4 opacity-40" />
                 </>
               ) : (
                 <>
-                  <span>Find a Captain for ₹{((customBidFare > 0 ? customBidFare : baseCalculatedFare) || 0).toFixed(2)}</span>
+                  <span>Find request Offers · ₹{((customBidFare > 0 ? customBidFare : baseCalculatedFare) || 0).toFixed(2)}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

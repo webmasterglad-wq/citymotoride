@@ -386,7 +386,7 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
       const pickupTooltipContent = `
         <div class="px-2.5 py-1 text-[11px] font-black text-slate-900 bg-white/95 rounded-xl shadow-xl border border-emerald-500/80 flex items-center gap-1.5 whitespace-nowrap pointer-events-none backdrop-blur-xs">
           <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300 animate-pulse"></span>
-          <span class="text-emerald-700 font-extrabold">Pickup (A)</span>
+          <span class="text-emerald-700 font-extrabold">A</span>
           <span class="text-slate-600 font-semibold max-w-[140px] truncate">${pickupLabel}</span>
         </div>
       `;
@@ -396,11 +396,11 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
           <div class="flex items-center gap-2 mb-1.5 border-b border-slate-100 pb-1.5">
             <div class="w-7 h-7 rounded-xl bg-emerald-600 text-white font-black text-xs flex items-center justify-center shadow-sm shrink-0">A</div>
             <div>
-              <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Pickup Location</div>
+              <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Point A</div>
               <div class="text-xs font-bold text-slate-900 leading-tight">${pickupLabel}</div>
             </div>
           </div>
-          <div class="text-[11px] text-slate-600 mb-1.5 leading-relaxed">${pickupLocation || 'Selected pickup location'}</div>
+          <div class="text-[11px] text-slate-600 mb-1.5 leading-relaxed">${pickupLocation || 'Selected point A'}</div>
           <div class="text-[9px] font-mono text-slate-400">GPS: ${resolvedPickup.lat.toFixed(5)}, ${resolvedPickup.lng.toFixed(5)}</div>
         </div>
       `;
@@ -456,7 +456,7 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
       const dropoffTooltipContent = `
         <div class="px-2.5 py-1 text-[11px] font-black text-slate-900 bg-white/95 rounded-xl shadow-xl border border-rose-500/80 flex items-center gap-1.5 whitespace-nowrap pointer-events-none backdrop-blur-xs">
           <span class="w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-rose-300 animate-pulse"></span>
-          <span class="text-rose-700 font-extrabold">Drop-off (B)</span>
+          <span class="text-rose-700 font-extrabold">B</span>
           <span class="text-slate-600 font-semibold max-w-[140px] truncate">${dropoffLabel}</span>
         </div>
       `;
@@ -466,11 +466,11 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
           <div class="flex items-center gap-2 mb-1.5 border-b border-slate-100 pb-1.5">
             <div class="w-7 h-7 rounded-xl bg-rose-600 text-white font-black text-xs flex items-center justify-center shadow-sm shrink-0">B</div>
             <div>
-              <div class="text-[10px] font-bold uppercase tracking-wider text-rose-600">Drop-off Destination</div>
+              <div class="text-[10px] font-bold uppercase tracking-wider text-rose-600">Point B</div>
               <div class="text-xs font-bold text-slate-900 leading-tight">${dropoffLabel}</div>
             </div>
           </div>
-          <div class="text-[11px] text-slate-600 mb-1.5 leading-relaxed">${dropoffLocation || 'Selected drop-off destination'}</div>
+          <div class="text-[11px] text-slate-600 mb-1.5 leading-relaxed">${dropoffLocation || 'Selected point B'}</div>
           <div class="text-[9px] font-mono text-slate-400">GPS: ${resolvedDropoff.lat.toFixed(5)}, ${resolvedDropoff.lng.toFixed(5)}</div>
         </div>
       `;

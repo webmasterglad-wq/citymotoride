@@ -118,13 +118,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: session.user.created_at,
         };
 
-        const oppositeRole = role === 'passenger' ? 'captain' : role === 'captain' ? 'passenger' : null;
+        // Save in state & localStorage (keep role sessions independent for easy testing)
         setRoleUsers((prev) => {
           const updated = { ...prev, [role]: userObj };
-          if (oppositeRole) {
-            updated[oppositeRole] = null;
-            localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
-          }
           localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(userObj));
           return updated;
         });
@@ -239,15 +235,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const emailConfirmationRequired = Boolean(data.user && !data.session);
 
-        const oppositeRole = role === 'passenger' ? 'captain' : role === 'captain' ? 'passenger' : null;
-
         // Save in state & localStorage
         setRoleUsers((prev) => {
           const updated = { ...prev, [role]: createdUser };
-          if (oppositeRole) {
-            updated[oppositeRole] = null;
-            localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
-          }
           localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(createdUser));
           return updated;
         });
@@ -267,13 +257,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString(),
         };
 
-        const oppositeRole = role === 'passenger' ? 'captain' : role === 'captain' ? 'passenger' : null;
         setRoleUsers((prev) => {
           const updated = { ...prev, [role]: createdUser };
-          if (oppositeRole) {
-            updated[oppositeRole] = null;
-            localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
-          }
           localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(createdUser));
           return updated;
         });
@@ -344,14 +329,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: user.created_at,
         };
 
-        const oppositeRole = assignedRole === 'passenger' ? 'captain' : assignedRole === 'captain' ? 'passenger' : null;
-
         setRoleUsers((prev) => {
           const updated = { ...prev, [assignedRole]: authUser };
-          if (oppositeRole) {
-            updated[oppositeRole] = null;
-            localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
-          }
           localStorage.setItem(`${STORAGE_PREFIX}${assignedRole}`, JSON.stringify(authUser));
           return updated;
         });
@@ -359,17 +338,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: true, user: authUser };
       } else {
         // Local fallback when Supabase is not connected
-        const oppositeRole = role === 'passenger' ? 'captain' : role === 'captain' ? 'passenger' : null;
         const cached = localStorage.getItem(`${STORAGE_PREFIX}${role}`);
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed.email === cleanEmail) {
             setRoleUsers((prev) => {
               const updated = { ...prev, [role]: parsed };
-              if (oppositeRole) {
-                updated[oppositeRole] = null;
-                localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
-              }
               return updated;
             });
             return { success: true, user: parsed };
@@ -389,10 +363,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         setRoleUsers((prev) => {
           const updated = { ...prev, [role]: fallbackUser };
-          if (oppositeRole) {
-            updated[oppositeRole] = null;
-            localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
-          }
           localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(fallbackUser));
           return updated;
         });
@@ -442,13 +412,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       createdAt: new Date().toISOString(),
     };
 
-    const oppositeRole = role === 'passenger' ? 'captain' : role === 'captain' ? 'passenger' : null;
     setRoleUsers((prev) => {
       const updated = { ...prev, [role]: cleanUser };
-      if (oppositeRole) {
-        updated[oppositeRole] = null;
-        localStorage.removeItem(`${STORAGE_PREFIX}${oppositeRole}`);
-      }
       localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(cleanUser));
       return updated;
     });
