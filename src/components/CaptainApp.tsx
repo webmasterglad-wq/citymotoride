@@ -512,6 +512,13 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
 
   useEffect(() => {
     loadInitialData();
+    const handleFocus = () => {
+      loadInitialData();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [currentCaptain.id]);
 
   // Subscribe to in-app & cross-tab broadcast notifications
