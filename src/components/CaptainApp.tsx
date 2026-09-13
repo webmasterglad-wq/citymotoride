@@ -2205,12 +2205,12 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               )}
 
               <span className="tracking-tight font-extrabold flex items-center gap-1.5">
-                <span>Incoming Ride Requests</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
-                  isIncomingHalfOpen ? 'bg-slate-950 text-amber-300' : 'bg-emerald-500 text-slate-950'
-                }`}>
-                  {requestedRides.length}
-                </span>
+                <span>{isIncomingHalfOpen ? 'Minimize this window' : `Expand Requests (${requestedRides.length})`}</span>
+                {!isIncomingHalfOpen && (
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-emerald-500 text-slate-950`}>
+                    {requestedRides.length}
+                  </span>
+                )}
               </span>
 
               {/* Center Drop Down / Expand Indicator Icon */}
