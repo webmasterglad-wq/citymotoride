@@ -598,27 +598,6 @@ export const fetchLatestRideForPassenger = async (
   }
 };
 
-export const fetchPassengerRideHistory = async (
-  passengerId: string
-): Promise<{ data: Ride[] | null; error: string | null }> => {
-  const supabase = getSupabaseClient();
-  if (!supabase) return { data: null, error: 'Supabase client is not configured' };
-
-  try {
-    const { data, error } = await supabase
-      .from('rides')
-      .select('*')
-      .eq('passenger_id', passengerId)
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    if (error) return { data: null, error: formatSupabaseError(error) };
-    return { data: data as Ride[], error: null };
-  } catch (err: any) {
-    return { data: null, error: formatSupabaseError(err) };
-  }
-};
-
 export const submitPassengerRatingForRide = async (
   rideId: string,
   rating: number,

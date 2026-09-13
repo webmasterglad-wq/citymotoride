@@ -54,7 +54,6 @@ import {
   createRideBooking,
   fetchActiveRideForPassenger,
   fetchLatestRideForPassenger,
-  fetchPassengerRideHistory,
   fetchRideById,
   submitPassengerRatingForRide,
   updateRideStatus,
@@ -150,54 +149,6 @@ const RIDE_TIERS: RideTier[] = [
   },
 ];
 
-const DEFAULT_PREVIOUS_RIDES: Ride[] = [
-  {
-    id: 'past-ride-1',
-    passenger_id: 'sample-passenger',
-    passenger_name: 'Rider',
-    pickup_location: 'Sector 17 Plaza & Shopping Complex, Chandigarh',
-    pickup_lat: 30.7421,
-    pickup_lng: 76.7825,
-    dropoff_location: 'Elante Mall & Business Hub, Industrial Area, Chandigarh',
-    dropoff_lat: 30.7056,
-    dropoff_lng: 76.8012,
-    fare: 85,
-    service_type: 'moto_comfort',
-    status: 'completed',
-    created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-  } as any,
-  {
-    id: 'past-ride-2',
-    passenger_id: 'sample-passenger',
-    passenger_name: 'Rider',
-    pickup_location: 'Sukhna Lake Tourist Complex, Sector 1, Chandigarh',
-    pickup_lat: 30.7421,
-    pickup_lng: 76.8118,
-    dropoff_location: 'Rock Garden of Chandigarh, Sector 1, Chandigarh',
-    dropoff_lat: 30.7525,
-    dropoff_lng: 76.8012,
-    fare: 65,
-    service_type: 'moto_comfort',
-    status: 'completed',
-    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-  } as any,
-  {
-    id: 'past-ride-3',
-    passenger_id: 'sample-passenger',
-    passenger_name: 'Rider',
-    pickup_location: 'Sector 20 Market & HUDA Complex, Panchkula',
-    pickup_lat: 30.6852,
-    pickup_lng: 76.8587,
-    dropoff_location: 'Fun Republic Mall & Multiplex, Manimajra',
-    dropoff_lat: 30.7224,
-    dropoff_lng: 76.8273,
-    fare: 95,
-    service_type: 'moto_delivery',
-    status: 'completed',
-    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-  } as any
-];
-
 export const PassengerApp: React.FC<PassengerAppProps> = ({
   passengerUser = {
     id: getStoredPassengerId(),
@@ -261,8 +212,6 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<string>('idle');
   const [captainArrivedNotice, setCaptainArrivedNotice] = useState<{ captainName: string; time: string } | null>(null);
-  const [previousRides, setPreviousRides] = useState<Ride[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
 
   const { isLight } = useTheme();
   const { pricing, calculateFare } = usePricing();
@@ -398,23 +347,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     setDropoffCoords(currentPickCoords);
   };
 
-  // Rebook past ride
-  const handleRebookRide = (pastRide: Ride) => {
-    setPickup(pastRide.pickup_location);
-    if (pastRide.pickup_lat !== null && pastRide.pickup_lng !== null && pastRide.pickup_lat !== undefined && pastRide.pickup_lng !== undefined) {
-      setPickupCoords({ lat: pastRide.pickup_lat, lng: pastRide.pickup_lng });
-    }
-    setDropoff(pastRide.dropoff_location);
-    if (pastRide.dropoff_lat !== null && pastRide.dropoff_lng !== null && pastRide.dropoff_lat !== undefined && pastRide.dropoff_lng !== undefined) {
-      setDropoffCoords({ lat: pastRide.dropoff_lat, lng: pastRide.dropoff_lng });
-    }
-    setSelectedTier(pastRide.service_type || 'moto_comfort');
-    if (pastRide.fare) {
-      setCustomBidFare(pastRide.fare);
-      setCustomBidInput(pastRide.fare.toString());
-      setHasUserModifiedBid(true);
-    }
-  };
+
 
   // Load existing active ride on mount
   useEffect(() => {
@@ -441,22 +374,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     };
   }, [passengerUser.id]);
 
-  // Load previous ride history
-  const loadRideHistory = useCallback(async () => {
-    if (!isSupabaseConfigured() || !passengerUser?.id) return;
-    setLoadingHistory(true);
-    const { data, error } = await fetchPassengerRideHistory(passengerUser.id);
-    if (!error && data) {
-      setPreviousRides(data.filter(r => r.status === 'completed' || r.status === 'cancelled'));
-    }
-    setLoadingHistory(false);
-  }, [passengerUser?.id]);
 
-  useEffect(() => {
-    if (!activeRide) {
-      loadRideHistory();
-    }
-  }, [activeRide, loadRideHistory]);
 
   // Realtime Subscription & Polling Fallback
   useEffect(() => {
@@ -1227,15 +1145,15 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
             >
               {!activeRide ? (
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold text-sm shrink-0">
-                    🛵
+                  <div className="w-9 h-9 rounded-xl bg-slate-500/10 text-slate-500 flex items-center justify-center font-bold text-sm shrink-0">
+                    🚫
                   </div>
                   <div className="min-w-0">
                     <p className={`text-xs font-black truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                      {pickup ? pickup.split(',')[0] : 'Choose A'} → {dropoff ? dropoff.split(',')[0] : 'Choose B'}
+                      Ride Booking Removed
                     </p>
-                    <p className="text-[10px] text-emerald-600 font-bold">
-                      Estimated ₹{displayFare.toFixed(0)} · Click to open booking (half page)
+                    <p className="text-[10px] text-slate-500 font-bold">
+                      Booking Flow Disabled · Tap to view details
                     </p>
                   </div>
                 </div>
@@ -1268,7 +1186,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                 }}
                 className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs shrink-0 shadow-sm cursor-pointer"
               >
-                Open Booking
+                Open Details
               </button>
             </div>
           ) : (
@@ -1294,456 +1212,16 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
       {/* Active Ride Mode vs Booking Mode */}
       {!activeRide ? (
-        /* ================= INDRIVE OFFER PRICE BOOKING INTERFACE ================= */
-        <div className="flex flex-col space-y-3 p-4">
-          <form onSubmit={handleBookRide} className="space-y-3">
-            {/* Choose Services Category - Show only icon, placed above A & B tabs */}
-            <div className="flex items-center justify-between px-1 py-0.5">
-              <div className="flex items-center gap-2">
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Choose Services Category
-                </span>
-                <span className={`text-[10px] font-bold ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
-                  ({selectedTier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Ride'})
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                {RIDE_TIERS.map((tier) => {
-                  const isSelected = selectedTier === tier.id;
-                  const tierConfig = tier.id === 'moto_delivery' ? pricing.tierPricing.moto_delivery : pricing.tierPricing.moto_comfort;
-                  return (
-                    <button
-                      key={tier.id}
-                      type="button"
-                      onClick={() => setSelectedTier(tier.id)}
-                      title={`${tierConfig.name} - ${tierConfig.tagline || tier.tagline}`}
-                      className={`text-2xl transition-all cursor-pointer p-1 rounded-xl select-none ${
-                        isSelected
-                          ? 'scale-125 opacity-100 drop-shadow-sm'
-                          : 'opacity-35 hover:opacity-80 hover:scale-110'
-                      }`}
-                    >
-                      <span role="img" aria-label={tierConfig.name}>{tierConfig.icon || tier.icon}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Pickup & Destination Inputs (Google Search Integrated) */}
-            <div
-              className={`border rounded-2xl p-3 space-y-2.5 relative transition-colors ${
-                isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
-              }`}
-            >
-              {/* Pickup Google Location Search */}
-              <div>
-                {liveGPS.coords && (
-                  <div className="flex items-center justify-end gap-1.5 mb-1.5">
-                    <button
-                      type="button"
-                      id="pickup-show-live-gps-on-map-btn"
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent('motoride-center-on-gps'));
-                      }}
-                      className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-500 flex items-center gap-1 cursor-pointer bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/25 transition-all active:scale-95"
-                      title="Show and center real-time GPS location on the map"
-                    >
-                      <Navigation className="w-2.5 h-2.5 text-blue-500 fill-blue-500/20" />
-                      <span>Show on Map</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      id="pickup-use-live-gps-btn"
-                      onClick={() => {
-                        handleUseLiveLocationAsPickup(
-                          liveGPS.coords,
-                          liveGPS.nearestLandmark
-                            ? `${liveGPS.nearestLandmark} (Live GPS)`
-                            : `${liveGPS.coords.lat.toFixed(4)}, ${liveGPS.coords.lng.toFixed(4)}`
-                        );
-                      }}
-                      className="text-[10px] font-black text-cyan-600 dark:text-cyan-400 hover:text-cyan-500 flex items-center gap-1.5 cursor-pointer bg-cyan-500/10 hover:bg-cyan-500/20 px-2 py-0.5 rounded-full border border-cyan-500/25 transition-all active:scale-95"
-                      title="Set A to current real-time GPS coordinates"
-                    >
-                      <span className="relative flex h-1.5 w-1.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500"></span>
-                      </span>
-                      <span>Use Live GPS ({liveGPS.nearestLandmark ? liveGPS.nearestLandmark.split(',')[0] : 'Tricity'})</span>
-                    </button>
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0">
-                    A
-                  </div>
-                  <div className="flex-1">
-                    <GoogleLocationSearchInput
-                      type="pickup"
-                      value={pickup || ''}
-                      placeholder="Search location for A..."
-                      required
-                      referenceCoords={pickupCoords}
-                      currentGpsCoords={liveGPS.coords}
-                      currentGpsLabel={liveGPS.nearestLandmark}
-                      onUseCurrentGps={(coords, address) => {
-                        handleUseLiveLocationAsPickup(coords, address);
-                      }}
-                      onChange={(val, coords) => {
-                        setPickup(val);
-                        if (coords) {
-                          setPickupCoords(coords);
-                        } else if (val && val.trim() !== '') {
-                          setPickupCoords(strictResolveLocationCoords(val));
-                        } else {
-                          setPickupCoords(null);
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Divider with Swap Button */}
-              <div className="relative flex items-center justify-center py-0.5">
-                <div className={`w-full h-px ml-8 mr-8 ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`} />
-                <button
-                  type="button"
-                  onClick={handleSwapLocations}
-                  title="Swap A & B"
-                  className={`absolute right-2 p-1.5 rounded-full border transition-all hover:rotate-180 duration-300 cursor-pointer shadow-xs ${
-                    isLight
-                      ? 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-                  }`}
-                >
-                  <ArrowUpDown className="w-3 h-3 text-emerald-500" />
-                </button>
-              </div>
-
-              {/* Dropoff Google Location Search */}
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-rose-600 text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0">
-                    B
-                  </div>
-                  <div className="flex-1">
-                    <GoogleLocationSearchInput
-                      type="dropoff"
-                      value={dropoff || ''}
-                      placeholder="Search location for B..."
-                      required
-                      referenceCoords={pickupCoords}
-                      currentGpsCoords={liveGPS.coords}
-                      currentGpsLabel={liveGPS.nearestLandmark}
-                      onChange={(val, coords) => {
-                        setDropoff(val);
-                        if (coords) {
-                          setDropoffCoords(coords);
-                        } else if (val && val.trim() !== '') {
-                          setDropoffCoords(strictResolveLocationCoords(val));
-                        } else {
-                          setDropoffCoords(null);
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Location Suggestion Chips */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-              <span className={`text-[10px] font-bold shrink-0 ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
-                POPULAR:
-              </span>
-              {DEFAULT_DROPOFFS.slice(0, 4).map((loc) => (
-                <button
-                  key={loc}
-                  type="button"
-                  onClick={() => {
-                    setDropoff(loc);
-                    setDropoffCoords(resolveLocationCoords(loc));
-                  }}
-                  className={`text-[10px] px-2.5 py-1 rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    isLight
-                      ? 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 shadow-xs'
-                      : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
-                  }`}
-                >
-                  {loc.split(',')[0]}
-                </button>
-              ))}
-            </div>
-
-            {/* Offer Your Price to Captain - New Sleek Bar: Payment Mode | (-) Fair (+) | Comment Box Icon Only */}
-            <div
-              id="indrive-offer-price-card"
-              className={`p-2.5 rounded-2xl border transition-all space-y-2 ${
-                isLight
-                  ? 'bg-slate-50 border-slate-200 shadow-xs'
-                  : 'bg-slate-900/80 border-slate-800 shadow-sm'
-              }`}
-            >
-              {/* Header: Title on Left, Fair & Reset on Right */}
-              <div className="flex items-center justify-between px-1">
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Offer Your Price to Captain
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className={`text-[10px] font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    Fair: <strong className="text-emerald-600 dark:text-emerald-400 font-black">₹{recommendedFare.toFixed(0)}</strong>
-                  </span>
-                  {hasUserModifiedBid && (
-                    <button
-                      type="button"
-                      onClick={handleResetToFairFare}
-                      className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
-                    >
-                      Reset
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Main Compact Row: [Payment Mode]  [(-) Fair (+)]  [Comment Box Icon Only] */}
-              <div className="flex items-center justify-between gap-2">
-                {/* 1. Payment Mode Selector Button */}
-                <button
-                  type="button"
-                  id="payment-mode-toggle-btn"
-                  onClick={() => setPaymentMethod((prev) => (prev === 'cash' ? 'upi' : 'cash'))}
-                  className={`px-3 py-2 rounded-xl border flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer shrink-0 select-none ${
-                    isLight
-                      ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800 shadow-2xs'
-                      : 'bg-slate-950 hover:bg-slate-800 border-slate-800 text-slate-200 shadow-2xs'
-                  }`}
-                  title={`Payment Mode: ${paymentMethod === 'cash' ? 'Cash' : 'UPI'} (Tap to toggle)`}
-                >
-                  {paymentMethod === 'cash' ? (
-                    <>
-                      <Banknote className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>Cash</span>
-                    </>
-                  ) : (
-                    <>
-                      <QrCode className="w-4 h-4 text-cyan-500 shrink-0" />
-                      <span>UPI</span>
-                    </>
-                  )}
-                  <span className="text-[10px] text-slate-400 ml-0.5">⇄</span>
-                </button>
-
-                {/* 2. (-) Fair (+) Stepper */}
-                <div
-                  className={`flex-1 flex items-center justify-between gap-1 px-2 py-1 rounded-xl border shadow-2xs ${
-                    isLight ? 'bg-white border-slate-200' : 'bg-slate-950 border-slate-800'
-                  }`}
-                >
-                  {/* Minus button (-) */}
-                  <button
-                    type="button"
-                    id="bid-decrement-circle-btn"
-                    disabled={displayFare <= minAllowedFare}
-                    onClick={() => handleAdjustBid(-5)}
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center font-black border transition-all active:scale-95 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed shrink-0 ${
-                      isLight
-                        ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200'
-                        : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-700'
-                    }`}
-                    title="Decrease fare by ₹5"
-                  >
-                    <Minus className="w-4 h-4 stroke-[2.5]" />
-                  </button>
-
-                  {/* Central Fair Price Display */}
-                  <div className="flex flex-col items-center justify-center text-center px-1 min-w-[60px]">
-                    <div className="flex items-baseline justify-center gap-0.5">
-                      <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">₹</span>
-                      <input
-                        id="custom-bid-fare-input"
-                        type="number"
-                        min={minAllowedFare}
-                        step="1"
-                        value={customBidInput || displayFare.toFixed(0)}
-                        onChange={(e) => handleCustomBidInputChange(e.target.value)}
-                        onBlur={handleCustomBidInputBlur}
-                        placeholder={recommendedFare.toFixed(0)}
-                        className={`w-16 text-base sm:text-lg font-black font-mono bg-transparent focus:outline-none text-center tracking-tight ${
-                          isLight ? 'text-slate-900' : 'text-slate-50'
-                        }`}
-                      />
-                    </div>
-                    <span className={`text-[8px] font-bold uppercase tracking-wider ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
-                      Fair
-                    </span>
-                  </div>
-
-                  {/* Plus button (+) */}
-                  <button
-                    type="button"
-                    id="bid-increment-circle-btn"
-                    onClick={() => handleAdjustBid(5)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center font-black bg-emerald-500 hover:bg-emerald-400 text-slate-950 border border-emerald-400 transition-all active:scale-95 cursor-pointer shrink-0 shadow-xs"
-                    title="Increase fare by ₹5"
-                  >
-                    <Plus className="w-4 h-4 stroke-[2.5]" />
-                  </button>
-                </div>
-
-                {/* 3. Comment Box Icon Only */}
-                <button
-                  type="button"
-                  id="comment-box-toggle-btn"
-                  onClick={() => setIsCommentBoxOpen((prev) => !prev)}
-                  title={passengerNotes ? `Notes: ${passengerNotes}` : 'Add comment/wishes for driver'}
-                  className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-all cursor-pointer relative shrink-0 select-none ${
-                    passengerNotes
-                      ? 'bg-emerald-500/15 border-emerald-500 text-emerald-600 dark:text-emerald-400 ring-2 ring-emerald-500/20 shadow-xs'
-                      : isCommentBoxOpen
-                      ? isLight
-                        ? 'bg-slate-200 border-slate-300 text-slate-900'
-                        : 'bg-slate-800 border-slate-700 text-slate-100'
-                      : isLight
-                      ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-600 shadow-2xs'
-                      : 'bg-slate-950 hover:bg-slate-800 border-slate-800 text-slate-400 shadow-2xs'
-                  }`}
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  {passengerNotes && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900" />
-                  )}
-                </button>
-              </div>
-
-              {/* Expandable Comment Input (Only shown if toggled open or if comment exists) */}
-              {isCommentBoxOpen && (
-                <div
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-colors ${
-                    isLight
-                      ? 'bg-white border-slate-200 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20'
-                      : 'bg-slate-950 border-slate-800 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20'
-                  }`}
-                >
-                  <MessageSquare className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  <input
-                    id="indrive-passenger-notes"
-                    type="text"
-                    autoFocus
-                    value={passengerNotes}
-                    onChange={(e) => setPassengerNotes(e.target.value)}
-                    placeholder="Comments / wishes for driver (optional)..."
-                    className={`w-full text-xs bg-transparent focus:outline-none ${
-                      isLight ? 'text-slate-800 placeholder:text-slate-400' : 'text-slate-200 placeholder:text-slate-500'
-                    }`}
-                  />
-                  {passengerNotes && (
-                    <button
-                      type="button"
-                      onClick={() => setPassengerNotes('')}
-                      className="text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer shrink-0 font-medium"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Main Booking Action Button */}
-            <button
-              id="indrive-book-ride-btn"
-              type="submit"
-              disabled={isSubmitting || !pickup.trim() || !dropoff.trim()}
-              className={`w-full py-4 px-4 font-black rounded-2xl text-sm flex items-center justify-center gap-2 shadow-xl transition-all transform active:scale-[0.99] ${
-                !pickup.trim() || !dropoff.trim()
-                  ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none border border-slate-300 dark:border-slate-700'
-                  : 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 shadow-emerald-500/25 cursor-pointer'
-              }`}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Broadcasting Offer to Nearby Captains...
-                </>
-              ) : !pickup.trim() || !dropoff.trim() ? (
-                <>
-                  <span>Find request Offers</span>
-                  <ArrowRight className="w-4 h-4 opacity-40" />
-                </>
-              ) : (
-                <>
-                  <span>Find request Offers · ₹{((customBidFare > 0 ? customBidFare : baseCalculatedFare) || 0).toFixed(2)}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Previous Ride Booking Style / Quick Rebook Section */}
-          {(() => {
-            const ridesToDisplay = previousRides.length > 0 ? previousRides : DEFAULT_PREVIOUS_RIDES;
-            return (
-              <div className="pt-3 border-t border-dashed border-slate-200 dark:border-slate-800 space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className={`text-[10px] font-black uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    {previousRides.length > 0 ? 'Your Previous Bookings' : 'Suggested Previous Bookings'}
-                  </span>
-                  <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                    Tap to auto-fill
-                  </span>
-                </div>
-                
-                <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 scrollbar-thin">
-                  {ridesToDisplay.slice(0, 3).map((pastRide) => {
-                    const formattedDate = pastRide.created_at 
-                      ? new Date(pastRide.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                      : 'Recent Trip';
-                    const isDelivery = pastRide.service_type === 'moto_delivery';
-                    
-                    return (
-                      <button
-                        key={pastRide.id}
-                        type="button"
-                        onClick={() => handleRebookRide(pastRide)}
-                        className={`w-full text-left p-2.5 border rounded-xl flex items-center justify-between gap-3 transition-all transform active:scale-[0.98] hover:border-emerald-500/50 cursor-pointer ${
-                          isLight 
-                            ? 'bg-white hover:bg-slate-50 border-slate-150 shadow-2xs' 
-                            : 'bg-slate-950 hover:bg-slate-900 border-slate-850'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
-                            isDelivery ? 'bg-amber-500/15 text-amber-500' : 'bg-emerald-500/15 text-emerald-500'
-                          }`}>
-                            {isDelivery ? '📦' : '🛵'}
-                          </div>
-                          <div className="min-w-0">
-                            <p className={`text-[11px] font-bold truncate ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                              {pastRide.pickup_location.split(',')[0]} → {pastRide.dropoff_location.split(',')[0]}
-                            </p>
-                            <p className="text-[9px] text-slate-400 font-medium">
-                              {formattedDate} · {isDelivery ? 'Moto Courier' : 'Comfort Ride'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <span className={`text-xs font-black block ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
-                            ₹{pastRide.fare}
-                          </span>
-                          <span className="text-[8px] uppercase tracking-wider font-extrabold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.2 rounded">
-                            Rebook
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
+        <div className="p-8 text-center space-y-3 flex flex-col items-center justify-center min-h-[300px]">
+          <div className="w-12 h-12 rounded-2xl bg-slate-500/10 text-slate-500 flex items-center justify-center text-xl font-bold mx-auto">
+            🚫
+          </div>
+          <h3 className="text-sm font-black text-slate-800 dark:text-slate-200">
+            Booking Flow Disabled
+          </h3>
+          <p className="text-xs max-w-xs mx-auto text-slate-500 dark:text-slate-400">
+            The passenger's ride booking flow card has been completely removed from this application.
+          </p>
         </div>
       ) : (
         /* ================= UBER / INDRIVE LIVE ACTIVE RIDE TRACKER ================= */
