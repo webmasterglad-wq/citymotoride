@@ -354,7 +354,6 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   useEffect(() => {
     let isMounted = true;
     const loadInitialRide = async () => {
-      if (!isSupabaseConfigured()) return;
       const { data } = await fetchActiveRideForPassenger(passengerUser.id);
       if (isMounted && data) {
         setActiveRide(data);
@@ -431,11 +430,8 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     const pollInterval = setInterval(async () => {
       const current = activeRideRef.current;
       const cached = getStoredRideData(currentActiveRideId);
-      let data: Ride | null = null;
-      if (isSupabaseConfigured()) {
-        const res = await fetchRideById(currentActiveRideId);
-        data = res.data;
-      }
+      const res = await fetchRideById(currentActiveRideId);
+      const data = res.data;
       const latest: Ride | null = (cached && cached.status === 'arrived' && data?.status !== 'arrived')
         ? ({ ...(data || {}), ...cached, id: currentActiveRideId } as Ride)
         : ((data || (cached ? { ...cached, id: currentActiveRideId } : null)) as Ride | null);
@@ -790,11 +786,6 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
     if (pickup.trim().toLowerCase() === dropoff.trim().toLowerCase()) {
       setErrorMessage('Pickup and dropoff cannot be the same address.');
-      return;
-    }
-
-    if (!isSupabaseConfigured()) {
-      setErrorMessage('Supabase is not configured. Please verify your Supabase URL & Key.');
       return;
     }
 

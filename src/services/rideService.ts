@@ -468,6 +468,25 @@ export const fetchActiveRequestedRides = async (): Promise<{
 export const fetchRideById = async (
   rideId: string
 ): Promise<{ data: Ride | null; error: string | null }> => {
+  // Try querying server API first for hybrid/fallback environments
+  try {
+    const apiRes = await fetch(`/api/rides/${rideId}`);
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (json?.data) {
+        const enriched = json.data as Ride;
+        const extracted = extractOffersFromRide(enriched);
+        if (extracted.length > 0) {
+          enriched.captain_offers = extracted;
+        }
+        setStoredRideData(rideId, enriched);
+        return { data: enriched, error: null };
+      }
+    }
+  } catch (apiErr) {
+    console.warn('[Motoride] fetchRideById api fallback note:', apiErr);
+  }
+
   const supabase = getSupabaseClient();
   const cached = getStoredRideData(rideId) as Ride | null;
 
@@ -515,6 +534,23 @@ export const fetchRideById = async (
 export const fetchActiveRideForPassenger = async (
   passengerId: string
 ): Promise<{ data: Ride | null; error: string | null }> => {
+  // Try querying server API first for hybrid/fallback environments
+  try {
+    const apiRes = await fetch(`/api/rides?passenger_id=${passengerId}`);
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (Array.isArray(json?.data) && json.data.length > 0) {
+        const active = json.data.find((r: Ride) => ['requested', 'accepted', 'arrived', 'started'].includes(r.status));
+        if (active) {
+          setStoredRideData(active.id, active);
+          return { data: active, error: null };
+        }
+      }
+    }
+  } catch (apiErr) {
+    console.warn('[Motoride] fetchActiveRideForPassenger api fallback note:', apiErr);
+  }
+
   const supabase = getSupabaseClient();
   if (!supabase) {
     const lastId = typeof window !== 'undefined' ? localStorage.getItem('motoride_last_passenger_ride_id') : null;
@@ -524,7 +560,7 @@ export const fetchActiveRideForPassenger = async (
         return { data: cached, error: null };
       }
     }
-    return { data: null, error: 'Supabase client is not configured' };
+    return { data: null, error: null };
   }
 
   try {
@@ -579,8 +615,23 @@ export const fetchActiveRideForPassenger = async (
 export const fetchLatestRideForPassenger = async (
   passengerId: string
 ): Promise<{ data: Ride | null; error: string | null }> => {
+  // Try querying server API first for hybrid/fallback environments
+  try {
+    const apiRes = await fetch(`/api/rides?passenger_id=${passengerId}`);
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (Array.isArray(json?.data) && json.data.length > 0) {
+        const latest = json.data[0];
+        setStoredRideData(latest.id, latest);
+        return { data: latest, error: null };
+      }
+    }
+  } catch (apiErr) {
+    console.warn('[Motoride] fetchLatestRideForPassenger api fallback note:', apiErr);
+  }
+
   const supabase = getSupabaseClient();
-  if (!supabase) return { data: null, error: 'Supabase client is not configured' };
+  if (!supabase) return { data: null, error: null };
 
   try {
     const { data, error } = await supabase
