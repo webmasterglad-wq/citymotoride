@@ -1734,80 +1734,13 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             </div>
           )}
 
-          {/* Turn-by-Turn GPS Navigation & Route Card (Always visible for Pickup & Destination) */}
+          {/* Route Details Card */}
           <div
             id="captain-navigation-action-card"
             className={`p-3.5 rounded-2xl border space-y-3 shadow-md ${
               isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
             }`}
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Navigation className="w-4 h-4 text-emerald-500" />
-                <span className={`text-[11px] font-black uppercase tracking-wider ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
-                  Turn-by-Turn Navigation (Google Maps)
-                </span>
-              </div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                activeRide.status === 'arrived'
-                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
-                  : activeRide.status === 'started'
-                  ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30'
-                  : 'bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/30'
-              }`}>
-                {activeRide.status === 'arrived' ? 'At Pickup Spot' : activeRide.status === 'started' ? 'Heading to Drop-off' : 'Heading to Pickup'}
-              </span>
-            </div>
-
-            {/* Dual High-Contrast Navigation Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {/* Navigate to Pickup Button */}
-              <a
-                id="captain-nav-to-pickup-btn"
-                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.pickup_location || 'Pickup Location')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer border ${
-                  activeRide.status === 'arrived'
-                    ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-400 ring-2 ring-emerald-500/20'
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500'
-                }`}
-                title="Open Turn-by-Turn Navigation to Pickup in Google Maps"
-              >
-                <Navigation className="w-3.5 h-3.5 fill-current -rotate-45" />
-                <div className="text-left leading-tight">
-                  <div className="text-[9px] uppercase tracking-wider opacity-90">
-                    {activeRide.status === 'arrived' ? '✓ Arrived Here' : 'Step 1'}
-                  </div>
-                  <div className="font-black">Navigate to Pickup</div>
-                </div>
-                <ExternalLink className="w-3 h-3 ml-auto opacity-80" />
-              </a>
-
-              {/* Navigate to Destination Button */}
-              <a
-                id="captain-nav-to-destination-btn"
-                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.dropoff_location || 'Destination Dropoff')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer border ${
-                  activeRide.status === 'started'
-                    ? 'bg-indigo-500 hover:bg-indigo-400 text-white border-indigo-400 ring-2 ring-indigo-500/20'
-                    : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500'
-                }`}
-                title="Open Turn-by-Turn Navigation to Destination in Google Maps"
-              >
-                <MapPin className="w-3.5 h-3.5 fill-current" />
-                <div className="text-left leading-tight">
-                  <div className="text-[9px] uppercase tracking-wider opacity-90">
-                    {activeRide.status === 'started' ? 'Active Route' : 'Step 2'}
-                  </div>
-                  <div className="font-black">Navigate to Destination</div>
-                </div>
-                <ExternalLink className="w-3 h-3 ml-auto opacity-80" />
-              </a>
-            </div>
-
             {/* Trip Route Details (Pickup & Drop-off with inline maps links) */}
             <div className={`p-2.5 rounded-xl border space-y-2 ${isLight ? 'bg-white border-slate-200' : 'bg-slate-950/60 border-slate-800'}`}>
               {/* Small Capsule Navigate Button on left side above pickup location */}

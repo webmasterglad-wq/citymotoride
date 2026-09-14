@@ -356,7 +356,11 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     const loadInitialRide = async () => {
       const { data } = await fetchActiveRideForPassenger(passengerUser.id);
       if (isMounted && data) {
-        setActiveRide(data);
+        const isDismissed = localStorage.getItem(`motoride_dismissed_${data.id}`) === 'true';
+        if (!isDismissed) {
+          setActiveRide(data);
+          activeRideRef.current = data;
+        }
       }
       
       if (isMounted) {
@@ -366,8 +370,10 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
           setPreviousRide(latest);
           if (latest.status === 'completed') {
             const isRated = localStorage.getItem(`motoride_rating_${latest.id}`);
-            if (!isRated) {
+            const isDismissed = localStorage.getItem(`motoride_dismissed_${latest.id}`) === 'true';
+            if (!isRated && !isDismissed) {
               setActiveRide(latest);
+              activeRideRef.current = latest;
             }
           }
         }
@@ -436,12 +442,12 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
         ? ({ ...(data || {}), ...cached, id: currentActiveRideId } as Ride)
         : ((data || (cached ? { ...cached, id: currentActiveRideId } : null)) as Ride | null);
 
-      if (latest && current) {
-        if (latest.status !== current.status) {
-          if (latest.status === 'arrived' && current.status !== 'arrived') {
+      if (latest) {
+        if (!current || latest.status !== current.status || latest.captain_id !== current.captain_id) {
+          if (latest.status === 'arrived' && current?.status !== 'arrived') {
             playCaptainArrivedChime();
             setCaptainArrivedNotice({
-              captainName: latest.captain_name || current.captain_name || 'Your Captain',
+              captainName: latest.captain_name || current?.captain_name || 'Your Captain',
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             });
           }
@@ -529,28 +535,42 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     const handleIncomingArrivalOrStatus = (incoming: any) => {
       if (!incoming) return;
       const current = activeRideRef.current;
-      const storedLastId = typeof window !== 'undefined' ? localStorage.getItem('motoride_last_passenger_ride_id') : null;
-      const targetId = current?.id || storedLastId;
       const incomingId = incoming.id || incoming.rideId;
-
-      // Allow match if same ID, or if we have an active ride and incoming is an arrival broadcast
-      const isMatch = (targetId && incomingId && String(targetId).trim() === String(incomingId).trim())
-        || (targetId && !incomingId)
-        || (!targetId && incomingId);
-
-      if (!isMatch) return;
-
       const incomingStatus = incoming.status || (incoming.type === 'CAPTAIN_ARRIVED_BROADCAST' ? 'arrived' : undefined);
       if (!incomingStatus) return;
+
+      // If user has dismissed this ride, ignore it completely
+      if (incomingId && typeof window !== 'undefined') {
+        const isDismissed = localStorage.getItem(`motoride_dismissed_${incomingId}`) === 'true';
+        if (isDismissed) return;
+      }
+
+      // If there is currently NO active ride on screen (e.g. user is booking a new ride):
+      // NEVER adopt a completed or cancelled ride!
+      if (!current) {
+        if (incomingStatus === 'completed' || incomingStatus === 'cancelled') {
+          return;
+        }
+        // Only adopt if it's an active in-flight ride
+        if (!['requested', 'accepted', 'arrived', 'started'].includes(incomingStatus)) {
+          return;
+        }
+      }
+
+      // If there IS currently an active ride on screen:
+      // Only accept status changes if it matches this ride's ID
+      if (current && incomingId && String(current.id).trim() !== String(incomingId).trim()) {
+        return;
+      }
 
       const prevStatus = current?.status;
 
       setActiveRide((prev) => {
-        const base = prev || current || (targetId ? getStoredRideData(targetId) : null) || ({} as Ride);
+        const base = prev || current || (incomingId ? getStoredRideData(incomingId) : null) || ({} as Ride);
         const updated: Ride = {
           ...base,
           ...(incoming.ride || incoming),
-          id: base.id || incomingId || targetId || '',
+          id: base.id || incomingId || '',
           status: incomingStatus as any,
           captain_name: incoming.captain_name || incoming.ride?.captain_name || base.captain_name || 'Captain Driver',
           captain_phone: incoming.captain_phone || incoming.ride?.captain_phone || base.captain_phone || '',
@@ -560,9 +580,15 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
         activeRideRef.current = updated;
         if (updated.id) {
           setStoredRideData(updated.id, updated);
-          try {
-            localStorage.setItem('motoride_last_passenger_ride_id', updated.id);
-          } catch {}
+          if (updated.status !== 'completed' && updated.status !== 'cancelled') {
+            try {
+              localStorage.setItem('motoride_last_passenger_ride_id', updated.id);
+            } catch {}
+          } else {
+            try {
+              localStorage.removeItem('motoride_last_passenger_ride_id');
+            } catch {}
+          }
         }
         return updated;
       });
@@ -632,7 +658,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
       } else if (e.key && e.key.startsWith('motoride_active_ride_') && e.newValue) {
         try {
           const parsed = JSON.parse(e.newValue);
-          if (parsed?.status === 'arrived') {
+          if (parsed && parsed.status && parsed.status !== activeRideRef.current?.status) {
             handleIncomingArrivalOrStatus(parsed);
           }
         } catch {}
@@ -640,17 +666,19 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
     };
     window.addEventListener('storage', handleStorage);
 
-    // 6. Fast local poll every 700ms to catch any arrival that occurred in localStorage
+    // 6. Fast local poll every 500ms to catch any status transition that occurred in localStorage
     const statusWatchInterval = setInterval(() => {
       const current = activeRideRef.current;
-      const targetId = current?.id || (typeof window !== 'undefined' ? localStorage.getItem('motoride_last_passenger_ride_id') : null);
+      // Only monitor if there is an in-flight ride on screen
+      if (!current || current.status === 'completed' || current.status === 'cancelled') return;
+      const targetId = current.id;
       if (targetId) {
         const cached = getStoredRideData(targetId);
-        if (cached && cached.status === 'arrived' && current?.status !== 'arrived') {
+        if (cached && cached.status && (cached.status !== current.status || cached.captain_id !== current.captain_id)) {
           handleIncomingArrivalOrStatus(cached);
         }
       }
-    }, 700);
+    }, 500);
 
     return () => {
       unsubArrived();
@@ -958,14 +986,41 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
   const handleBookAnother = () => {
     if (activeRide) {
       setPreviousRide(activeRide);
+      try {
+        localStorage.removeItem('motoride_last_passenger_ride_id');
+        localStorage.setItem(`motoride_rating_${activeRide.id}`, 'true');
+        localStorage.setItem(`motoride_dismissed_${activeRide.id}`, 'true');
+        localStorage.removeItem(`motoride_offers_${activeRide.id}`);
+      } catch (e) {
+        console.warn('Error clearing ride storage:', e);
+      }
+    } else {
+      try {
+        localStorage.removeItem('motoride_last_passenger_ride_id');
+      } catch {}
     }
+    activeRideRef.current = null;
     setActiveRide(null);
     setPickup('');
     setDropoff('');
     setPickupCoords(null);
     setDropoffCoords(null);
+    setCustomBidFare(0);
+    setCustomBidInput('');
+    setHasUserModifiedBid(false);
+    setPassengerNotes('');
+    setCaptainOffers([]);
     setErrorMessage(null);
     setReviewSubmitted(false);
+    setRatingStars(5);
+    setFeedbackComment('');
+    setSelectedTags([]);
+    setTipAmount(0);
+    setCaptainArrivedNotice(null);
+    setIsWindowCollapsed(false);
+    setIsChatOpen(false);
+    setIsSafetyOpen(false);
+    setIsSubmitting(false);
   };
 
   const recommendedFare = baseCalculatedFare > 0 ? baseCalculatedFare : (activeTierConfig.baseFare || 25);
@@ -1172,7 +1227,11 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-400 font-bold">
-                      PIN: <span className="text-amber-500 font-mono">{safetyPin}</span> · Click to view ride progress & rating
+                      {activeRide.status === 'completed'
+                        ? 'Trip completed · Click to rate or book another ride'
+                        : activeRide.status === 'cancelled'
+                        ? 'Trip cancelled · Click to book another ride'
+                        : `PIN: ${safetyPin} · Click to view ride progress`}
                     </p>
                   </div>
                 </div>
@@ -1180,13 +1239,20 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
 
               <button
                 type="button"
+                id="passenger-dock-open-booking-btn"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsWindowCollapsed(false);
+                  if (activeRide && (activeRide.status === 'completed' || activeRide.status === 'cancelled')) {
+                    handleBookAnother();
+                  } else {
+                    setIsWindowCollapsed(false);
+                  }
                 }}
                 className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs shrink-0 shadow-sm cursor-pointer"
               >
-                Open Booking
+                {activeRide && (activeRide.status === 'completed' || activeRide.status === 'cancelled')
+                  ? 'Book Another'
+                  : 'Open Booking'}
               </button>
             </div>
           ) : (
@@ -2320,7 +2386,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-center space-y-1">
+                <div className="p-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-center space-y-3">
                   <div className="flex items-center justify-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
                     <CheckCircle2 className="w-4 h-4" />
                     <span>Rating Recorded Successfully</span>
@@ -2328,6 +2394,15 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Your {ratingStars}★ review has been recorded for Captain {activeRide.captain_name || 'Driver'}.
                   </p>
+                  <button
+                    type="button"
+                    id="passenger-rate-card-book-another-btn"
+                    onClick={handleBookAnother}
+                    className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer transition-all active:scale-98"
+                  >
+                    <span>Book Another MotoRide Now</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               )}
             </div>
@@ -2337,6 +2412,7 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
           <div className="pt-1">
             {activeRide.status === 'requested' || activeRide.status === 'accepted' ? (
               <button
+                type="button"
                 id="uber-cancel-ride-btn"
                 onClick={handleCancelRide}
                 disabled={isSubmitting}
@@ -2351,29 +2427,33 @@ export const PassengerApp: React.FC<PassengerAppProps> = ({
               </button>
             ) : activeRide.status === 'completed' ? (
               <button
+                type="button"
                 id="uber-book-another-btn"
                 onClick={handleBookAnother}
-                className={`w-full py-3.5 font-black rounded-2xl text-xs sm:text-sm transition-all shadow-xl cursor-pointer ${
+                className={`w-full py-3.5 font-black rounded-2xl text-xs sm:text-sm transition-all shadow-xl cursor-pointer flex items-center justify-center gap-2 ${
                   reviewSubmitted
-                    ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/25 ring-2 ring-emerald-400/50'
                     : isLight
                     ? 'bg-slate-900 hover:bg-slate-800 text-white'
                     : 'bg-white hover:bg-slate-200 text-slate-950'
                 }`}
               >
-                {reviewSubmitted ? 'Book Another MotoRide' : 'Skip & Book Another MotoRide'}
+                <span>{reviewSubmitted ? 'Book Another MotoRide' : 'Skip & Book Another MotoRide'}</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             ) : activeRide.status === 'cancelled' ? (
               <button
-                id="uber-book-another-btn"
+                type="button"
+                id="uber-book-another-cancelled-btn"
                 onClick={handleBookAnother}
-                className={`w-full py-3.5 font-black rounded-2xl text-xs transition-colors shadow-xl cursor-pointer ${
+                className={`w-full py-3.5 font-black rounded-2xl text-xs sm:text-sm transition-colors shadow-xl cursor-pointer flex items-center justify-center gap-2 ${
                   isLight
                     ? 'bg-slate-900 hover:bg-slate-800 text-white'
                     : 'bg-white hover:bg-slate-200 text-slate-950'
                 }`}
               >
-                Book Another MotoRide
+                <span>Book Another MotoRide</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             ) : null}
           </div>
