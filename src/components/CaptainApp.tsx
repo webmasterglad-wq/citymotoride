@@ -44,6 +44,7 @@ import {
   BellOff,
   Route,
   Info,
+  Play,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Ride, RideStatus, UserProfile, CaptainEarningsSummary, getRideServiceInfo, CaptainOffer, getRidePin } from '../types/ride';
@@ -1475,23 +1476,28 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
             );
           })()}
 
-          {/* Captain Ride Lifecycle Progression Timeline Bar & Step Tabs */}
+          {/* Captain Primary Ride Action Tabs: "I Have Arrived" & "Trip Start" */}
           <div
-            id="captain-ride-progression-timeline"
-            className={`p-3 rounded-2xl border space-y-2 ${
-              isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
+            id="captain-ride-action-tabs"
+            className={`p-2 rounded-2xl border shadow-lg space-y-2 ${
+              isLight ? 'bg-slate-100/95 border-slate-200 shadow-slate-200/50' : 'bg-slate-900/95 border-slate-800 shadow-black/50'
             }`}
           >
-            <div className={`flex items-center justify-between text-[10px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              <span className="text-emerald-500 flex items-center gap-0.5">
-                <Check className="w-2.5 h-2.5 stroke-[3]" /> 1. Accepted
+            <div className="flex items-center justify-between px-1">
+              <span className={`text-[10px] font-black uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                Active Trip Actions
               </span>
-              <span className={activeRide.status === 'accepted' ? 'text-amber-500 font-black' : 'text-emerald-500'}>
-                2. En Route
+              <span className="text-[10px] font-mono text-amber-500 font-bold">
+                Rider PIN: {getRidePin(activeRide.id)}
               </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {/* Tab 1: I Have Arrived */}
               <button
                 type="button"
-                id="captain-tab-arrived-step"
+                id="captain-tab-i-have-arrived"
+                disabled={isUpdatingStatus || activeRide.status === 'started' || activeRide.status === 'completed'}
                 onClick={() => {
                   if (activeRide.status === 'accepted') {
                     handleProgressRide('arrived');
@@ -1500,64 +1506,67 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                     setConcurrencyAlert({ type: 'success', message: 'Re-sent arrival alert to passenger!' });
                   }
                 }}
-                className={`flex items-center gap-1 transition-all cursor-pointer ${
-                  activeRide.status === 'arrived'
-                    ? 'text-sky-500 dark:text-sky-400 font-black bg-sky-500/15 px-2 py-0.5 rounded-md border border-sky-500/30 ring-2 ring-sky-500/20'
-                    : ['started', 'completed'].includes(activeRide.status)
-                    ? 'text-emerald-500 font-bold'
-                    : 'text-slate-400 hover:text-sky-500 underline'
+                className={`py-3 px-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98 ${
+                  activeRide.status === 'accepted'
+                    ? 'bg-sky-500 hover:bg-sky-400 text-slate-950 ring-2 ring-sky-400/50 shadow-sky-500/30 animate-pulse'
+                    : activeRide.status === 'arrived'
+                    ? 'bg-sky-500/20 hover:bg-sky-500/30 text-sky-600 dark:text-sky-300 border border-sky-500/40 ring-1 ring-sky-500/30'
+                    : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 opacity-75 cursor-default'
                 }`}
-                title="Arrived at Pickup Spot"
               >
-                <span>3. Arrived</span>
-                {activeRide.status === 'accepted' && (
-                  <span className="text-[8px] bg-sky-500 text-slate-950 font-bold px-1 rounded animate-pulse">TAP</span>
+                {isUpdatingStatus ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : activeRide.status === 'arrived' ? (
+                  <Check className="w-4 h-4 stroke-[3] text-sky-500" />
+                ) : activeRide.status === 'started' || activeRide.status === 'completed' ? (
+                  <Check className="w-4 h-4 stroke-[3] text-emerald-500" />
+                ) : (
+                  <MapPin className="w-4 h-4 animate-bounce" />
                 )}
+                <span className="truncate">
+                  {activeRide.status === 'accepted'
+                    ? 'I Have Arrived'
+                    : activeRide.status === 'arrived'
+                    ? 'Arrived ✓ (Re-Alert)'
+                    : 'Arrived at Pickup ✓'}
+                </span>
               </button>
+
+              {/* Tab 2: Trip Start */}
               <button
                 type="button"
-                id="captain-tab-trip-step"
+                id="captain-tab-trip-start"
+                disabled={isUpdatingStatus || isVerifyingPin || activeRide.status === 'completed'}
                 onClick={() => {
-                  if (activeRide.status === 'arrived') {
+                  if (activeRide.status === 'accepted' || activeRide.status === 'arrived') {
                     handleVerifyPinAndStart(getRidePin(activeRide.id));
                   }
                 }}
-                className={`flex items-center gap-1 transition-all ${
-                  activeRide.status === 'started'
-                    ? 'text-amber-500 font-black bg-amber-500/15 px-2 py-0.5 rounded-md border border-amber-500/30'
-                    : activeRide.status === 'completed'
-                    ? 'text-emerald-500 font-bold'
-                    : activeRide.status === 'arrived'
-                    ? 'text-slate-400 hover:text-amber-500 cursor-pointer underline'
-                    : 'text-slate-500 cursor-not-allowed'
+                className={`py-3 px-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98 ${
+                  activeRide.status === 'arrived'
+                    ? 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 ring-2 ring-emerald-400/50 shadow-emerald-500/30 animate-pulse'
+                    : activeRide.status === 'accepted'
+                    ? 'bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 hover:border-emerald-500/50'
+                    : activeRide.status === 'started'
+                    ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 ring-1 ring-emerald-500/30'
+                    : 'opacity-50 cursor-not-allowed bg-slate-800 text-slate-400'
                 }`}
-                title={activeRide.status === 'arrived' ? 'Board rider and start trip' : 'Trip'}
               >
-                <span>4. Trip</span>
-                {activeRide.status === 'arrived' && (
-                  <span className="text-[8px] bg-amber-500 text-slate-950 font-bold px-1 rounded">START</span>
+                {isUpdatingStatus || isVerifyingPin ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : activeRide.status === 'started' ? (
+                  <Navigation className="w-4 h-4 text-emerald-500 fill-current -rotate-45" />
+                ) : (
+                  <Play className="w-4 h-4 fill-current" />
                 )}
+                <span className="truncate">
+                  {activeRide.status === 'started'
+                    ? 'Trip In Progress'
+                    : activeRide.status === 'arrived'
+                    ? 'Trip Start'
+                    : 'Trip Start'}
+                </span>
               </button>
-              <span className={activeRide.status === 'completed' ? 'text-emerald-500 font-black' : ''}>
-                5. Done
-              </span>
-            </div>
-            <div className={`w-full h-1.5 rounded-full overflow-hidden ${isLight ? 'bg-slate-200' : 'bg-slate-800'}`}>
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 via-sky-500 to-teal-400 transition-all duration-500"
-                style={{
-                  width:
-                    activeRide.status === 'accepted'
-                      ? '40%'
-                      : activeRide.status === 'arrived'
-                      ? '60%'
-                      : activeRide.status === 'started'
-                      ? '80%'
-                      : activeRide.status === 'completed'
-                      ? '100%'
-                      : '20%',
-                }}
-              />
             </div>
           </div>
 
@@ -2033,15 +2042,28 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
           {/* Tactile Action Slider / Buttons */}
           <div className="space-y-2 pt-1">
             {activeRide.status === 'accepted' && (
-              <button
-                id="uber-driver-arrived-btn"
-                onClick={() => handleProgressRide('arrived')}
-                disabled={isUpdatingStatus}
-                className="w-full py-3.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-sky-500/20 transition-all cursor-pointer"
-              >
-                {isUpdatingStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
-                I Have Arrived at Pickup Spot
-              </button>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  id="uber-driver-arrived-btn"
+                  onClick={() => handleProgressRide('arrived')}
+                  disabled={isUpdatingStatus}
+                  className="w-full py-3.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-sky-500/20 transition-all cursor-pointer"
+                >
+                  {isUpdatingStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+                  I Have Arrived at Pickup Spot
+                </button>
+                <button
+                  type="button"
+                  id="uber-driver-quick-start-btn"
+                  onClick={() => handleVerifyPinAndStart(getRidePin(activeRide.id))}
+                  disabled={isUpdatingStatus || isVerifyingPin}
+                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Direct Trip Start (Rider is ready)</span>
+                </button>
+              </div>
             )}
 
             {activeRide.status === 'arrived' && (
