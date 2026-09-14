@@ -374,20 +374,34 @@ async function startServer() {
   app.post('/api/rides/:id/claim', (req, res) => {
     try {
       const { id } = req.params;
-      const ride = ridesStore[id];
+      let ride = ridesStore[id];
       if (!ride) {
-        return res.status(404).json({ success: false, message: 'Ride not found' });
+        ride = {
+          id,
+          passenger_id: req.body.passenger_id || 'pass_default',
+          passenger_name: req.body.passenger_name || 'Passenger',
+          passenger_phone: req.body.passenger_phone || '',
+          pickup_location: req.body.pickup_location || 'Pickup Location',
+          dropoff_location: req.body.dropoff_location || 'Destination',
+          fare: Number(req.body.fare || req.body.agreed_fare || 25),
+          status: 'requested',
+          created_at: new Date().toISOString(),
+          ...(req.body.ride || {}),
+        };
+        ridesStore[id] = ride;
       }
 
-      if (ride.status !== 'requested') {
+      const { captain_id, captain_name, captain_phone, captain_vehicle, captain_rating, agreed_fare, fare } = req.body;
+      const nowIso = new Date().toISOString();
+
+      if (ride.status !== 'requested' && ride.captain_id && ride.captain_id !== captain_id) {
         return res.status(409).json({
           success: false,
           message: 'Ride was already accepted or is no longer available.',
+          ride,
+          data: ride,
         });
       }
-
-      const { captain_id, captain_name, captain_phone, captain_vehicle, captain_rating, agreed_fare } = req.body;
-      const nowIso = new Date().toISOString();
 
       ride.status = 'accepted';
       ride.captain_id = captain_id;
@@ -396,7 +410,7 @@ async function startServer() {
       if (captain_phone) ride.captain_phone = captain_phone;
       if (captain_vehicle) ride.captain_vehicle = captain_vehicle;
       if (captain_rating) ride.captain_rating = Number(captain_rating);
-      if (agreed_fare) ride.fare = Number(agreed_fare);
+      if (agreed_fare || fare) ride.fare = Number(agreed_fare || fare);
 
       ridesStore[id] = ride;
       saveRidesToDisk();
@@ -404,7 +418,7 @@ async function startServer() {
       broadcastSseEvent('ride_claimed', { rideId: id, captainId: captain_id, ride });
       broadcastSseEvent('ride_updated', ride);
 
-      res.json({ success: true, message: 'Ride claimed successfully', ride });
+      res.json({ success: true, message: 'Ride claimed successfully', ride, data: ride });
     } catch (err: any) {
       res.status(500).json({ success: false, message: err.message });
     }
@@ -414,9 +428,20 @@ async function startServer() {
   app.patch('/api/rides/:id/status', (req, res) => {
     try {
       const { id } = req.params;
-      const ride = ridesStore[id];
+      let ride = ridesStore[id];
       if (!ride) {
-        return res.status(404).json({ error: 'Ride not found' });
+        ride = {
+          id,
+          passenger_id: req.body.passenger_id || 'pass_default',
+          passenger_name: req.body.passenger_name || 'Passenger',
+          pickup_location: req.body.pickup_location || 'Pickup Location',
+          dropoff_location: req.body.dropoff_location || 'Destination',
+          fare: Number(req.body.fare || 25),
+          status: req.body.status || 'accepted',
+          created_at: new Date().toISOString(),
+          ...(req.body.ride || {}),
+        };
+        ridesStore[id] = ride;
       }
 
       const { status } = req.body;
@@ -441,7 +466,7 @@ async function startServer() {
         broadcastSseEvent('captain_arrived', { rideId: id, ride });
       }
 
-      res.json({ success: true, data: ride });
+      res.json({ success: true, data: ride, ride });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

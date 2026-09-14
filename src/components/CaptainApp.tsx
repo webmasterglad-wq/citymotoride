@@ -66,6 +66,7 @@ import {
   unskipCaptainRide,
   getStoredRideData,
   setStoredRideData,
+  broadcastRideStatus,
 } from '../services/rideService';
 import { subscribeToUnreadCount, markMessagesAsRead } from '../services/chatService';
 import { ChatMessage } from '../types/ride';
@@ -887,6 +888,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       setActiveRide(mergedRide);
       setRequestedRides((prev) => prev.filter((r) => r.id !== ride.id));
       setDeclinedRides((prev) => prev.filter((d) => d.ride.id !== ride.id));
+      broadcastRideStatus(mergedRide.id, 'accepted', mergedRide);
 
       if (typeof window !== 'undefined') {
         try {
@@ -1750,30 +1752,8 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
               isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
             }`}
           >
-            {/* Trip Route Details (Pickup & Drop-off with inline maps links) */}
+            {/* Trip Route Details (Pickup & Drop-off) */}
             <div className={`p-2.5 rounded-xl border space-y-2 ${isLight ? 'bg-white border-slate-200' : 'bg-slate-950/60 border-slate-800'}`}>
-              {/* Small Capsule Navigate Button on left side above pickup location */}
-              <div className="flex items-center justify-between pb-0.5">
-                <a
-                  id="captain-capsule-navigate-btn"
-                  href={
-                    activeRide.status === 'started'
-                      ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.dropoff_location || 'Destination Dropoff')}`
-                      : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.pickup_location || 'Pickup Location')}`
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[10px] font-black shadow-xs transition-all active:scale-95 cursor-pointer border border-emerald-400"
-                  title="Navigate in Google Maps"
-                >
-                  <Navigation className="w-2.5 h-2.5 fill-current -rotate-45" />
-                  <span>Navigate {activeRide.status === 'started' ? 'to Drop-off' : 'to Pickup'}</span>
-                </a>
-                <span className={`text-[10px] font-bold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  {activeRide.status === 'started' ? 'Trip in Progress' : 'Pickup Route'}
-                </span>
-              </div>
-
               {/* Pickup Address */}
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2 min-w-0 flex-1">
@@ -1796,17 +1776,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                     </p>
                   </div>
                 </div>
-                <a
-                  id="captain-pickup-maps-link"
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.pickup_location || 'Pickup Location')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1 transition-colors"
-                  title="Open Pickup in Maps"
-                >
-                  <Navigation className="w-2.5 h-2.5 -rotate-45" />
-                  <span>Maps</span>
-                </a>
               </div>
 
               <div className={`border-t ${isLight ? 'border-slate-100' : 'border-slate-800/80'}`} />
@@ -1833,17 +1802,6 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
                     </p>
                   </div>
                 </div>
-                <a
-                  id="captain-dropoff-maps-link"
-                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeRide.dropoff_location || 'Destination Dropoff')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 flex items-center gap-1 transition-colors"
-                  title="Open Destination in Maps"
-                >
-                  <MapPin className="w-2.5 h-2.5" />
-                  <span>Maps</span>
-                </a>
               </div>
             </div>
 

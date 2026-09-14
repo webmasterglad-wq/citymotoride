@@ -164,6 +164,46 @@ export const setStoredRideData = (rideId: string, ride: Partial<Ride>) => {
   } catch {}
 };
 
+export const broadcastRideStatus = (
+  rideId: string,
+  status: RideStatus,
+  ride: Partial<Ride>
+) => {
+  if (typeof window === 'undefined') return;
+
+  setStoredRideData(rideId, ride);
+
+  try {
+    localStorage.setItem('motoride_last_passenger_ride_id', rideId);
+    localStorage.setItem(
+      'motoride_last_status_event',
+      JSON.stringify({
+        rideId,
+        status,
+        ride,
+        timestamp: Date.now(),
+      })
+    );
+  } catch {}
+
+  try {
+    offersBroadcastChannel?.postMessage({
+      type: 'ride_status_updated',
+      rideId,
+      status,
+      ride,
+    });
+  } catch {}
+
+  try {
+    window.dispatchEvent(
+      new CustomEvent('motoride_ride_status_updated', {
+        detail: { rideId, status, ride },
+      })
+    );
+  } catch {}
+};
+
 // Realtime SSE stream for cross-device updates (phones, laptops, tablets)
 let activeEventSource: EventSource | null = null;
 const incomingBroadcastListeners = new Set<(ride: Ride) => void>();
@@ -213,14 +253,18 @@ export const initRideStream = () => {
           if (rideId) {
             if (ride) setStoredRideData(rideId, ride);
             window.dispatchEvent(new CustomEvent('motoride_offer_mutually_accepted', { detail: data.payload }));
-            window.dispatchEvent(new CustomEvent('motoride_ride_status_updated', { detail: { rideId, status: 'accepted', ride } }));
+            broadcastRideStatus(rideId, 'accepted', ride || { id: rideId, status: 'accepted' });
           }
-        } else if (data.type === 'ride_updated' && data.payload) {
-          const updatedRide = data.payload as Ride;
-          setStoredRideData(updatedRide.id, updatedRide);
-          window.dispatchEvent(new CustomEvent('motoride_ride_status_updated', { detail: { rideId: updatedRide.id, status: updatedRide.status, ride: updatedRide } }));
+        } else if ((data.type === 'ride_claimed' || data.type === 'ride_updated') && data.payload) {
+          const updatedRide = (data.payload.ride || data.payload) as Ride;
+          if (updatedRide && updatedRide.id) {
+            broadcastRideStatus(updatedRide.id, updatedRide.status, updatedRide);
+          }
         } else if (data.type === 'captain_arrived' && data.payload) {
           const arrived = data.payload.ride || data.payload;
+          if (arrived && arrived.id) {
+            broadcastRideStatus(arrived.id, 'arrived', arrived);
+          }
           window.dispatchEvent(new CustomEvent('motoride:captain_arrived', { detail: arrived }));
         }
       } catch {}
@@ -473,8 +517,9 @@ export const fetchRideById = async (
     const apiRes = await fetch(`/api/rides/${rideId}`);
     if (apiRes.ok) {
       const json = await apiRes.json();
-      if (json?.data) {
-        const enriched = json.data as Ride;
+      const fetched = (json?.data || json?.ride) as Ride;
+      if (fetched) {
+        const enriched = { ...(getStoredRideData(rideId) || {}), ...fetched } as Ride;
         const extracted = extractOffersFromRide(enriched);
         if (extracted.length > 0) {
           enriched.captain_offers = extracted;
@@ -540,7 +585,11 @@ export const fetchActiveRideForPassenger = async (
     if (apiRes.ok) {
       const json = await apiRes.json();
       if (Array.isArray(json?.data) && json.data.length > 0) {
-        const active = json.data.find((r: Ride) => ['requested', 'accepted', 'arrived', 'started'].includes(r.status));
+        const active = json.data.find((r: Ride) => {
+          if (!['requested', 'accepted', 'arrived', 'started'].includes(r.status)) return false;
+          if (typeof window !== 'undefined' && localStorage.getItem(`motoride_dismissed_${r.id}`) === 'true') return false;
+          return true;
+        });
         if (active) {
           setStoredRideData(active.id, active);
           return { data: active, error: null };
@@ -555,6 +604,9 @@ export const fetchActiveRideForPassenger = async (
   if (!supabase) {
     const lastId = typeof window !== 'undefined' ? localStorage.getItem('motoride_last_passenger_ride_id') : null;
     if (lastId) {
+      if (typeof window !== 'undefined' && localStorage.getItem(`motoride_dismissed_${lastId}`) === 'true') {
+        return { data: null, error: null };
+      }
       const cached = getStoredRideData(lastId) as Ride | null;
       if (cached && ['requested', 'accepted', 'arrived', 'started'].includes(cached.status)) {
         return { data: cached, error: null };
@@ -576,6 +628,9 @@ export const fetchActiveRideForPassenger = async (
     if (error) return { data: null, error: formatSupabaseError(error) };
 
     if (data) {
+      if (typeof window !== 'undefined' && localStorage.getItem(`motoride_dismissed_${data.id}`) === 'true') {
+        return { data: null, error: null };
+      }
       const extracted = extractOffersFromRide(data);
       if (extracted.length > 0) {
         (data as any).captain_offers = extracted;
@@ -600,6 +655,9 @@ export const fetchActiveRideForPassenger = async (
     // Local fallback if DB has no record
     const lastId = typeof window !== 'undefined' ? localStorage.getItem('motoride_last_passenger_ride_id') : null;
     if (lastId) {
+      if (typeof window !== 'undefined' && localStorage.getItem(`motoride_dismissed_${lastId}`) === 'true') {
+        return { data: null, error: null };
+      }
       const cached = getStoredRideData(lastId) as Ride | null;
       if (cached && ['requested', 'accepted', 'arrived', 'started'].includes(cached.status)) {
         return { data: cached, error: null };
@@ -687,8 +745,42 @@ export const submitPassengerRatingForRide = async (
 export const fetchActiveRideForCaptain = async (
   captainId: string
 ): Promise<{ data: Ride | null; error: string | null }> => {
+  // 1. Check server API first for real-time state across tabs/sessions
+  try {
+    const apiRes = await fetch(`/api/rides?captain_id=${captainId}`);
+    if (apiRes.ok) {
+      const json = await apiRes.json();
+      if (Array.isArray(json?.data) && json.data.length > 0) {
+        const active = json.data.find((r: Ride) => ['accepted', 'arrived', 'started'].includes(r.status));
+        if (active) {
+          setStoredRideData(active.id, active);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('motoride_last_captain_ride_id', active.id);
+            } catch {}
+          }
+          return { data: active, error: null };
+        }
+      }
+    }
+  } catch (apiErr) {
+    console.warn('[Motoride] fetchActiveRideForCaptain server note:', apiErr);
+  }
+
+  // 2. Check local storage cache
+  if (typeof window !== 'undefined') {
+    const lastId = localStorage.getItem('motoride_last_captain_ride_id');
+    if (lastId) {
+      const cached = getStoredRideData(lastId) as Ride | null;
+      if (cached && ['accepted', 'arrived', 'started'].includes(cached.status)) {
+        return { data: cached, error: null };
+      }
+    }
+  }
+
+  // 3. Supabase fallback if configured
   const supabase = getSupabaseClient();
-  if (!supabase) return { data: null, error: 'Supabase client is not configured' };
+  if (!supabase) return { data: null, error: null };
 
   try {
     const { data, error } = await supabase
@@ -701,7 +793,16 @@ export const fetchActiveRideForCaptain = async (
       .maybeSingle();
 
     if (error) return { data: null, error: formatSupabaseError(error) };
-    return { data: data as Ride | null, error: null };
+    if (data) {
+      setStoredRideData(data.id, data as Ride);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('motoride_last_captain_ride_id', data.id);
+        } catch {}
+      }
+      return { data: data as Ride, error: null };
+    }
+    return { data: null, error: null };
   } catch (err: any) {
     return { data: null, error: formatSupabaseError(err) };
   }
@@ -760,6 +861,7 @@ export const claimRideAtomic = async (
   const captainRating = captainInfo?.rating || 5.0;
 
   // 1. Primary: Server API atomic claim (persisted across all devices)
+  const cached = getStoredRideData(rideId) || {};
   try {
     const apiRes = await fetch(`/api/rides/${rideId}/claim`, {
       method: 'POST',
@@ -771,18 +873,30 @@ export const claimRideAtomic = async (
         captain_vehicle: captainVehicle,
         captain_rating: captainRating,
         fare: agreedFare,
+        ride: cached,
       }),
     });
 
     if (apiRes.ok) {
       const json = await apiRes.json();
-      if (json?.data) {
-        const claimedRide = json.data as Ride;
-        setStoredRideData(rideId, claimedRide);
+      const claimedRide = (json?.data || json?.ride) as Ride;
+      if (claimedRide) {
+        const enrichedClaim: Ride = {
+          ...cached,
+          ...claimedRide,
+          status: 'accepted',
+          captain_id: captainId,
+          captain_name: captainName,
+          captain_phone: captainPhone,
+          captain_vehicle: captainVehicle,
+          captain_rating: captainRating,
+          fare: agreedFare ?? claimedRide.fare ?? cached.fare,
+        };
+        broadcastRideStatus(rideId, 'accepted', enrichedClaim);
         return {
           success: true,
           message: 'Ride claimed successfully!',
-          ride: claimedRide,
+          ride: enrichedClaim,
         };
       } else if (json?.error) {
         return {
@@ -823,7 +937,6 @@ export const claimRideAtomic = async (
         .maybeSingle();
 
       if (!error && data) {
-        const cached = getStoredRideData(rideId) || {};
         const finalRide: Ride = {
           ...cached,
           ...(data as Ride),
@@ -833,7 +946,7 @@ export const claimRideAtomic = async (
           dropoff_location: (data as Ride).dropoff_location || cached.dropoff_location || 'Destination',
           fare: (data as Ride).fare ?? cached.fare,
         };
-        setStoredRideData(rideId, finalRide);
+        broadcastRideStatus(rideId, 'accepted', finalRide);
         return {
           success: true,
           message: 'Ride claimed successfully!',
@@ -843,7 +956,6 @@ export const claimRideAtomic = async (
     } catch (err) {}
   }
 
-  const cached = getStoredRideData(rideId) || {};
   const optimisticRide: Ride = {
     ...cached,
     id: rideId,
@@ -855,7 +967,7 @@ export const claimRideAtomic = async (
     captain_rating: captainRating,
     fare: agreedFare ?? cached.fare ?? 25,
   } as Ride;
-  setStoredRideData(rideId, optimisticRide);
+  broadcastRideStatus(rideId, 'accepted', optimisticRide);
 
   return {
     success: true,
