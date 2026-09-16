@@ -113,17 +113,34 @@ $$;
 -- Set replica identity to FULL so realtime UPDATE events include all column values
 ALTER TABLE public.rides REPLICA IDENTITY FULL;
 
--- 5. Enable Row Level Security (RLS) on rides table
+-- 5. Enable Row Level Security (RLS) on rides table with complete CRUD policies
 ALTER TABLE public.rides ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow public/authenticated read rides"
-    ON public.rides FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public/authenticated read rides" ON public.rides;
+DROP POLICY IF EXISTS "Allow insert new rides" ON public.rides;
+DROP POLICY IF EXISTS "Allow update rides" ON public.rides;
+DROP POLICY IF EXISTS "Allow delete rides" ON public.rides;
+DROP POLICY IF EXISTS "Allow public select rides" ON public.rides;
+DROP POLICY IF EXISTS "Allow public insert rides" ON public.rides;
+DROP POLICY IF EXISTS "Allow public update rides" ON public.rides;
+DROP POLICY IF EXISTS "Allow public delete rides" ON public.rides;
 
-CREATE POLICY "Allow insert new rides"
-    ON public.rides FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public select rides"
+    ON public.rides FOR SELECT
+    USING (true);
 
-CREATE POLICY "Allow update rides"
-    ON public.rides FOR UPDATE USING (true);
+CREATE POLICY "Allow public insert rides"
+    ON public.rides FOR INSERT
+    WITH CHECK (true);
+
+CREATE POLICY "Allow public update rides"
+    ON public.rides FOR UPDATE
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY "Allow public delete rides"
+    ON public.rides FOR DELETE
+    USING (true);
 
 -- ========================================================
 -- 6. CREATE STORAGE BUCKETS (avatars & motoride-uploads)

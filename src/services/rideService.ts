@@ -202,6 +202,44 @@ export const broadcastRideStatus = (
       })
     );
   } catch {}
+
+  // Broadcast via Supabase Realtime WebSocket channel across devices/browsers
+  try {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const channel = supabase.channel(`passenger-ride-${rideId}`);
+      channel.subscribe((subStatus) => {
+        if (subStatus === 'SUBSCRIBED') {
+          channel.send({
+            type: 'broadcast',
+            event: 'ride_status_updated',
+            payload: { rideId, status, ride },
+          }).catch(() => {});
+        }
+      });
+      channel.send({
+        type: 'broadcast',
+        event: 'ride_status_updated',
+        payload: { rideId, status, ride },
+      }).catch(() => {});
+
+      const globalChannel = supabase.channel('global-ride-events');
+      globalChannel.subscribe((subStatus) => {
+        if (subStatus === 'SUBSCRIBED') {
+          globalChannel.send({
+            type: 'broadcast',
+            event: 'ride_status_updated',
+            payload: { rideId, status, ride },
+          }).catch(() => {});
+        }
+      });
+      globalChannel.send({
+        type: 'broadcast',
+        event: 'ride_status_updated',
+        payload: { rideId, status, ride },
+      }).catch(() => {});
+    }
+  } catch (e) {}
 };
 
 // Realtime SSE stream for cross-device updates (phones, laptops, tablets)
@@ -378,19 +416,24 @@ export const createRideBooking = async (
         .select()
         .single();
 
-      if (error && (error.message?.includes('service_type') || error.message?.includes('delivery_notes') || error.code === 'PGRST204' || error.message?.includes('column'))) {
-        const fallbackPayload = { ...payload };
-        delete fallbackPayload.service_type;
-        delete fallbackPayload.delivery_notes;
+      if (error) {
+        if (error.code === '42501' || error.message?.includes('row-level security')) {
+          console.warn('[Motoride Security Warning] Supabase RLS policy blocked insert (Error 42501). Please run supabase_policies.sql script in Supabase SQL Editor.');
+        }
+        if (error.message?.includes('service_type') || error.message?.includes('delivery_notes') || error.code === 'PGRST204' || error.message?.includes('column')) {
+          const fallbackPayload = { ...payload };
+          delete fallbackPayload.service_type;
+          delete fallbackPayload.delivery_notes;
 
-        const retryRes = await supabase
-          .from('rides')
-          .insert([fallbackPayload])
-          .select()
-          .single();
+          const retryRes = await supabase
+            .from('rides')
+            .insert([fallbackPayload])
+            .select()
+            .single();
 
-        if (!retryRes.error && retryRes.data) {
-          data = retryRes.data;
+          if (!retryRes.error && retryRes.data) {
+            data = retryRes.data;
+          }
         }
       }
 
@@ -405,6 +448,25 @@ export const createRideBooking = async (
     } catch (dbErr) {
       console.warn('[Motoride] Supabase direct insert fallback:', dbErr);
     }
+
+    // Broadcast new ride over Supabase Realtime WebSocket channel for instant cross-device reception
+    try {
+      const globalChannel = supabase.channel('global-ride-events');
+      globalChannel.subscribe((subStatus) => {
+        if (subStatus === 'SUBSCRIBED') {
+          globalChannel.send({
+            type: 'broadcast',
+            event: 'new_ride_created',
+            payload: { ride: createdRide },
+          }).catch(() => {});
+        }
+      });
+      globalChannel.send({
+        type: 'broadcast',
+        event: 'new_ride_created',
+        payload: { ride: createdRide },
+      }).catch(() => {});
+    } catch {}
   }
 
   // 3. Cache locally and trigger broadcast alerts
@@ -1194,6 +1256,40 @@ export const subscribeToCaptainRealtime = (callbacks: {
   
   const channel = supabase
     .channel(channelName)
+    .on('broadcast', { event: 'new_ride_created' }, ({ payload }) => {
+      if (payload && payload.ride && payload.ride.status === 'requested') {
+        const raw = payload.ride as Ride;
+        const cached = getStoredRideTier(raw.id);
+        const cachedRide = getStoredRideData(raw.id) || {};
+        const enriched: Ride = {
+          ...cachedRide,
+          ...raw,
+          passenger_name: raw.passenger_name || cachedRide.passenger_name || 'Passenger',
+          passenger_phone: raw.passenger_phone || cachedRide.passenger_phone || '',
+          pickup_location: raw.pickup_location || cachedRide.pickup_location || 'Pickup Location',
+          dropoff_location: raw.dropoff_location || cachedRide.dropoff_location || 'Destination',
+          fare: raw.fare ?? cachedRide.fare,
+          service_type: raw.service_type || cachedRide.service_type || cached?.tier || (raw.ride_tier as any) || 'moto_comfort',
+          tier_name: raw.tier_name || cachedRide.tier_name || cached?.tierName || (raw.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
+        };
+        setStoredRideData(raw.id, enriched);
+        callbacks.onInsert(enriched);
+      }
+    })
+    .on('broadcast', { event: 'ride_status_updated' }, ({ payload }) => {
+      if (payload && (payload.ride || payload.rideId)) {
+        const raw = (payload.ride || getStoredRideData(payload.rideId)) as Ride;
+        if (raw && raw.id) {
+          const cachedRide = getStoredRideData(raw.id) || {};
+          const enriched: Ride = {
+            ...cachedRide,
+            ...raw,
+          };
+          setStoredRideData(raw.id, enriched);
+          callbacks.onUpdate(enriched);
+        }
+      }
+    })
     .on(
       'postgres_changes',
       {
@@ -1292,6 +1388,23 @@ export const subscribeToPassengerRide = (
 
   const channel = supabase
     .channel(channelName)
+    .on('broadcast', { event: 'ride_status_updated' }, ({ payload }) => {
+      if (payload && (payload.rideId === rideId || payload.ride?.id === rideId)) {
+        const raw = (payload.ride || payload) as Ride;
+        const cachedRide = getStoredRideData(rideId) || {};
+        const merged: Ride = {
+          ...cachedRide,
+          ...raw,
+          id: rideId,
+          status: (cachedRide.status === 'arrived' && raw.status === 'accepted') ? 'arrived' : raw.status,
+          captain_name: raw.captain_name || cachedRide.captain_name,
+          captain_phone: raw.captain_phone || cachedRide.captain_phone,
+          captain_vehicle: raw.captain_vehicle || cachedRide.captain_vehicle,
+        };
+        setStoredRideData(rideId, merged);
+        callbacks.onUpdate(merged);
+      }
+    })
     .on(
       'postgres_changes',
       {
