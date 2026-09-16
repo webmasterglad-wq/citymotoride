@@ -18,15 +18,23 @@ const ThemeContext = createContext<ThemeContextType>({
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<Theme>(() => {
-    const saved = localStorage.getItem('motoride_theme');
-    if (saved === 'dark' || saved === 'light') return saved;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const saved = localStorage.getItem('motoride_theme');
+        if (saved === 'dark' || saved === 'light') return saved;
+      }
+    } catch {}
     // Default to light (white background) as requested
     return 'light';
   });
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
-    localStorage.setItem('motoride_theme', newTheme);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('motoride_theme', newTheme);
+      }
+    } catch {}
   };
 
   const toggleTheme = () => {

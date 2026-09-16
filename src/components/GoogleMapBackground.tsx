@@ -207,14 +207,27 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
     if (!mapContainerRef.current) return;
     if (mapInstanceRef.current) return;
 
+    // Safety guard against existing Leaflet instance on the container element
+    if ((mapContainerRef.current as any)._leaflet_id) {
+      try {
+        delete (mapContainerRef.current as any)._leaflet_id;
+      } catch {}
+    }
+
     const initialCenter = captainLiveLocation || passengerLiveLocation || resolvedPickup || DEFAULT_CENTER;
 
-    const map = L.map(mapContainerRef.current, {
-      center: [initialCenter.lat, initialCenter.lng],
-      zoom: 15,
-      zoomControl: false,
-      attributionControl: false,
-    });
+    let map: L.Map;
+    try {
+      map = L.map(mapContainerRef.current, {
+        center: [initialCenter.lat, initialCenter.lng],
+        zoom: 15,
+        zoomControl: false,
+        attributionControl: false,
+      });
+    } catch (err) {
+      console.warn('[GoogleMapBackground] Map container initialization notice:', err);
+      return;
+    }
 
     // Base Google Maps Layer
     const tileConfig = getTileConfig('streets');
@@ -262,12 +275,21 @@ export const GoogleMapBackground: React.FC<GoogleMapBackgroundProps> = ({
 
     // Invalidate size on load
     setTimeout(() => {
-      map.invalidateSize();
+      try {
+        map.invalidateSize();
+      } catch {}
     }, 250);
 
     return () => {
-      map.remove();
+      try {
+        map.remove();
+      } catch {}
       mapInstanceRef.current = null;
+      if (mapContainerRef.current && (mapContainerRef.current as any)._leaflet_id) {
+        try {
+          delete (mapContainerRef.current as any)._leaflet_id;
+        } catch {}
+      }
       pickupMarkerRef.current = null;
       dropoffMarkerRef.current = null;
       routePolylineRef.current = null;

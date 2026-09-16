@@ -95,27 +95,35 @@ export function usePassengerLiveGPS(initialCoords?: LatLng | null) {
 
   // 1. Device Orientation Listener (for real compass heading on mobile)
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     const handleOrientation = (e: DeviceOrientationEvent) => {
-      // webkitCompassHeading for iOS Safari, alpha for Android/standard
-      // @ts-expect-error webkitCompassHeading is iOS specific
-      if (typeof e.webkitCompassHeading === 'number') {
+      try {
+        // webkitCompassHeading for iOS Safari, alpha for Android/standard
         // @ts-expect-error webkitCompassHeading is iOS specific
-        setHeading(Math.round(e.webkitCompassHeading));
-      } else if (e.alpha !== null) {
-        // 360 - alpha gives compass heading relative to North
-        const compassHeading = Math.round(360 - e.alpha);
-        setHeading((compassHeading + 360) % 360);
-      }
+        if (typeof e.webkitCompassHeading === 'number') {
+          // @ts-expect-error webkitCompassHeading is iOS specific
+          setHeading(Math.round(e.webkitCompassHeading));
+        } else if (e.alpha !== null && typeof e.alpha === 'number') {
+          // 360 - alpha gives compass heading relative to North
+          const compassHeading = Math.round(360 - e.alpha);
+          setHeading((compassHeading + 360) % 360);
+        }
+      } catch {}
     };
 
-    if (window.DeviceOrientationEvent) {
-      window.addEventListener('deviceorientation', handleOrientation, true);
-    }
+    try {
+      if ('DeviceOrientationEvent' in window) {
+        window.addEventListener('deviceorientation', handleOrientation, true);
+      }
+    } catch {}
 
     return () => {
-      if (window.DeviceOrientationEvent) {
-        window.removeEventListener('deviceorientation', handleOrientation, true);
-      }
+      try {
+        if ('DeviceOrientationEvent' in window) {
+          window.removeEventListener('deviceorientation', handleOrientation, true);
+        }
+      } catch {}
     };
   }, []);
 

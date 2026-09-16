@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -18,9 +18,52 @@
     <meta property="og:description" content="Real-time moto ride-sharing dispatch system for the Tricity service area (Zirakpur, Chandigarh, Panchkula, Manimajra, Mohali, and Kharar) with Google Maps Platform live routing, traffic, and Supabase Realtime synchronization." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <style>
+      #app-preloader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #020617;
+        color: #f8fafc;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        z-index: 99999;
+      }
+      .preloader-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(245, 158, 11, 0.2);
+        border-top-color: #f59e0b;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-top: 20px;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </head>
-  <body>
-    <div id="root"></div>
+  <body class="bg-slate-950 text-slate-100 antialiased overflow-x-hidden">
+    <div id="root">
+      <div id="app-preloader">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+          <img src="/app-icon.png" alt="MotoRide" style="width:48px;height:48px;border-radius:14px;box-shadow:0 10px 25px rgba(0,0,0,0.5);border:1px solid rgba(245,158,11,0.4);" />
+          <div style="text-align:left;">
+            <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;">Moto<span style="color:#f59e0b;">Ride</span></div>
+            <div style="font-size:11px;font-weight:600;color:#94a3b8;letter-spacing:0.5px;text-transform:uppercase;">Real-Time Dispatch</div>
+          </div>
+        </div>
+        <div class="preloader-spinner"></div>
+      </div>
+    </div>
+    <noscript>
+      <div style="padding:24px;text-align:center;color:#ffffff;background:#0f172a;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <h2>JavaScript is required</h2>
+        <p>Please enable JavaScript in your mobile browser to open MotoRide.</p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
