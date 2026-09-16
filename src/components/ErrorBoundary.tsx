@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw, Trash2, Home } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Trash2, Home, RotateCcw } from 'lucide-react';
+import { safeStorage } from '../utils/safeStorage';
 
 interface Props {
   children: ReactNode;
@@ -28,24 +29,40 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ error, errorInfo });
   }
 
+  private handleTryRecover = () => {
+    // Attempt state recovery without full page reload
+    this.setState({ hasError: false, error: null, errorInfo: null });
+  };
+
   private handleReload = () => {
-    window.location.reload();
+    try {
+      window.location.reload();
+    } catch {
+      window.location.href = '/';
+    }
   };
 
   private handleResetAndReload = () => {
     try {
-      // Clear non-critical caches that could cause desyncs
       const keysToClear = [
         'motoride_active_ride',
         'motoride_last_status_event',
         'motoride_offers_',
         'motoride_chat_',
       ];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && keysToClear.some((prefix) => key.startsWith(prefix))) {
-          localStorage.removeItem(key);
-        }
+      keysToClear.forEach((prefix) => {
+        safeStorage.removeItem(prefix);
+      });
+      if (typeof window !== 'undefined' && 'localStorage' in window) {
+        try {
+          const storage = window.localStorage;
+          for (let i = storage.length - 1; i >= 0; i--) {
+            const key = storage.key(i);
+            if (key && keysToClear.some((prefix) => key.startsWith(prefix))) {
+              storage.removeItem(key);
+            }
+          }
+        } catch {}
       }
     } catch {}
     window.location.href = '/';
@@ -59,7 +76,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 selection:bg-amber-500 selection:text-slate-950">
-          <div className="w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-2xl backdrop-blur-xl flex flex-col items-center text-center">
+          <div className="w-full max-w-md bg-slate-900/95 border border-slate-800 rounded-2xl p-6 shadow-2xl backdrop-blur-xl flex flex-col items-center text-center">
             {/* Logo */}
             <div className="flex items-center gap-2.5 mb-6">
               <img
@@ -84,34 +101,43 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
 
             <h1 className="text-xl font-bold text-white mb-2">
-              Something went wrong loading MotoRide
+              Display Notice
             </h1>
             <p className="text-sm text-slate-400 mb-6 leading-relaxed">
-              The mobile application encountered a temporary display issue. Tap reload to reconnect.
+              The mobile application encountered a temporary display issue. Tap below to reconnect immediately.
             </p>
 
             {/* Action Buttons */}
             <div className="w-full flex flex-col gap-2.5">
               <button
                 type="button"
-                onClick={this.handleReload}
+                onClick={this.handleTryRecover}
                 className="w-full py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-slate-950 font-bold text-sm transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
               >
-                <RefreshCw className="w-4 h-4" />
-                Reload Application
+                <RotateCcw className="w-4 h-4" />
+                Resume Application
+              </button>
+
+              <button
+                type="button"
+                onClick={this.handleReload}
+                className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-[0.98] text-slate-200 font-medium text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Reload Page
               </button>
 
               <button
                 type="button"
                 onClick={this.handleResetAndReload}
-                className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-[0.98] text-slate-300 font-medium text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-slate-400 font-medium text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer border border-slate-800"
               >
-                <Trash2 className="w-3.5 h-3.5 text-slate-400" />
+                <Trash2 className="w-3 h-3 text-slate-500" />
                 Clear Local Cache &amp; Reconnect
               </button>
             </div>
 
-            {/* Technical details accordion if needed */}
+            {/* Technical details accordion */}
             {this.state.error && (
               <details className="w-full mt-6 text-left">
                 <summary className="text-xs text-slate-500 hover:text-slate-400 cursor-pointer select-none">
@@ -130,3 +156,4 @@ export class ErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
+

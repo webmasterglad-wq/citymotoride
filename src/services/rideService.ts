@@ -2,6 +2,7 @@ import { getSupabaseClient } from '../lib/supabase';
 import { Ride, RideStatus, ConcurrencyClaimResult, CaptainEarningsSummary, CaptainOffer } from '../types/ride';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { notifyNewIncomingRide, notifyCaptainArrived } from '../utils/audioAlert';
+import { safeStorage } from '../utils/safeStorage';
 
 /**
  * Returns ISO timestamp bounds for the local calendar day (start of today, start of tomorrow, start of yesterday)
@@ -169,6 +170,53 @@ const realtimeChannelsMap = new Map<string, RealtimeChannel>();
 const channelReadyStateMap = new Map<string, 'CONNECTING' | 'SUBSCRIBED' | 'ERROR' | 'CLOSED'>();
 const queuedBroadcastsMap = new Map<string, Array<{ event: string; payload: any }>>();
 
+// Central Pub-Sub Event Bus for all global ride events
+const globalBus = {
+  captainInserts: new Set<(ride: Ride) => void>(),
+  captainUpdates: new Set<(ride: Ride) => void>(),
+  captainStatusChanges: new Set<(status: 'SUBSCRIBED' | 'TIMED_OUT' | 'CLOSED' | 'CHANNEL_ERROR', error?: any) => void>(),
+  passengerRideUpdates: new Map<string, Set<(ride: Ride) => void>>(),
+  passengerRideOffers: new Map<string, Set<(offers: CaptainOffer[]) => void>>(),
+};
+
+const dispatchCaptainInsert = (ride: Ride) => {
+  if (!ride || !ride.id) return;
+  const enriched = enrichRideWithTier(ride);
+  setStoredRideData(enriched.id, enriched);
+  globalBus.captainInserts.forEach((cb) => {
+    try { cb(enriched); } catch (e) { console.warn('[Realtime Bus] Error in captain insert callback:', e); }
+  });
+};
+
+const dispatchCaptainUpdate = (ride: Ride) => {
+  if (!ride || !ride.id) return;
+  const enriched = enrichRideWithTier(ride);
+  setStoredRideData(enriched.id, enriched);
+  globalBus.captainUpdates.forEach((cb) => {
+    try { cb(enriched); } catch (e) { console.warn('[Realtime Bus] Error in captain update callback:', e); }
+  });
+};
+
+const dispatchPassengerRideUpdate = (rideId: string, ride: Ride) => {
+  if (!rideId || !ride) return;
+  const callbacks = globalBus.passengerRideUpdates.get(rideId);
+  if (callbacks && callbacks.size > 0) {
+    callbacks.forEach((cb) => {
+      try { cb(ride); } catch (e) { console.warn('[Realtime Bus] Error in passenger ride update callback:', e); }
+    });
+  }
+};
+
+const dispatchPassengerOffers = (rideId: string, offers: CaptainOffer[]) => {
+  if (!rideId || !Array.isArray(offers)) return;
+  const callbacks = globalBus.passengerRideOffers.get(rideId);
+  if (callbacks && callbacks.size > 0) {
+    callbacks.forEach((cb) => {
+      try { cb(offers); } catch (e) { console.warn('[Realtime Bus] Error in passenger offers callback:', e); }
+    });
+  }
+};
+
 export const getOrCreateRealtimeChannel = (
   channelName: string,
   options?: { presenceKey?: string }
@@ -191,14 +239,142 @@ export const getOrCreateRealtimeChannel = (
   }
 
   const channel = supabase.channel(channelName, channelConfig);
+
+  // CRITICAL: Intercept channel.on to prevent runtime crashes if called post-subscription
+  const originalOn = channel.on.bind(channel);
+  channel.on = (type: any, filter: any, callback?: any) => {
+    try {
+      return originalOn(type, filter, callback);
+    } catch (err) {
+      console.warn(`[Supabase Realtime SafeGuard] Suppressed channel.on error on "${channelName}":`, err);
+      return channel;
+    }
+  };
+
+  // Pre-attach ALL global event handlers on 'global-ride-events' BEFORE calling .subscribe()
+  if (channelName === 'global-ride-events') {
+    channel
+      .on('broadcast', { event: 'new_ride_created' }, ({ payload }) => {
+        if (payload?.ride && (payload.ride.status === 'requested' || !payload.ride.status)) {
+          dispatchCaptainInsert(payload.ride);
+        }
+      })
+      .on('broadcast', { event: 'announce_active_ride' }, ({ payload }) => {
+        if (payload?.ride && payload.ride.status === 'requested') {
+          dispatchCaptainInsert(payload.ride);
+        }
+      })
+      .on('broadcast', { event: 'ride_status_updated' }, ({ payload }) => {
+        if (payload && (payload.ride || payload.rideId)) {
+          const raw = (payload.ride || getStoredRideData(payload.rideId)) as Ride;
+          if (raw && raw.id) {
+            const cachedRide = getStoredRideData(raw.id) || {};
+            const enriched: Ride = { ...cachedRide, ...raw };
+            setStoredRideData(raw.id, enriched);
+            dispatchCaptainUpdate(enriched);
+            dispatchPassengerRideUpdate(raw.id, enriched);
+          }
+        }
+      })
+      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => {
+        if (payload && payload.rideId) {
+          const raw = (payload.ride || getStoredRideData(payload.rideId)) as Ride;
+          if (raw && raw.id) {
+            const cachedRide = getStoredRideData(raw.id) || {};
+            const enriched: Ride = { ...cachedRide, ...raw, status: 'accepted' };
+            setStoredRideData(raw.id, enriched);
+            dispatchCaptainUpdate(enriched);
+            dispatchPassengerRideUpdate(raw.id, enriched);
+          }
+        }
+      })
+      .on('broadcast', { event: 'offers_update' }, ({ payload }) => {
+        if (payload && payload.rideId && Array.isArray(payload.offers)) {
+          saveStoredRideOffers(payload.rideId, payload.offers, true);
+          dispatchPassengerOffers(payload.rideId, payload.offers);
+        }
+      })
+      .on('broadcast', { event: 'request_active_rides' }, () => {
+        try {
+          const lastRideId = safeStorage.getItem('motoride_last_passenger_ride_id');
+          if (lastRideId) {
+            const current = getStoredRideData(lastRideId);
+            if (current && current.status === 'requested') {
+              safeBroadcast('global-ride-events', 'announce_active_ride', { ride: current });
+            }
+          }
+        } catch {}
+      })
+      .on('presence', { event: 'sync' }, () => {
+        try {
+          const state = channel.presenceState();
+          Object.values(state).forEach((presences: any) => {
+            if (Array.isArray(presences)) {
+              presences.forEach((p: any) => {
+                if (p && p.status === 'requested' && p.ride && p.ride.id) {
+                  dispatchCaptainInsert(p.ride);
+                }
+              });
+            }
+          });
+        } catch {}
+      })
+      .on('presence', { event: 'join' }, ({ newPresences }: any) => {
+        try {
+          if (Array.isArray(newPresences)) {
+            newPresences.forEach((p: any) => {
+              if (p && p.status === 'requested' && p.ride && p.ride.id) {
+                dispatchCaptainInsert(p.ride);
+              }
+            });
+          }
+        } catch {}
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'rides',
+        },
+        (payload) => {
+          if (payload.new) {
+            dispatchCaptainInsert(payload.new as Ride);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'rides',
+        },
+        (payload) => {
+          if (payload.new) {
+            const updated = payload.new as Ride;
+            dispatchCaptainUpdate(updated);
+            if (updated.id) {
+              dispatchPassengerRideUpdate(updated.id, updated);
+            }
+          }
+        }
+      );
+  }
+
   realtimeChannelsMap.set(channelName, channel);
   channelReadyStateMap.set(channelName, 'CONNECTING');
   if (!queuedBroadcastsMap.has(channelName)) {
     queuedBroadcastsMap.set(channelName, []);
   }
 
-  channel.subscribe((status) => {
+  channel.subscribe((status, err) => {
     channelReadyStateMap.set(channelName, status as any);
+    if (channelName === 'global-ride-events') {
+      globalBus.captainStatusChanges.forEach((cb) => {
+        try { cb(status as any, err); } catch {}
+      });
+    }
     if (status === 'SUBSCRIBED') {
       const queue = queuedBroadcastsMap.get(channelName) || [];
       while (queue.length > 0) {
@@ -1379,7 +1555,7 @@ export const unsubscribeChannel = async (channel: RealtimeChannel | null) => {
 
 /**
  * Realtime Subscription for Captain Dashboard
- * Subscribes to new INSERTs and any UPDATEs on public.rides
+ * Subscribes to new INSERTs and any UPDATEs on public.rides via the resilient global event bus
  */
 export const subscribeToCaptainRealtime = (callbacks: {
   onInsert: (ride: Ride) => void;
@@ -1389,123 +1565,38 @@ export const subscribeToCaptainRealtime = (callbacks: {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
-  console.log("Connecting to Motoride Realtime...");
-
+  // Initialize the singleton channel with pre-wired listeners (prevents post-subscribe crashes)
   const channel = getOrCreateRealtimeChannel('global-ride-events');
   if (!channel) return null;
 
-  channel
-    .on('broadcast', { event: 'new_ride_created' }, ({ payload }) => {
-      if (payload && payload.ride && (payload.ride.status === 'requested' || !payload.ride.status)) {
-        const enriched = enrichRideWithTier(payload.ride);
-        setStoredRideData(enriched.id, enriched);
-        callbacks.onInsert(enriched);
-      }
-    })
-    .on('broadcast', { event: 'announce_active_ride' }, ({ payload }) => {
-      if (payload && payload.ride && payload.ride.status === 'requested') {
-        const enriched = enrichRideWithTier(payload.ride);
-        setStoredRideData(enriched.id, enriched);
-        callbacks.onInsert(enriched);
-      }
-    })
-    .on('broadcast', { event: 'ride_status_updated' }, ({ payload }) => {
-      if (payload && (payload.ride || payload.rideId)) {
-        const raw = (payload.ride || getStoredRideData(payload.rideId)) as Ride;
-        if (raw && raw.id) {
-          const cachedRide = getStoredRideData(raw.id) || {};
-          const enriched: Ride = {
-            ...cachedRide,
-            ...raw,
-          };
-          setStoredRideData(raw.id, enriched);
-          callbacks.onUpdate(enriched);
-        }
-      }
-    })
-    .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => {
-      if (payload && payload.rideId) {
-        const raw = (payload.ride || getStoredRideData(payload.rideId)) as Ride;
-        if (raw && raw.id) {
-          const cachedRide = getStoredRideData(raw.id) || {};
-          const enriched: Ride = {
-            ...cachedRide,
-            ...raw,
-            status: 'accepted',
-          };
-          setStoredRideData(raw.id, enriched);
-          callbacks.onUpdate(enriched);
-        }
-      }
-    })
-    .on('presence', { event: 'sync' }, () => {
-      try {
-        const state = channel.presenceState();
-        Object.values(state).forEach((presences: any) => {
-          if (Array.isArray(presences)) {
-            presences.forEach((p: any) => {
-              if (p && p.status === 'requested' && p.ride && p.ride.id) {
-                const enriched = enrichRideWithTier(p.ride);
-                setStoredRideData(enriched.id, enriched);
-                callbacks.onInsert(enriched);
-              }
-            });
-          }
-        });
-      } catch {}
-    })
-    .on('presence', { event: 'join' }, ({ newPresences }: any) => {
-      try {
-        if (Array.isArray(newPresences)) {
-          newPresences.forEach((p: any) => {
-            if (p && p.status === 'requested' && p.ride && p.ride.id) {
-              const enriched = enrichRideWithTier(p.ride);
-              setStoredRideData(enriched.id, enriched);
-              callbacks.onInsert(enriched);
-            }
-          });
-        }
-      } catch {}
-    })
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'rides',
-      },
-      (payload) => {
-        if (payload.new) {
-          const enriched = enrichRideWithTier(payload.new as Ride);
-          setStoredRideData(enriched.id, enriched);
-          callbacks.onInsert(enriched);
-        }
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'rides',
-      },
-      (payload) => {
-        if (payload.new) {
-          const enriched = enrichRideWithTier(payload.new as Ride);
-          setStoredRideData(enriched.id, enriched);
-          callbacks.onUpdate(enriched);
-        }
-      }
-    );
+  // Register callbacks into the global bus
+  globalBus.captainInserts.add(callbacks.onInsert);
+  globalBus.captainUpdates.add(callbacks.onUpdate);
+  if (callbacks.onStatusChange) {
+    globalBus.captainStatusChanges.add(callbacks.onStatusChange);
+    const readyState = channelReadyStateMap.get('global-ride-events');
+    if (readyState === 'SUBSCRIBED') {
+      try { callbacks.onStatusChange('SUBSCRIBED'); } catch {}
+    }
+  }
 
   // Request any active rides from online passengers immediately
   safeBroadcast('global-ride-events', 'request_active_rides', { timestamp: Date.now() });
 
-  if (callbacks.onStatusChange) {
-    callbacks.onStatusChange('SUBSCRIBED');
-  }
+  // Return a handle that safely unregisters on cleanup without tearing down the shared channel
+  const subscriptionHandle: any = {
+    ...channel,
+    topic: 'realtime:global-ride-events',
+    unsubscribe: () => {
+      globalBus.captainInserts.delete(callbacks.onInsert);
+      globalBus.captainUpdates.delete(callbacks.onUpdate);
+      if (callbacks.onStatusChange) {
+        globalBus.captainStatusChanges.delete(callbacks.onStatusChange);
+      }
+    },
+  };
 
-  return channel;
+  return subscriptionHandle;
 };
 
 /**
@@ -1522,9 +1613,9 @@ export const subscribeToPassengerRide = (
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
-  const channelName = `passenger-ride-${rideId}`;
-  const channel = getOrCreateRealtimeChannel(channelName);
+  // Initialize global bus
   const globalChannel = getOrCreateRealtimeChannel('global-ride-events');
+  if (!globalChannel) return null;
 
   const handleUpdatePayload = (payload: any) => {
     if (!payload) return;
@@ -1548,20 +1639,23 @@ export const subscribeToPassengerRide = (
     } as Ride;
 
     setStoredRideData(rideId, merged);
-    callbacks.onUpdate(merged);
+    try { callbacks.onUpdate(merged); } catch {}
   };
 
-  if (channel) {
-    channel
-      .on('broadcast', { event: 'ride_status_updated' }, ({ payload }) => handleUpdatePayload(payload))
-      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => handleUpdatePayload(payload))
-      .on('broadcast', { event: 'offers_update' }, ({ payload }) => {
-        if (payload && payload.rideId === rideId && Array.isArray(payload.offers)) {
-          saveStoredRideOffers(rideId, payload.offers, true);
-          const cachedRide = getStoredRideData(rideId) || {};
-          callbacks.onUpdate({ ...cachedRide, id: rideId } as Ride);
-        }
-      })
+  // Register in globalBus passenger updates map
+  let listeners = globalBus.passengerRideUpdates.get(rideId);
+  if (!listeners) {
+    listeners = new Set();
+    globalBus.passengerRideUpdates.set(rideId, listeners);
+  }
+  listeners.add(callbacks.onUpdate);
+
+  // Also listen for postgres_changes on this specific ride record if needed
+  let dbChannel: any = null;
+  try {
+    const chName = `ride_db_update_${rideId}_${Date.now()}`;
+    dbChannel = supabase
+      .channel(chName)
       .on(
         'postgres_changes',
         {
@@ -1575,27 +1669,38 @@ export const subscribeToPassengerRide = (
             handleUpdatePayload(payload.new);
           }
         }
-      );
-  }
-
-  // Also listen on globalChannel for status updates for this specific rideId
-  if (globalChannel) {
-    globalChannel
-      .on('broadcast', { event: 'ride_status_updated' }, ({ payload }) => handleUpdatePayload(payload))
-      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => handleUpdatePayload(payload))
-      .on('broadcast', { event: 'request_active_rides' }, () => {
-        const current = getStoredRideData(rideId);
-        if (current && current.status === 'requested') {
-          safeBroadcast('global-ride-events', 'announce_active_ride', { ride: current });
-        }
-      });
-  }
+      )
+      .subscribe();
+  } catch {}
 
   if (callbacks.onStatusChange) {
     callbacks.onStatusChange('SUBSCRIBED');
   }
 
-  return channel;
+  // Announce active request if needed
+  const current = getStoredRideData(rideId);
+  if (current && current.status === 'requested') {
+    safeBroadcast('global-ride-events', 'announce_active_ride', { ride: current });
+  }
+
+  const subscriptionHandle: any = {
+    ...globalChannel,
+    topic: `realtime:passenger-ride-${rideId}`,
+    unsubscribe: () => {
+      const set = globalBus.passengerRideUpdates.get(rideId);
+      if (set) {
+        set.delete(callbacks.onUpdate);
+        if (set.size === 0) {
+          globalBus.passengerRideUpdates.delete(rideId);
+        }
+      }
+      if (dbChannel && supabase && typeof supabase.removeChannel === 'function') {
+        try { supabase.removeChannel(dbChannel); } catch {}
+      }
+    },
+  };
+
+  return subscriptionHandle;
 };
 
 /**
@@ -2177,18 +2282,25 @@ export const subscribeToRideOffers = (
       .catch(() => {});
   }
 
+  // Register callback in globalBus
+  let offerListeners = globalBus.passengerRideOffers.get(rideId);
+  if (!offerListeners) {
+    offerListeners = new Set();
+    globalBus.passengerRideOffers.set(rideId, offerListeners);
+  }
+  offerListeners.add(callback);
+
   // Supabase Realtime WebSocket Channels for this ride's offers
   const channelName = `ride_offers_${rideId}`;
   const realtimeChannel = getOrCreateRealtimeChannel(channelName);
-  const passengerChannel = getOrCreateRealtimeChannel(`passenger-ride-${rideId}`);
   const globalChannel = getOrCreateRealtimeChannel('global-ride-events');
 
   const onOfferReceived = (payload: any) => {
     if (payload && payload.rideId === rideId && Array.isArray(payload.offers)) {
       try {
-        localStorage.setItem(OFFERS_KEY_PREFIX + rideId, JSON.stringify(payload.offers));
+        safeStorage.setItem(OFFERS_KEY_PREFIX + rideId, JSON.stringify(payload.offers));
       } catch {}
-      callback(payload.offers);
+      try { callback(payload.offers); } catch {}
     }
   };
 
@@ -2201,34 +2313,24 @@ export const subscribeToRideOffers = (
           })
         );
       } catch {}
-      callback(getStoredRideOffers(rideId));
+      try { callback(getStoredRideOffers(rideId)); } catch {}
     }
   };
 
   if (realtimeChannel) {
-    realtimeChannel
-      .on('broadcast', { event: 'offers_update' }, ({ payload }) => onOfferReceived(payload))
-      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => onOfferAccepted(payload))
-      .on('broadcast', { event: 'request_offers' }, ({ payload }) => {
-        if (payload && payload.rideId === rideId) {
-          const current = getStoredRideOffers(rideId);
-          if (current.length > 0) {
-            safeBroadcast(channelName, 'offers_update', { rideId, offers: current });
+    try {
+      realtimeChannel
+        .on('broadcast', { event: 'offers_update' }, ({ payload }) => onOfferReceived(payload))
+        .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => onOfferAccepted(payload))
+        .on('broadcast', { event: 'request_offers' }, ({ payload }) => {
+          if (payload && payload.rideId === rideId) {
+            const current = getStoredRideOffers(rideId);
+            if (current.length > 0) {
+              safeBroadcast(channelName, 'offers_update', { rideId, offers: current });
+            }
           }
-        }
-      });
-  }
-
-  if (passengerChannel) {
-    passengerChannel
-      .on('broadcast', { event: 'offers_update' }, ({ payload }) => onOfferReceived(payload))
-      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => onOfferAccepted(payload));
-  }
-
-  if (globalChannel) {
-    globalChannel
-      .on('broadcast', { event: 'offers_update' }, ({ payload }) => onOfferReceived(payload))
-      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => onOfferAccepted(payload));
+        });
+    } catch {}
   }
 
   safeBroadcast(channelName, 'request_offers', { rideId });

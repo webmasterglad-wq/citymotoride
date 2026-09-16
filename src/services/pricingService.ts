@@ -1,6 +1,7 @@
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { ExtendedPlatformPricing, DEFAULT_PLATFORM_PRICING, TierPricingConfig } from '../types/pricing';
+import { safeStorage } from '../utils/safeStorage';
 
 export const PRICING_STORAGE_KEY = 'motoride_platform_pricing_v6';
 export const PRICING_SYNC_EVENT = 'motoride:pricing_updated';
@@ -108,16 +109,16 @@ export function loadLocalPricing(): ExtendedPlatformPricing {
       'motoride_platform_pricing_v5',
     ];
     for (const key of legacyKeys) {
-      if (typeof window !== 'undefined' && localStorage.getItem(key)) {
+      if (typeof window !== 'undefined' && safeStorage.getItem(key)) {
         try {
-          localStorage.removeItem(key);
+          safeStorage.removeItem(key);
         } catch {
           // ignore
         }
       }
     }
 
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(PRICING_STORAGE_KEY) : null;
+    const raw = typeof window !== 'undefined' ? safeStorage.getItem(PRICING_STORAGE_KEY) : null;
     if (raw) {
       return normalizePlatformPricing(JSON.parse(raw));
     }
@@ -132,7 +133,7 @@ export function loadLocalPricing(): ExtendedPlatformPricing {
  */
 export function saveLocalPricing(pricing: ExtendedPlatformPricing): void {
   try {
-    localStorage.setItem(PRICING_STORAGE_KEY, JSON.stringify(pricing));
+    safeStorage.setItem(PRICING_STORAGE_KEY, JSON.stringify(pricing));
   } catch (err) {
     console.warn('[PricingService] Failed to save local pricing storage:', err);
   }

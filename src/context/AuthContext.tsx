@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { UserProfile } from '../types/ride';
+import { safeStorage } from '../utils/safeStorage';
 
 export type AppRole = 'passenger' | 'captain' | 'admin';
 
@@ -64,9 +65,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Initialize stored users on mount
   useEffect(() => {
     try {
-      const storedPassenger = localStorage.getItem(`${STORAGE_PREFIX}passenger`);
-      const storedCaptain = localStorage.getItem(`${STORAGE_PREFIX}captain`);
-      const storedAdmin = localStorage.getItem(`${STORAGE_PREFIX}admin`);
+      const storedPassenger = safeStorage.getItem(`${STORAGE_PREFIX}passenger`);
+      const storedCaptain = safeStorage.getItem(`${STORAGE_PREFIX}captain`);
+      const storedAdmin = safeStorage.getItem(`${STORAGE_PREFIX}admin`);
 
       setRoleUsers({
         passenger: storedPassenger ? JSON.parse(storedPassenger) : null,
@@ -92,11 +93,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         let localBike = '';
         try {
-          const raw = localStorage.getItem('motoride_registered_bike');
+          const raw = safeStorage.getItem('motoride_registered_bike');
           if (raw && !raw.includes('Yamaha MT-07')) {
             localBike = raw;
           } else {
-            const storedP = localStorage.getItem('motoride_active_captain_profile');
+            const storedP = safeStorage.getItem('motoride_active_captain_profile');
             if (storedP) {
               const p = JSON.parse(storedP);
               if (p?.vehicle_details && !p.vehicle_details.includes('Yamaha MT-07')) {
@@ -118,10 +119,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: session.user.created_at,
         };
 
-        // Save in state & localStorage (keep role sessions independent for easy testing)
+        // Save in state & safeStorage (keep role sessions independent for easy testing)
         setRoleUsers((prev) => {
           const updated = { ...prev, [role]: userObj };
-          localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(userObj));
+          safeStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(userObj));
           return updated;
         });
       } else if (event === 'SIGNED_OUT') {
@@ -331,14 +332,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         setRoleUsers((prev) => {
           const updated = { ...prev, [assignedRole]: authUser };
-          localStorage.setItem(`${STORAGE_PREFIX}${assignedRole}`, JSON.stringify(authUser));
+          safeStorage.setItem(`${STORAGE_PREFIX}${assignedRole}`, JSON.stringify(authUser));
           return updated;
         });
 
         return { success: true, user: authUser };
       } else {
         // Local fallback when Supabase is not connected
-        const cached = localStorage.getItem(`${STORAGE_PREFIX}${role}`);
+        const cached = safeStorage.getItem(`${STORAGE_PREFIX}${role}`);
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed.email === cleanEmail) {
@@ -363,7 +364,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         setRoleUsers((prev) => {
           const updated = { ...prev, [role]: fallbackUser };
-          localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(fallbackUser));
+          safeStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(fallbackUser));
           return updated;
         });
 
@@ -391,7 +392,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setRoleUsers((prev) => {
       const updated = { ...prev, [role]: null };
-      localStorage.removeItem(`${STORAGE_PREFIX}${role}`);
+      safeStorage.removeItem(`${STORAGE_PREFIX}${role}`);
       return updated;
     });
     setAuthError(null);
@@ -414,7 +415,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setRoleUsers((prev) => {
       const updated = { ...prev, [role]: cleanUser };
-      localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(cleanUser));
+      safeStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(cleanUser));
       return updated;
     });
 
@@ -446,16 +447,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedUser: AuthUser = { ...base, ...cleanUpdates };
       targetUserId = updatedUser.id;
       try {
-        localStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(updatedUser));
+        safeStorage.setItem(`${STORAGE_PREFIX}${role}`, JSON.stringify(updatedUser));
         if (role === 'captain') {
           if (updates.vehicle_details !== undefined) {
-            localStorage.setItem('motoride_registered_bike', updates.vehicle_details);
+            safeStorage.setItem('motoride_registered_bike', updates.vehicle_details);
           }
           if (updates.bike_image !== undefined) {
-            localStorage.setItem('motoride_registered_bike_image', updates.bike_image);
+            safeStorage.setItem('motoride_registered_bike_image', updates.bike_image);
           }
           if (updates.avatar_url !== undefined) {
-            localStorage.setItem('motoride_captain_avatar', updates.avatar_url);
+            safeStorage.setItem('motoride_captain_avatar', updates.avatar_url);
           }
         }
       } catch (e) {
