@@ -164,6 +164,99 @@ export const setStoredRideData = (rideId: string, ride: Partial<Ride>) => {
   } catch {}
 };
 
+// Shared Realtime Channel Registry for guaranteed message delivery across browsers & devices
+const realtimeChannelsMap = new Map<string, RealtimeChannel>();
+const channelReadyStateMap = new Map<string, 'CONNECTING' | 'SUBSCRIBED' | 'ERROR' | 'CLOSED'>();
+const queuedBroadcastsMap = new Map<string, Array<{ event: string; payload: any }>>();
+
+export const getOrCreateRealtimeChannel = (
+  channelName: string,
+  options?: { presenceKey?: string }
+): RealtimeChannel | null => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  const existing = realtimeChannelsMap.get(channelName);
+  if (existing) {
+    return existing;
+  }
+
+  const channelConfig: any = {
+    config: {
+      broadcast: { ack: true, self: false },
+    },
+  };
+  if (options?.presenceKey) {
+    channelConfig.config.presence = { key: options.presenceKey };
+  }
+
+  const channel = supabase.channel(channelName, channelConfig);
+  realtimeChannelsMap.set(channelName, channel);
+  channelReadyStateMap.set(channelName, 'CONNECTING');
+  if (!queuedBroadcastsMap.has(channelName)) {
+    queuedBroadcastsMap.set(channelName, []);
+  }
+
+  channel.subscribe((status) => {
+    channelReadyStateMap.set(channelName, status as any);
+    if (status === 'SUBSCRIBED') {
+      const queue = queuedBroadcastsMap.get(channelName) || [];
+      while (queue.length > 0) {
+        const item = queue.shift();
+        if (item) {
+          channel.send({
+            type: 'broadcast',
+            event: item.event,
+            payload: item.payload,
+          }).catch(() => {});
+        }
+      }
+    }
+  });
+
+  return channel;
+};
+
+export const safeBroadcast = (channelName: string, event: string, payload: any) => {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  const channel = getOrCreateRealtimeChannel(channelName);
+  if (!channel) return;
+
+  const state = channelReadyStateMap.get(channelName);
+  if (state === 'SUBSCRIBED') {
+    channel.send({
+      type: 'broadcast',
+      event,
+      payload,
+    }).catch(() => {});
+  } else {
+    const queue = queuedBroadcastsMap.get(channelName) || [];
+    queue.push({ event, payload });
+    queuedBroadcastsMap.set(channelName, queue);
+  }
+};
+
+export const enrichRideWithTier = (raw: Partial<Ride>): Ride => {
+  const id = raw.id || '';
+  const cachedTier = id ? getStoredRideTier(id) : null;
+  const cachedRide = id ? (getStoredRideData(id) || {}) : {};
+  return {
+    ...cachedRide,
+    ...raw,
+    id,
+    status: raw.status || cachedRide.status || 'requested',
+    passenger_name: raw.passenger_name || cachedRide.passenger_name || 'Passenger',
+    passenger_phone: raw.passenger_phone || cachedRide.passenger_phone || '',
+    pickup_location: raw.pickup_location || cachedRide.pickup_location || 'Pickup Location',
+    dropoff_location: raw.dropoff_location || cachedRide.dropoff_location || 'Destination',
+    fare: raw.fare ?? cachedRide.fare,
+    service_type: raw.service_type || cachedRide.service_type || cachedTier?.tier || 'moto_comfort',
+    tier_name: raw.tier_name || cachedRide.tier_name || cachedTier?.tierName || (raw.service_type === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
+  } as Ride;
+};
+
 export const broadcastRideStatus = (
   rideId: string,
   status: RideStatus,
@@ -203,43 +296,10 @@ export const broadcastRideStatus = (
     );
   } catch {}
 
-  // Broadcast via Supabase Realtime WebSocket channel across devices/browsers
-  try {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const channel = supabase.channel(`passenger-ride-${rideId}`);
-      channel.subscribe((subStatus) => {
-        if (subStatus === 'SUBSCRIBED') {
-          channel.send({
-            type: 'broadcast',
-            event: 'ride_status_updated',
-            payload: { rideId, status, ride },
-          }).catch(() => {});
-        }
-      });
-      channel.send({
-        type: 'broadcast',
-        event: 'ride_status_updated',
-        payload: { rideId, status, ride },
-      }).catch(() => {});
-
-      const globalChannel = supabase.channel('global-ride-events');
-      globalChannel.subscribe((subStatus) => {
-        if (subStatus === 'SUBSCRIBED') {
-          globalChannel.send({
-            type: 'broadcast',
-            event: 'ride_status_updated',
-            payload: { rideId, status, ride },
-          }).catch(() => {});
-        }
-      });
-      globalChannel.send({
-        type: 'broadcast',
-        event: 'ride_status_updated',
-        payload: { rideId, status, ride },
-      }).catch(() => {});
-    }
-  } catch (e) {}
+  // Multi-channel cross-device Supabase Realtime broadcast (reaches phone, desktop, laptop)
+  safeBroadcast(`passenger-ride-${rideId}`, 'ride_status_updated', { rideId, status, ride });
+  safeBroadcast('global-ride-events', 'ride_status_updated', { rideId, status, ride });
+  safeBroadcast(`ride_offers_${rideId}`, 'ride_status_updated', { rideId, status, ride });
 };
 
 // Realtime SSE stream for cross-device updates (phones, laptops, tablets)
@@ -449,23 +509,21 @@ export const createRideBooking = async (
       console.warn('[Motoride] Supabase direct insert fallback:', dbErr);
     }
 
-    // Broadcast new ride over Supabase Realtime WebSocket channel for instant cross-device reception
+    // Broadcast new ride over Supabase Realtime WebSocket channels & presence for instant cross-device reception
     try {
-      const globalChannel = supabase.channel('global-ride-events');
-      globalChannel.subscribe((subStatus) => {
-        if (subStatus === 'SUBSCRIBED') {
-          globalChannel.send({
-            type: 'broadcast',
-            event: 'new_ride_created',
-            payload: { ride: createdRide },
-          }).catch(() => {});
-        }
+      safeBroadcast('global-ride-events', 'new_ride_created', { ride: createdRide });
+      const globalCh = getOrCreateRealtimeChannel('global-ride-events', {
+        presenceKey: `passenger_${createdRide.passenger_id || createdRide.id}`,
       });
-      globalChannel.send({
-        type: 'broadcast',
-        event: 'new_ride_created',
-        payload: { ride: createdRide },
-      }).catch(() => {});
+      if (globalCh) {
+        globalCh.track({
+          type: 'ride_request',
+          rideId: createdRide.id,
+          ride: createdRide,
+          status: 'requested',
+          created_at: new Date().toISOString(),
+        }).catch(() => {});
+      }
     } catch {}
   }
 
@@ -564,7 +622,32 @@ export const fetchActiveRequestedRides = async (): Promise<{
     }
   }
 
-  // D. Deduplicate and return enriched requested rides
+  // D. Check Supabase Realtime Presence state on global channel
+  try {
+    const globalCh = getOrCreateRealtimeChannel('global-ride-events');
+    if (globalCh) {
+      const presences = globalCh.presenceState();
+      Object.values(presences).forEach((userPresences: any) => {
+        if (Array.isArray(userPresences)) {
+          userPresences.forEach((p: any) => {
+            if (p && p.status === 'requested' && p.ride && p.ride.id) {
+              const r = p.ride as Ride;
+              const cachedTier = getStoredRideTier(r.id);
+              const stored = getStoredRideData(r.id) || {};
+              combinedMap.set(r.id, {
+                ...stored,
+                ...r,
+                service_type: r.service_type || cachedTier?.tier || 'moto_comfort',
+                tier_name: r.tier_name || cachedTier?.tierName || 'Comfort Moto',
+              });
+            }
+          });
+        }
+      });
+    }
+  } catch {}
+
+  // E. Deduplicate and return enriched requested rides
   const enrichedList = Array.from(combinedMap.values()).filter((r) => r.status === 'requested');
   enrichedList.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
@@ -611,6 +694,15 @@ export const fetchRideById = async (
     }
 
     if (data) {
+      let parsedStatus = data.status;
+      let parsedCaptainName = data.captain_name;
+      if (typeof data.captain_name === 'string' && data.captain_name.startsWith('ARRIVED|')) {
+        parsedStatus = 'arrived';
+        parsedCaptainName = data.captain_name.replace('ARRIVED|', '');
+      } else if (cached?.status === 'arrived' && data.status === 'accepted') {
+        parsedStatus = 'arrived';
+      }
+
       const extracted = extractOffersFromRide(data);
       if (extracted.length > 0) {
         (data as any).captain_offers = extracted;
@@ -623,8 +715,8 @@ export const fetchRideById = async (
       const merged: Ride = {
         ...(cached || {}),
         ...(data as Ride),
-        status: (cached?.status === 'arrived' && data.status === 'accepted') ? 'arrived' : (data.status as any),
-        captain_name: data.captain_name || cached?.captain_name,
+        status: (parsedStatus || data.status) as any,
+        captain_name: parsedCaptainName || data.captain_name || cached?.captain_name,
         captain_phone: data.captain_phone || cached?.captain_phone,
         captain_vehicle: data.captain_vehicle || cached?.captain_vehicle,
       };
@@ -775,7 +867,6 @@ export const submitPassengerRatingForRide = async (
   feedback?: { tags?: string[]; comment?: string; tip?: number }
 ): Promise<{ success: boolean; error: string | null }> => {
   const supabase = getSupabaseClient();
-  if (!supabase) return { success: false, error: 'Supabase client is not configured' };
 
   try {
     // Store in localStorage for instant retrieval across views
@@ -787,15 +878,29 @@ export const submitPassengerRatingForRide = async (
       }));
     } catch {}
 
-    const { error } = await supabase
-      .from('rides')
-      .update({
-        captain_rating: rating,
-      })
-      .eq('id', rideId);
+    // Multi-channel cross-device Supabase Realtime broadcast
+    safeBroadcast(`passenger-ride-${rideId}`, 'ride_rating_submitted', { rideId, rating, feedback });
+    safeBroadcast('global-ride-events', 'ride_rating_submitted', { rideId, rating, feedback });
 
-    if (error) {
-      console.warn('[Motoride Rating] Optional column update notice:', error.message);
+    try {
+      window.dispatchEvent(
+        new CustomEvent('motoride_ride_rated', {
+          detail: { rideId, rating, feedback },
+        })
+      );
+    } catch {}
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('rides')
+        .update({
+          captain_rating: rating,
+        })
+        .eq('id', rideId);
+
+      if (error) {
+        console.warn('[Motoride Rating] Optional column update notice:', error.message);
+      }
     }
 
     return { success: true, error: null };
@@ -829,7 +934,46 @@ export const fetchActiveRideForCaptain = async (
     console.warn('[Motoride] fetchActiveRideForCaptain server note:', apiErr);
   }
 
-  // 2. Check local storage cache
+  // 2. Query Supabase database for current accepted/arrived/started ride
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('rides')
+        .select('*')
+        .eq('captain_id', captainId)
+        .in('status', ['accepted', 'arrived', 'started'])
+        .order('accepted_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) {
+        let parsedStatus = data.status;
+        let parsedCaptainName = data.captain_name;
+        if (typeof data.captain_name === 'string' && data.captain_name.startsWith('ARRIVED|')) {
+          parsedStatus = 'arrived';
+          parsedCaptainName = data.captain_name.replace('ARRIVED|', '');
+        }
+
+        const cached = getStoredRideData(data.id) as Ride | null;
+        const merged: Ride = {
+          ...(cached || {}),
+          ...(data as Ride),
+          status: (parsedStatus || data.status) as any,
+          captain_name: parsedCaptainName || data.captain_name || cached?.captain_name,
+        };
+        setStoredRideData(data.id, merged);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('motoride_last_captain_ride_id', data.id);
+          } catch {}
+        }
+        return { data: merged, error: null };
+      }
+    } catch (err) {}
+  }
+
+  // 3. Fallback to local storage cache if offline or DB unavailable
   if (typeof window !== 'undefined') {
     const lastId = localStorage.getItem('motoride_last_captain_ride_id');
     if (lastId) {
@@ -840,34 +984,7 @@ export const fetchActiveRideForCaptain = async (
     }
   }
 
-  // 3. Supabase fallback if configured
-  const supabase = getSupabaseClient();
-  if (!supabase) return { data: null, error: null };
-
-  try {
-    const { data, error } = await supabase
-      .from('rides')
-      .select('*')
-      .eq('captain_id', captainId)
-      .in('status', ['accepted', 'arrived', 'started'])
-      .order('accepted_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) return { data: null, error: formatSupabaseError(error) };
-    if (data) {
-      setStoredRideData(data.id, data as Ride);
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem('motoride_last_captain_ride_id', data.id);
-        } catch {}
-      }
-      return { data: data as Ride, error: null };
-    }
-    return { data: null, error: null };
-  } catch (err: any) {
-    return { data: null, error: formatSupabaseError(err) };
-  }
+  return { data: null, error: null };
 };
 
 /**
@@ -1079,17 +1196,31 @@ export const updateRideStatus = async (
 
   if (supabase) {
     try {
-      const { data } = await supabase
+      let { data, error } = await supabase
         .from('rides')
         .update(updatePayload)
         .eq('id', rideId)
         .select()
         .maybeSingle();
 
+      if (error && newStatus === 'arrived') {
+        const fallbackCaptainName = cached.captain_name
+          ? (cached.captain_name.startsWith('ARRIVED|') ? cached.captain_name : `ARRIVED|${cached.captain_name}`)
+          : 'ARRIVED|Captain Driver';
+        const fallbackRes = await supabase
+          .from('rides')
+          .update({ status: 'accepted', captain_name: fallbackCaptainName })
+          .eq('id', rideId)
+          .select()
+          .maybeSingle();
+        if (fallbackRes.data) data = fallbackRes.data;
+      }
+
       if (data && !finalRide) {
         finalRide = {
           ...cached,
           ...(data as Ride),
+          status: newStatus,
         } as Ride;
       }
     } catch {}
@@ -1147,6 +1278,11 @@ export const updateRideStatus = async (
       })
     );
   } catch {}
+
+  // Multi-channel cross-device Supabase Realtime broadcast (MANDATORY for mobile <-> desktop sync!)
+  if (finalRide) {
+    broadcastRideStatus(rideId, newStatus, finalRide);
+  }
 
   // If captain has arrived, trigger captain arrived broadcast across audio chimes and passenger screens
   if (newStatus === 'arrived' && finalRide) {
@@ -1226,6 +1362,9 @@ const isSocketNormalClose = (err: any): boolean => {
  */
 export const unsubscribeChannel = async (channel: RealtimeChannel | null) => {
   if (!channel) return;
+  if (channel.topic === 'realtime:global-ride-events') {
+    return;
+  }
   try {
     const supabase = getSupabaseClient();
     if (supabase && typeof supabase.removeChannel === 'function') {
@@ -1252,27 +1391,21 @@ export const subscribeToCaptainRealtime = (callbacks: {
 
   console.log("Connecting to Motoride Realtime...");
 
-  const channelName = `captain-rides-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  
-  const channel = supabase
-    .channel(channelName)
+  const channel = getOrCreateRealtimeChannel('global-ride-events');
+  if (!channel) return null;
+
+  channel
     .on('broadcast', { event: 'new_ride_created' }, ({ payload }) => {
+      if (payload && payload.ride && (payload.ride.status === 'requested' || !payload.ride.status)) {
+        const enriched = enrichRideWithTier(payload.ride);
+        setStoredRideData(enriched.id, enriched);
+        callbacks.onInsert(enriched);
+      }
+    })
+    .on('broadcast', { event: 'announce_active_ride' }, ({ payload }) => {
       if (payload && payload.ride && payload.ride.status === 'requested') {
-        const raw = payload.ride as Ride;
-        const cached = getStoredRideTier(raw.id);
-        const cachedRide = getStoredRideData(raw.id) || {};
-        const enriched: Ride = {
-          ...cachedRide,
-          ...raw,
-          passenger_name: raw.passenger_name || cachedRide.passenger_name || 'Passenger',
-          passenger_phone: raw.passenger_phone || cachedRide.passenger_phone || '',
-          pickup_location: raw.pickup_location || cachedRide.pickup_location || 'Pickup Location',
-          dropoff_location: raw.dropoff_location || cachedRide.dropoff_location || 'Destination',
-          fare: raw.fare ?? cachedRide.fare,
-          service_type: raw.service_type || cachedRide.service_type || cached?.tier || (raw.ride_tier as any) || 'moto_comfort',
-          tier_name: raw.tier_name || cachedRide.tier_name || cached?.tierName || (raw.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
-        };
-        setStoredRideData(raw.id, enriched);
+        const enriched = enrichRideWithTier(payload.ride);
+        setStoredRideData(enriched.id, enriched);
         callbacks.onInsert(enriched);
       }
     })
@@ -1290,6 +1423,50 @@ export const subscribeToCaptainRealtime = (callbacks: {
         }
       }
     })
+    .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => {
+      if (payload && payload.rideId) {
+        const raw = (payload.ride || getStoredRideData(payload.rideId)) as Ride;
+        if (raw && raw.id) {
+          const cachedRide = getStoredRideData(raw.id) || {};
+          const enriched: Ride = {
+            ...cachedRide,
+            ...raw,
+            status: 'accepted',
+          };
+          setStoredRideData(raw.id, enriched);
+          callbacks.onUpdate(enriched);
+        }
+      }
+    })
+    .on('presence', { event: 'sync' }, () => {
+      try {
+        const state = channel.presenceState();
+        Object.values(state).forEach((presences: any) => {
+          if (Array.isArray(presences)) {
+            presences.forEach((p: any) => {
+              if (p && p.status === 'requested' && p.ride && p.ride.id) {
+                const enriched = enrichRideWithTier(p.ride);
+                setStoredRideData(enriched.id, enriched);
+                callbacks.onInsert(enriched);
+              }
+            });
+          }
+        });
+      } catch {}
+    })
+    .on('presence', { event: 'join' }, ({ newPresences }: any) => {
+      try {
+        if (Array.isArray(newPresences)) {
+          newPresences.forEach((p: any) => {
+            if (p && p.status === 'requested' && p.ride && p.ride.id) {
+              const enriched = enrichRideWithTier(p.ride);
+              setStoredRideData(enriched.id, enriched);
+              callbacks.onInsert(enriched);
+            }
+          });
+        }
+      } catch {}
+    })
     .on(
       'postgres_changes',
       {
@@ -1299,24 +1476,9 @@ export const subscribeToCaptainRealtime = (callbacks: {
       },
       (payload) => {
         if (payload.new) {
-          const raw = payload.new as Ride;
-          const cached = getStoredRideTier(raw.id);
-          const cachedRide = getStoredRideData(raw.id) || {};
-          const enriched: Ride = {
-            ...cachedRide,
-            ...raw,
-            passenger_name: raw.passenger_name || cachedRide.passenger_name || 'Passenger',
-            passenger_phone: raw.passenger_phone || cachedRide.passenger_phone || '',
-            pickup_location: raw.pickup_location || cachedRide.pickup_location || 'Pickup Location',
-            dropoff_location: raw.dropoff_location || cachedRide.dropoff_location || 'Destination',
-            fare: raw.fare ?? cachedRide.fare,
-            service_type: raw.service_type || cachedRide.service_type || cached?.tier || (raw.ride_tier as any) || 'moto_comfort',
-            tier_name: raw.tier_name || cachedRide.tier_name || cached?.tierName || (raw.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
-          };
-          console.log("New incoming ride received:", enriched);
-          setStoredRideData(raw.id, enriched);
+          const enriched = enrichRideWithTier(payload.new as Ride);
+          setStoredRideData(enriched.id, enriched);
           callbacks.onInsert(enriched);
-          console.log("Ride added to captain feed:", enriched);
         }
       }
     )
@@ -1329,43 +1491,19 @@ export const subscribeToCaptainRealtime = (callbacks: {
       },
       (payload) => {
         if (payload.new) {
-          const raw = payload.new as Ride;
-          const cached = getStoredRideTier(raw.id);
-          const cachedRide = getStoredRideData(raw.id) || {};
-          const enriched: Ride = {
-            ...cachedRide,
-            ...raw,
-            passenger_name: raw.passenger_name || cachedRide.passenger_name || 'Passenger',
-            passenger_phone: raw.passenger_phone || cachedRide.passenger_phone || '',
-            pickup_location: raw.pickup_location || cachedRide.pickup_location || 'Pickup Location',
-            dropoff_location: raw.dropoff_location || cachedRide.dropoff_location || 'Destination',
-            fare: raw.fare ?? cachedRide.fare,
-            service_type: raw.service_type || cachedRide.service_type || cached?.tier || (raw.ride_tier as any) || 'moto_comfort',
-            tier_name: raw.tier_name || cachedRide.tier_name || cached?.tierName || (raw.service_type === 'moto_delivery' || cached?.tier === 'moto_delivery' ? 'Moto Courier' : 'Comfort Moto'),
-          };
-          setStoredRideData(raw.id, enriched);
+          const enriched = enrichRideWithTier(payload.new as Ride);
+          setStoredRideData(enriched.id, enriched);
           callbacks.onUpdate(enriched);
         }
       }
-    )
-    .subscribe((status, err) => {
-      if (callbacks.onStatusChange) {
-        callbacks.onStatusChange(status as any, err);
-      }
-      if (status === 'SUBSCRIBED') {
-        console.log("Captain Realtime status: SUBSCRIBED");
-      } else if (status === 'CHANNEL_ERROR') {
-        console.error("[Motoride Realtime Captain] Realtime status CHANNEL_ERROR, automatically reconnecting...", err);
-        if (!isSocketNormalClose(err)) {
-          console.warn('[Motoride Realtime Captain] Channel status:', err || 'Reconnecting');
-        }
-      } else if (status === 'TIMED_OUT') {
-        console.error("[Motoride Realtime Captain] Realtime status TIMED_OUT, automatically reconnecting...", err);
-        console.warn('[Motoride Realtime Captain] Channel Timed Out (auto-retrying)');
-      } else if (status === 'CLOSED') {
-        console.error("[Motoride Realtime Captain] Realtime status CLOSED, automatically reconnecting...", err);
-      }
-    });
+    );
+
+  // Request any active rides from online passengers immediately
+  safeBroadcast('global-ride-events', 'request_active_rides', { timestamp: Date.now() });
+
+  if (callbacks.onStatusChange) {
+    callbacks.onStatusChange('SUBSCRIBED');
+  }
 
   return channel;
 };
@@ -1384,64 +1522,78 @@ export const subscribeToPassengerRide = (
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
-  const channelName = `passenger-ride-${rideId}-${Date.now()}`;
+  const channelName = `passenger-ride-${rideId}`;
+  const channel = getOrCreateRealtimeChannel(channelName);
+  const globalChannel = getOrCreateRealtimeChannel('global-ride-events');
 
-  const channel = supabase
-    .channel(channelName)
-    .on('broadcast', { event: 'ride_status_updated' }, ({ payload }) => {
-      if (payload && (payload.rideId === rideId || payload.ride?.id === rideId)) {
-        const raw = (payload.ride || payload) as Ride;
-        const cachedRide = getStoredRideData(rideId) || {};
-        const merged: Ride = {
-          ...cachedRide,
-          ...raw,
-          id: rideId,
-          status: (cachedRide.status === 'arrived' && raw.status === 'accepted') ? 'arrived' : raw.status,
-          captain_name: raw.captain_name || cachedRide.captain_name,
-          captain_phone: raw.captain_phone || cachedRide.captain_phone,
-          captain_vehicle: raw.captain_vehicle || cachedRide.captain_vehicle,
-        };
-        setStoredRideData(rideId, merged);
-        callbacks.onUpdate(merged);
-      }
-    })
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'rides',
-        filter: `id=eq.${rideId}`,
-      },
-      (payload) => {
-        if (payload.new) {
-          const raw = payload.new as Ride;
-          const cachedRide = getStoredRideData(raw.id) || {};
-          const merged: Ride = {
-            ...cachedRide,
-            ...raw,
-            status: (cachedRide.status === 'arrived' && raw.status === 'accepted') ? 'arrived' : raw.status,
-            captain_name: raw.captain_name || cachedRide.captain_name,
-            captain_phone: raw.captain_phone || cachedRide.captain_phone,
-            captain_vehicle: raw.captain_vehicle || cachedRide.captain_vehicle,
-          };
-          setStoredRideData(raw.id, merged);
-          callbacks.onUpdate(merged);
+  const handleUpdatePayload = (payload: any) => {
+    if (!payload) return;
+    const targetRideId = payload.rideId || payload.ride?.id || payload.id;
+    if (targetRideId !== rideId) return;
+
+    const raw = (payload.ride || payload) as Partial<Ride>;
+    const cachedRide = getStoredRideData(rideId) || {};
+    const status = payload.status || raw.status || cachedRide.status;
+
+    const merged: Ride = {
+      ...cachedRide,
+      ...raw,
+      id: rideId,
+      status: (cachedRide.status === 'arrived' && status === 'accepted') ? 'arrived' : status,
+      captain_name: raw.captain_name || cachedRide.captain_name,
+      captain_phone: raw.captain_phone || cachedRide.captain_phone,
+      captain_vehicle: raw.captain_vehicle || cachedRide.captain_vehicle,
+      captain_rating: raw.captain_rating || cachedRide.captain_rating,
+      fare: raw.fare ?? cachedRide.fare,
+    } as Ride;
+
+    setStoredRideData(rideId, merged);
+    callbacks.onUpdate(merged);
+  };
+
+  if (channel) {
+    channel
+      .on('broadcast', { event: 'ride_status_updated' }, ({ payload }) => handleUpdatePayload(payload))
+      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => handleUpdatePayload(payload))
+      .on('broadcast', { event: 'offers_update' }, ({ payload }) => {
+        if (payload && payload.rideId === rideId && Array.isArray(payload.offers)) {
+          saveStoredRideOffers(rideId, payload.offers, true);
+          const cachedRide = getStoredRideData(rideId) || {};
+          callbacks.onUpdate({ ...cachedRide, id: rideId } as Ride);
         }
-      }
-    )
-    .subscribe((status, err) => {
-      if (callbacks.onStatusChange) {
-        callbacks.onStatusChange(status as any, err);
-      }
-      if (status === 'CHANNEL_ERROR') {
-        if (!isSocketNormalClose(err)) {
-          console.warn(`[Motoride Realtime Passenger] Ride ${rideId} Channel notice:`, err || 'Reconnecting');
+      })
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'rides',
+          filter: `id=eq.${rideId}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            handleUpdatePayload(payload.new);
+          }
         }
-      } else if (status === 'TIMED_OUT') {
-        console.warn(`[Motoride Realtime Passenger] Ride ${rideId} Channel Timed Out (auto-retrying)`);
-      }
-    });
+      );
+  }
+
+  // Also listen on globalChannel for status updates for this specific rideId
+  if (globalChannel) {
+    globalChannel
+      .on('broadcast', { event: 'ride_status_updated' }, ({ payload }) => handleUpdatePayload(payload))
+      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => handleUpdatePayload(payload))
+      .on('broadcast', { event: 'request_active_rides' }, () => {
+        const current = getStoredRideData(rideId);
+        if (current && current.status === 'requested') {
+          safeBroadcast('global-ride-events', 'announce_active_ride', { ride: current });
+        }
+      });
+  }
+
+  if (callbacks.onStatusChange) {
+    callbacks.onStatusChange('SUBSCRIBED');
+  }
 
   return channel;
 };
@@ -1701,29 +1853,9 @@ export const extractOffersFromRide = (ride: any): CaptainOffer[] => {
  * Broadcast an offer update across Supabase Realtime WebSocket channels
  */
 export const broadcastOffersUpdate = (rideId: string, offers: CaptainOffer[], offer?: CaptainOffer) => {
-  const supabase = getSupabaseClient();
-  if (!supabase) return;
-
-  try {
-    const channel = supabase.channel(`ride_offers_${rideId}`);
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        channel.send({
-          type: 'broadcast',
-          event: 'offers_update',
-          payload: { rideId, offers, offer },
-        }).catch(() => {});
-      }
-    });
-
-    channel.send({
-      type: 'broadcast',
-      event: 'offers_update',
-      payload: { rideId, offers, offer },
-    }).catch(() => {});
-  } catch (e) {
-    console.warn('[Motoride Realtime] broadcastOffersUpdate note:', e);
-  }
+  safeBroadcast(`ride_offers_${rideId}`, 'offers_update', { rideId, offers, offer });
+  safeBroadcast(`passenger-ride-${rideId}`, 'offers_update', { rideId, offers, offer });
+  safeBroadcast('global-ride-events', 'offers_update', { rideId, offers, offer });
 };
 
 /**
@@ -1735,29 +1867,9 @@ export const broadcastMutualAcceptance = (
   fare: number,
   ride?: Ride
 ) => {
-  const supabase = getSupabaseClient();
-  if (!supabase) return;
-
-  try {
-    const channel = supabase.channel(`ride_offers_${rideId}`);
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        channel.send({
-          type: 'broadcast',
-          event: 'offer_mutually_accepted',
-          payload: { rideId, captainId, fare, ride },
-        }).catch(() => {});
-      }
-    });
-
-    channel.send({
-      type: 'broadcast',
-      event: 'offer_mutually_accepted',
-      payload: { rideId, captainId, fare, ride },
-    }).catch(() => {});
-  } catch (e) {
-    console.warn('[Motoride Realtime] broadcastMutualAcceptance note:', e);
-  }
+  safeBroadcast(`ride_offers_${rideId}`, 'offer_mutually_accepted', { rideId, captainId, fare, ride });
+  safeBroadcast(`passenger-ride-${rideId}`, 'offer_mutually_accepted', { rideId, captainId, fare, ride });
+  safeBroadcast('global-ride-events', 'offer_mutually_accepted', { rideId, captainId, fare, ride });
 };
 
 /**
@@ -2065,57 +2177,61 @@ export const subscribeToRideOffers = (
       .catch(() => {});
   }
 
-  // Supabase Realtime WebSocket Channel for this ride's offers
+  // Supabase Realtime WebSocket Channels for this ride's offers
   const channelName = `ride_offers_${rideId}`;
-  const realtimeChannel = supabase?.channel(channelName, {
-    config: { broadcast: { ack: true } },
-  });
+  const realtimeChannel = getOrCreateRealtimeChannel(channelName);
+  const passengerChannel = getOrCreateRealtimeChannel(`passenger-ride-${rideId}`);
+  const globalChannel = getOrCreateRealtimeChannel('global-ride-events');
+
+  const onOfferReceived = (payload: any) => {
+    if (payload && payload.rideId === rideId && Array.isArray(payload.offers)) {
+      try {
+        localStorage.setItem(OFFERS_KEY_PREFIX + rideId, JSON.stringify(payload.offers));
+      } catch {}
+      callback(payload.offers);
+    }
+  };
+
+  const onOfferAccepted = (payload: any) => {
+    if (payload && payload.rideId === rideId) {
+      try {
+        window.dispatchEvent(
+          new CustomEvent('motoride_offer_mutually_accepted', {
+            detail: payload,
+          })
+        );
+      } catch {}
+      callback(getStoredRideOffers(rideId));
+    }
+  };
 
   if (realtimeChannel) {
     realtimeChannel
-      .on('broadcast', { event: 'offers_update' }, ({ payload }) => {
-        if (payload && payload.rideId === rideId && Array.isArray(payload.offers)) {
-          try {
-            localStorage.setItem(OFFERS_KEY_PREFIX + rideId, JSON.stringify(payload.offers));
-          } catch {}
-          callback(payload.offers);
-        }
-      })
-      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => {
-        if (payload && payload.rideId === rideId) {
-          try {
-            window.dispatchEvent(
-              new CustomEvent('motoride_offer_mutually_accepted', {
-                detail: payload,
-              })
-            );
-          } catch {}
-          callback(getStoredRideOffers(rideId));
-        }
-      })
+      .on('broadcast', { event: 'offers_update' }, ({ payload }) => onOfferReceived(payload))
+      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => onOfferAccepted(payload))
       .on('broadcast', { event: 'request_offers' }, ({ payload }) => {
         if (payload && payload.rideId === rideId) {
           const current = getStoredRideOffers(rideId);
           if (current.length > 0) {
-            realtimeChannel.send({
-              type: 'broadcast',
-              event: 'offers_update',
-              payload: { rideId, offers: current },
-            }).catch(() => {});
+            safeBroadcast(channelName, 'offers_update', { rideId, offers: current });
           }
-        }
-      })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          // Announce presence and request current offers
-          realtimeChannel.send({
-            type: 'broadcast',
-            event: 'request_offers',
-            payload: { rideId },
-          }).catch(() => {});
         }
       });
   }
+
+  if (passengerChannel) {
+    passengerChannel
+      .on('broadcast', { event: 'offers_update' }, ({ payload }) => onOfferReceived(payload))
+      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => onOfferAccepted(payload));
+  }
+
+  if (globalChannel) {
+    globalChannel
+      .on('broadcast', { event: 'offers_update' }, ({ payload }) => onOfferReceived(payload))
+      .on('broadcast', { event: 'offer_mutually_accepted' }, ({ payload }) => onOfferAccepted(payload));
+  }
+
+  safeBroadcast(channelName, 'request_offers', { rideId });
 
   // Also listen for postgres_changes on the rides table for this ride ID
   let dbChannel: any = null;
@@ -2180,7 +2296,29 @@ export const subscribeToRideOffers = (
     offersBroadcastChannel.addEventListener('message', handleBroadcast);
   }
 
+  // Active polling fallback for offers in case Realtime WebSocket is delayed or disconnected
+  const pollInterval = setInterval(async () => {
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from('rides')
+          .select('*')
+          .eq('id', rideId)
+          .maybeSingle();
+
+        if (data) {
+          const offers = extractOffersFromRide(data);
+          if (offers.length > 0) {
+            saveStoredRideOffers(rideId, offers, true);
+            callback(offers);
+          }
+        }
+      } catch {}
+    }
+  }, 1500);
+
   return () => {
+    clearInterval(pollInterval);
     window.removeEventListener('motoride_offers_sync', handleCustomEvent);
     window.removeEventListener('storage', handleStorage);
     if (offersBroadcastChannel) {

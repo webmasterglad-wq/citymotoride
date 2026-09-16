@@ -665,7 +665,7 @@ export const CaptainApp: React.FC<CaptainAppProps> = ({
       if (isSupabaseConfigured() && isOnline) {
         loadInitialData();
       }
-    }, 4000);
+    }, 2000);
 
     return () => {
       clearInterval(pollInterval);
